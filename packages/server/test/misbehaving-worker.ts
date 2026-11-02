@@ -8,7 +8,7 @@ process.on('message', (m: { t?: string; role?: { id: number } }) => {
     { t: 'tell', note: { k: 'tls', tls: { cert: 'x', key: 'y' } } },
     { t: 'tell', note: { k: 'approve', file: 'Shop', id: 'x' } },
     { t: 'tell', note: { k: 'design', file: '../../etc/passwd' } },
-    { t: 'tell', note: { k: 'sessions', from: 0, list: [{}] } },
+    { t: 'tell', note: { k: 'sessions', from: 1, list: [{}] } },
     { t: 'tell', note: { k: '__proto__' } },
     { t: 'tell', note: 'gone' },
     { t: 'ask', rid: 1, q: { k: 'file', name: 'a/b', action: 'close' } },
@@ -19,5 +19,5 @@ process.on('message', (m: { t?: string; role?: { id: number } }) => {
     5,
   ];
   for (const message of junk) process.send!(message);
-  process.send!({ t: 'tell', note: { k: 'open-state', from: 0, file: 'Shop', error: 'a made-up reason' } });
+  process.send!({ t: 'tell', note: { k: 'open-state', from: 1, file: 'Shop', error: 'a made-up reason' } });
 });

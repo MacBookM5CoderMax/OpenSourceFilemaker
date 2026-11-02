@@ -771,6 +771,16 @@ export async function serveCluster(opts: ServeOptions, workers: number, blankFro
     let lastLog = '';
     post(w, { t: 'start', role, opts: workerOpts, blankFromNetwork });
     child.on('message', (received: unknown) => {
+      // Check the claimed sender before validation replaces it with the pipe's id.
+      // Only this front process's exit listener may announce that a worker is gone.
+      if (received && typeof received === 'object' && 't' in received && received.t === 'tell' && 'note' in received) {
+        const note = received.note;
+        if (note && typeof note === 'object' && 'k' in note) {
+          if (note.k === 'gone') return;
+          if ((note.k === 'stats' || note.k === 'sessions' || note.k === 'scripts' || note.k === 'log' || note.k === 'open-state')
+            && (!('from' in note) || note.from !== w.id)) return;
+        }
+      }
       const checked = workerMessage(received, w.id);
       if ('refused' in checked) { refusals.refuse('front', `worker ${w.id}`, checked.refused); return; }
       const m = checked.ok;

@@ -189,11 +189,11 @@ const broken = (dir: string) => {
   writeFileSync(join(dir, 'Broken.openhbam.sqlite'), 'this is not a database'.repeat(50));
 };
 
-test('the real front drops and counts a misbehaving worker, and assigns its own sender id', { timeout: 90_000 }, async (t) => {
+test('the real front counts malformed messages, silently drops gone, and relays valid reports', { timeout: 90_000 }, async (t) => {
   const { cluster, status, said, close } = await withCluster(t, 2, { entry: () => join(import.meta.dirname, 'misbehaving-worker.ts') }, broken);
   try {
-    await until('the 13 refusals', () => Object.values(cluster.refused()).reduce((n, c) => n + c, 0) >= 13);
-    assert.equal(Object.values(cluster.refused()).reduce((n, c) => n + c, 0), 13, JSON.stringify(cluster.refused()));
+    await until('the 12 refusals', () => Object.values(cluster.refused()).reduce((n, c) => n + c, 0) >= 12);
+    assert.equal(Object.values(cluster.refused()).reduce((n, c) => n + c, 0), 12, JSON.stringify(cluster.refused()));
     assert.ok(said.some((l) => /dropped a note of an unknown kind/.test(l)), said.join(' | '));
     let seen: { file: string; worker: number; error: string }[] = [];
     await until('the status', async () => { seen = (await status()) ?? []; return seen.some((e) => e.error === 'a made-up reason'); });
@@ -239,10 +239,10 @@ test('front replay is bounded, latest wins, success clears, and exiting follower
         if (m.t === 'stop') return process.exit(0);
         if (m.t === 'start') {
           if (m.role.id === 1 && !m.role.restart) {
-            for (let i = 0; i < 18; i++) process.send({ t: 'tell', note: { k: 'open-state', from: 0, file: 'File' + i, error: 'old' } });
-            process.send({ t: 'tell', note: { k: 'open-state', from: 0, file: 'FILE2', error: 'new' } });
-            process.send({ t: 'tell', note: { k: 'open-state', from: 0, file: 'file3' } });
-            process.send({ t: 'tell', note: { k: 'open-state', from: 0, file: 'File4', error: '' } });
+            for (let i = 0; i < 18; i++) process.send({ t: 'tell', note: { k: 'open-state', from: 1, file: 'File' + i, error: 'old' } });
+            process.send({ t: 'tell', note: { k: 'open-state', from: 1, file: 'FILE2', error: 'new' } });
+            process.send({ t: 'tell', note: { k: 'open-state', from: 1, file: 'file3' } });
+            process.send({ t: 'tell', note: { k: 'open-state', from: 1, file: 'File4', error: '' } });
           }
           process.send({ t: 'ready' });
           if (m.role.id === 1) {
