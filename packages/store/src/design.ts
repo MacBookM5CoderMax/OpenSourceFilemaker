@@ -1644,11 +1644,13 @@ function applyOneOp(st: DesignState, op: DesignOp, deleted?: DeletedLookup): { o
       table.fields.splice(table.fields.indexOf(field), 1);
       for (const rel of s.relationships) {
         const had = rel.predicates.length;
-        rel.predicates = rel.predicates.filter((p) =>
+        const kept = rel.predicates.filter((p) =>
           !((p.leftFieldId === field.id && occurrenceOnTable(s, rel.leftTableOccurrenceId, table.id)) ||
             (p.rightFieldId === field.id && occurrenceOnTable(s, rel.rightTableOccurrenceId, table.id))));
+        // A relationship with no match at all would join every record to every record. When the deleted field was its last match, the match stays, pointing at the missing field, and finds no records.
+        if (kept.length || !had) rel.predicates = kept;
         // A foreign key on the deleted match goes with it (and comes back if the field is restored).
-        if (rel.foreignKey && rel.predicates.length !== had) delete rel.foreignKey;
+        if (rel.foreignKey && kept.length !== had) delete rel.foreignKey;
       }
       effects.push({ k: 'trashField', table: table.name, field: structuredClone(field), data: hasColumn(field), patch: deletePatch(st, before) });
       return { op: { op: 'deleteField', table: table.id, field: field.id }, effects };
@@ -1762,7 +1764,7 @@ function applyOneOp(st: DesignState, op: DesignOp, deleted?: DeletedLookup): { o
       const lt = localTable(s, left);
       const rt = localTable(s, right);
       const specs = op.predicates ?? undefined;
-      if (op.op === 'createRelationship' && (!Array.isArray(specs) || !specs.length)) throw invalid('A relationship needs at least one pair of match fields');
+      if ((op.op === 'createRelationship' || specs !== undefined) && (!Array.isArray(specs) || !specs.length)) throw invalid('A relationship needs at least one pair of match fields');
       // A match field in another file is given by id (the design layer can't read that file to resolve a name).
       const matchField = (side: Table | undefined, ref: Ref, occName: string): { id: number; name?: string } => {
         if (side) return find(side.fields, ref, `Field ${occName}::`, 102);
