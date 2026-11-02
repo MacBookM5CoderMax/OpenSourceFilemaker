@@ -21,7 +21,7 @@ import { basename, join } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { captureOnly, runScript } from '../../scripts/src/index.ts';
 import type { Host } from './host.ts';
-import { auditAutomation, changedFields } from './automation-audit.ts';
+import { auditAutomation, changedFields, logServerWideAutomation, type AutomationActor, type AutomationDetail } from './automation-audit.ts';
 import { backupFolder, defaultBackupDir } from './backup.ts';
 import { describeCheck, verifyAfterBackup } from './backup-verify.ts';
 import { backupFolderProblem, checkBackupFolder } from './backup-folder.ts';
@@ -418,7 +418,7 @@ export class Schedules {
     return this.list.find((s) => s.id === id);
   }
 
-  create(input: ScheduleInput): Schedule {
+  create(input: ScheduleInput, actor?: AutomationActor): Schedule {
     const s: Schedule = {
       id: randomBytes(6).toString('hex'),
       ...(input.kind === 'backup' ? { kind: 'backup' as const, ...(input.dest ? { dest: String(input.dest) } : {}), keep: Number(input.keep ?? 7), ...(input.verify === false ? { verify: false } : {}) } : {}),
@@ -444,13 +444,13 @@ export class Schedules {
     this.list.push(s);
     if (s.kind === 'backup' && s.dest) this.backupProblems.set(s.id, { dest: s.dest, at: performance.now() });
     this.save(s, undefined, true);
-    this.audit('added', s);
+    this.audit('added', s, undefined, actor);
     const current = this.get(s.id);
     if (current) this.arm(current);
     return s;
   }
 
-  update(id: string, input: ScheduleInput): Schedule {
+  update(id: string, input: ScheduleInput, actor?: AutomationActor): Schedule {
     const old = this.get(id);
     if (!old) throw new ScheduleError('no such schedule');
     const s: Schedule = { ...old };
@@ -499,16 +499,32 @@ export class Schedules {
     if (s.kind === 'backup' && s.dest && s.dest !== old.dest) this.backupProblems.set(s.id, { dest: s.dest, at: performance.now() });
     else if (!s.dest) this.backupProblems.delete(s.id);
     this.save(s);
-    this.audit('changed', s, changedFields(old, s, ['name', 'database', 'script', 'account', 'parameter', 'everyMinutes', 'at', 'enabled', 'network', 'onOpen', 'sealed', 'sync', 'dest']));
+    this.audit('changed', s, changedFields(old, s, ['name', 'database', 'script', 'account', 'parameter', 'everyMinutes', 'at', 'enabled', 'network', 'onOpen', 'sealed', 'sync', 'dest']), actor, old);
     const current = this.get(s.id);
     if (current) this.arm(current);
     return s;
   }
 
-  /** A schedule that names a file (a script, a sync) is kept in that file's security log; a backup, a check and a message belong to no file. */
-  private audit(change: 'added' | 'changed' | 'removed', s: Schedule, fields?: string[]): void {
-    if (s.kind === 'backup' || s.kind === 'verify' || s.kind === 'message') return;
-    auditAutomation(this.host, this.log, s.database, change, { what: 'schedule', id: s.id, name: s.name, script: s.sync ? 'sync' : s.script, account: s.account, network: s.network, fields });
+  /**
+   * A schedule that names a file (a script, a sync) is kept in that file's security log. A schedule moved to another file is a removal from
+   * the old file and an addition to the new one, each cross-referencing the other. A backup schedule belongs to no file: a change of its
+   * destination is said in the server's log. A check and a message are not recorded.
+   */
+  private audit(change: 'added' | 'changed' | 'removed', s: Schedule, fields?: string[], actor?: AutomationActor, old?: Schedule): void {
+    if (s.kind === 'backup') {
+      if (change === 'changed' && !fields?.includes('dest')) return;
+      logServerWideAutomation(this.log, change, { what: 'backup schedule', id: s.id, name: s.name, dest: s.dest, ...(change === 'changed' ? { fields: ['dest'] } : {}) }, actor);
+      return;
+    }
+    if (s.kind === 'verify' || s.kind === 'message') return;
+    const detail = (x: Schedule): AutomationDetail => ({ what: 'schedule', id: x.id, name: x.name, script: x.sync ? 'sync' : x.script, account: x.account, network: x.network });
+    if (change === 'changed' && old && old.database.toLowerCase() !== s.database.toLowerCase()) {
+      auditAutomation(this.host, this.log, old.database, 'removed', { ...detail(old), movedTo: s.database }, actor);
+      const rest = fields?.filter((f) => f !== 'database');
+      auditAutomation(this.host, this.log, s.database, 'added', { ...detail(s), movedFrom: old.database, ...(rest?.length ? { fields: rest } : {}) }, actor);
+      return;
+    }
+    auditAutomation(this.host, this.log, s.database, change, { ...detail(s), fields }, actor);
   }
 
   /** Records the hosted files as they are now as the ones a person looked at for this schedule. */
@@ -544,7 +560,7 @@ export class Schedules {
     return this.connectionsChanged(s).length > 0;
   }
 
-  remove(id: string): boolean {
+  remove(id: string, actor?: AutomationActor): boolean {
     const s = this.get(id);
     if (!s) return false;
     this.disarm(id);
@@ -557,7 +573,7 @@ export class Schedules {
     this.backupProblems.delete(id);
     this.save(undefined, id);
     this.saveRuns(id, true);
-    this.audit('removed', s);
+    this.audit('removed', s, undefined, actor);
     return true;
   }
 

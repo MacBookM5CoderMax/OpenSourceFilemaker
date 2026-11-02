@@ -2,6 +2,7 @@ import { permissionSummary } from '../../plugins/src/manifest.ts';
 import { readBackupInfo } from './backup-info.ts';
 import type { SetCheck, RestoreTest } from './backup-verify.ts';
 import { clientAddress } from './client-address.ts';
+import type { AutomationActor } from './automation-audit.ts';
 import { auditCsvField } from '../../store/src/audit-output.ts';
 // The admin console, like FileMaker Server's: who is connected, records
 // being edited, hosted files, backups.
@@ -1311,19 +1312,19 @@ export class Admin {
         const m = /^\/tabularius\/admin\/v1\/webhooks(?:\/([0-9a-f]+))?$/.exec(path);
         if (!m) send(404, { error: 'not found' });
         else if (!m[1] && req.method === 'GET') send(200, { allowed: w.allowed, webhooks: w.list() });
-        else if (!m[1] && req.method === 'POST') send(201, w.create(await readJson(req) as Record<string, unknown>));
-        else if (m[1] && req.method === 'PATCH') send(200, w.update(m[1], await readJson(req) as Record<string, unknown>));
-        else if (m[1] && req.method === 'DELETE') send(w.remove(m[1]) ? 200 : 404, {});
+        else if (!m[1] && req.method === 'POST') send(201, w.create(await readJson(req) as Record<string, unknown>, this.automationActor(req)));
+        else if (m[1] && req.method === 'PATCH') send(200, w.update(m[1], await readJson(req) as Record<string, unknown>, this.automationActor(req)));
+        else if (m[1] && req.method === 'DELETE') send(w.remove(m[1], this.automationActor(req)) ? 200 : 404, {});
         else send(405, { error: 'method not allowed' });
       } else if ((path === '/tabularius/admin/v1/inbound-hooks' || path.startsWith('/tabularius/admin/v1/inbound-hooks/')) && this.inboundHooks) {
         const h = this.inboundHooks;
         const m = /^\/tabularius\/admin\/v1\/inbound-hooks(?:\/([0-9a-f]+)(\/secret)?)?$/.exec(path);
         if (!m) send(404, { error: 'not found' });
         else if (!m[1] && req.method === 'GET') send(200, { allowed: h.allowed, hooks: h.list() });
-        else if (!m[1] && req.method === 'POST') send(201, h.create(await readJson(req) as Record<string, unknown>));
-        else if (m[1] && m[2] && req.method === 'POST') send(200, h.newSecret(m[1]));
-        else if (m[1] && !m[2] && req.method === 'PATCH') send(200, h.update(m[1], await readJson(req) as Record<string, unknown>));
-        else if (m[1] && !m[2] && req.method === 'DELETE') send(h.remove(m[1]) ? 200 : 404, {});
+        else if (!m[1] && req.method === 'POST') send(201, h.create(await readJson(req) as Record<string, unknown>, this.automationActor(req)));
+        else if (m[1] && m[2] && req.method === 'POST') send(200, h.newSecret(m[1], this.automationActor(req)));
+        else if (m[1] && !m[2] && req.method === 'PATCH') send(200, h.update(m[1], await readJson(req) as Record<string, unknown>, this.automationActor(req)));
+        else if (m[1] && !m[2] && req.method === 'DELETE') send(h.remove(m[1], this.automationActor(req)) ? 200 : 404, {});
         else send(405, { error: 'method not allowed' });
       } else if ((path === '/tabularius/admin/v1/connections' || path.startsWith('/tabularius/admin/v1/connections/')) && this.connections) {
         await this.handleConnections(req, path, send);
@@ -2248,6 +2249,11 @@ export class Admin {
     send(405, { error: 'method not allowed' });
   }
 
+  /** The way in and the address recorded with a change to a schedule, hook or webhook: these routes have no personal account. */
+  private automationActor(req: IncomingMessage): AutomationActor {
+    return { channel: 'admin console', from: clientAddress(req) };
+  }
+
   private async handleSchedules(req: IncomingMessage, path: string, send: (status: number, body: unknown) => void): Promise<void> {
     const schedules = this.schedules;
     if (!schedules) return send(404, { error: 'schedules are not running on this server' });
@@ -2260,11 +2266,11 @@ export class Admin {
       return req.method === 'GET' ? send(200, { runs: schedules.runs(id) }) : send(405, { error: 'method not allowed' });
     }
     if (!id && req.method === 'GET') return send(200, { schedules: schedules.all() });
-    if (!id && req.method === 'POST') return send(201, schedules.create(await readJson(req) as ScheduleInput));
+    if (!id && req.method === 'POST') return send(201, schedules.create(await readJson(req) as ScheduleInput, this.automationActor(req)));
     if (id && !schedules.get(id)) return send(404, { error: 'no such schedule' });
     if (id && run && req.method === 'POST') return send(200, await schedules.run(id));
-    if (id && !run && req.method === 'PATCH') return send(200, schedules.update(id, await readJson(req) as ScheduleInput));
-    if (id && !run && req.method === 'DELETE') return send(200, { deleted: schedules.remove(id) });
+    if (id && !run && req.method === 'PATCH') return send(200, schedules.update(id, await readJson(req) as ScheduleInput, this.automationActor(req)));
+    if (id && !run && req.method === 'DELETE') return send(200, { deleted: schedules.remove(id, this.automationActor(req)) });
     send(405, { error: 'method not allowed' });
   }
 

@@ -32,7 +32,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { addressBucket, writer } from '../../store/src/index.ts';
 import { captureOnly, runScript } from '../../scripts/src/index.ts';
 import type { Host } from './host.ts';
-import { auditAutomation, changedFields } from './automation-audit.ts';
+import { auditAutomation, changedFields, type AutomationActor } from './automation-audit.ts';
 import { readJsonStateSync, updateJsonStateSync, withStateLock, writeStateFileSync } from '../../store/src/durable.ts';
 import { appendFileSync, readFileSync } from '../../store/src/fs-boundary.ts';
 
@@ -189,16 +189,16 @@ export class InboundHooks {
   }
 
   /** A new hook, with its secret: the only time the secret is shown. */
-  create(input: Record<string, unknown>): Omit<InboundHook, 'secret'> & { secret: string; path: string } {
+  create(input: Record<string, unknown>, actor?: AutomationActor): Omit<InboundHook, 'secret'> & { secret: string; path: string } {
     this.load();
     const hook: InboundHook = { ...this.clean(input), id: randomBytes(9).toString('hex'), secret: newSecret(), created: new Date().toISOString() };
     this.hooks.push(hook);
     this.save(hook, undefined, true);
-    this.audit('added', hook);
+    this.audit('added', hook, undefined, actor);
     return { ...hook, path: `/tabularius/hooks/v1/${hook.id}` };
   }
 
-  update(id: string, input: Record<string, unknown>): Omit<InboundHook, 'secret'> {
+  update(id: string, input: Record<string, unknown>, actor?: AutomationActor): Omit<InboundHook, 'secret'> {
     this.load();
     const i = this.hooks.findIndex((h) => h.id === id);
     if (i < 0) throw new HookError('No such hook');
@@ -206,34 +206,34 @@ export class InboundHooks {
     const changed = { ...old, ...this.clean(input, old) };
     this.hooks[i] = changed;
     this.save(changed);
-    this.audit('changed', changed, changedFields(old, changed, ['name', 'database', 'script', 'account', 'layout', 'enabled', 'perMinute', 'network']));
+    this.audit('changed', changed, changedFields(old, changed, ['name', 'database', 'script', 'account', 'layout', 'enabled', 'perMinute', 'network']), actor);
     const { secret: _s, ...shown } = changed;
     return shown;
   }
 
   /** A new secret for the hook; calls signed with the old one are refused from now on. */
-  newSecret(id: string): { id: string; secret: string } {
+  newSecret(id: string, actor?: AutomationActor): { id: string; secret: string } {
     this.load();
     const h = this.hooks.find((x) => x.id === id);
     if (!h) throw new HookError('No such hook');
     h.secret = newSecret();
     this.save(h);
-    this.audit('changed', h, ['secret']);
+    this.audit('changed', h, ['secret'], actor);
     return { id, secret: h.secret };
   }
 
-  remove(id: string): boolean {
+  remove(id: string, actor?: AutomationActor): boolean {
     this.load();
     const i = this.hooks.findIndex((x) => x.id === id);
     if (i < 0) return false;
     const [gone] = this.hooks.splice(i, 1);
     this.save(undefined, id);
-    this.audit('removed', gone);
+    this.audit('removed', gone, undefined, actor);
     return true;
   }
 
-  private audit(change: 'added' | 'changed' | 'removed', h: InboundHook, fields?: string[]): void {
-    auditAutomation(this.host, this.log, h.database, change, { what: 'inbound hook', id: h.id, name: h.name, script: h.script, account: h.account, network: h.network, fields });
+  private audit(change: 'added' | 'changed' | 'removed', h: InboundHook, fields?: string[], actor?: AutomationActor): void {
+    auditAutomation(this.host, this.log, h.database, change, { what: 'inbound hook', id: h.id, name: h.name, script: h.script, account: h.account, network: h.network, fields }, actor);
   }
 
   // --- calls ---------------------------------------------------------------------------

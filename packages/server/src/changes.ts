@@ -31,7 +31,7 @@ import type { Change, Store } from '../../store/src/index.ts';
 import { OutboundRefused, guardedFetch, isInternalHost, mappedIPv4, NAME_LOOKUP } from '../../scripts/src/net-guard.ts';
 import { ApiError, badPathError, sessionPrivileges, type DataApi } from './dataapi.ts';
 import type { Host } from './host.ts';
-import { auditAutomation } from './automation-audit.ts';
+import { auditAutomation, type AutomationActor } from './automation-audit.ts';
 import { readJsonStateSync, updateJsonStateSync } from '../../store/src/durable.ts';
 import { diagnosticEndpoint, redactDiagnosticText } from '../../scripts/src/redaction.ts';
 
@@ -285,7 +285,7 @@ export class Webhooks {
     return s;
   }
 
-  create(input: Record<string, unknown>): Webhook {
+  create(input: Record<string, unknown>, actor?: AutomationActor): Webhook {
     const url = String(input.url ?? '');
     let parsed: URL;
     try {
@@ -313,37 +313,37 @@ export class Webhooks {
     };
     this.hooks.push(hook);
     this.save(hook, undefined, true);
-    this.audit('added', hook);
+    this.audit('added', hook, undefined, actor);
     return hook;
   }
 
-  update(id: string, input: Record<string, unknown>): Omit<Webhook, 'secret'> {
+  update(id: string, input: Record<string, unknown>, actor?: AutomationActor): Omit<Webhook, 'secret'> {
     const h = this.hooks.find((x) => x.id === id);
     if (!h) throw new WebhookError('no such webhook');
     const was = h.enabled;
     if (input.enabled !== undefined) h.enabled = input.enabled === true;
     this.save(h);
-    this.audit('changed', h, was === h.enabled ? [] : ['enabled']);
+    this.audit('changed', h, was === h.enabled ? [] : ['enabled'], actor);
     const { secret: _s, ...shown } = h;
     return shown;
   }
 
-  remove(id: string): boolean {
+  remove(id: string, actor?: AutomationActor): boolean {
     const i = this.hooks.findIndex((x) => x.id === id);
     if (i < 0) return false;
     const [gone] = this.hooks.splice(i, 1);
     this.queues.delete(id);
     this.states.delete(id);
     this.save(undefined, id);
-    this.audit('removed', gone);
+    this.audit('removed', gone, undefined, actor);
     return true;
   }
 
   /** The entry names where changes go by host only: the address may carry a path that is itself a secret. */
-  private audit(change: 'added' | 'changed' | 'removed', h: Webhook, fields?: string[]): void {
+  private audit(change: 'added' | 'changed' | 'removed', h: Webhook, fields?: string[], actor?: AutomationActor): void {
     let sendsTo = '';
     try { sendsTo = new URL(h.url).host; } catch { /* a stored address that no longer parses is named by id only */ }
-    auditAutomation(this.host, this.log, h.database, change, { what: 'webhook', id: h.id, sendsTo, fields });
+    auditAutomation(this.host, this.log, h.database, change, { what: 'webhook', id: h.id, sendsTo, fields }, actor);
   }
 
   private save(changed?: Webhook, removedId?: string, create = false): void {

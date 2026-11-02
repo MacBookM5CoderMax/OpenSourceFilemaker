@@ -4233,13 +4233,14 @@ export class Store {
    * A standing way in or out was added, changed or removed for this file: a schedule or inbound hook that runs a script as an account, or a
    * webhook that sends its changes to an address. Kept in its security log; secrets and full addresses are never in the entry.
    */
-  recordAutomationChange(change: 'added' | 'changed' | 'removed', detail: { what: 'schedule' | 'inbound hook' | 'webhook'; id: string; name?: string; script?: string; account?: string; network?: boolean; sendsTo?: string; fields?: string[] }): void {
+  recordAutomationChange(change: 'added' | 'changed' | 'removed', detail: { what: 'schedule' | 'inbound hook' | 'webhook'; id: string; name?: string; script?: string; account?: string; network?: boolean; sendsTo?: string; fields?: string[]; movedFrom?: string; movedTo?: string }, by?: { channel?: string; from?: string }): void {
     const cut = (v: string | undefined): string | undefined => (v === undefined ? undefined : v.slice(0, 200));
     const clean: Record<string, unknown> = { what: detail.what, id: cut(detail.id) };
-    for (const k of ['name', 'script', 'account', 'sendsTo'] as const) if (detail[k]) clean[k] = cut(detail[k]);
+    for (const k of ['name', 'script', 'account', 'sendsTo', 'movedFrom', 'movedTo'] as const) if (detail[k]) clean[k] = cut(detail[k]);
     if (detail.network) clean.network = true;
     if (detail.fields?.length) clean.fields = detail.fields.slice(0, 20).map((f) => f.slice(0, 40));
-    this.securityChange(() => this.logSecurity(`automation-${change}`, { detail: clean }));
+    // These routes have no personal account: the entry names the way in (like the approval of a held file) and the address it came from.
+    this.securityChange(() => this.logSecurity(`automation-${change}`, { account: by?.channel ? by.channel.slice(0, 80) : null, ...(by?.from ? { from: by.from.slice(0, 80) } : {}), detail: clean }));
   }
 
   /** An administrator approved this file, which the host had held: kept in its security log, with why it was held. */

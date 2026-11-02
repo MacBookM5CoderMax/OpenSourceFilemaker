@@ -220,7 +220,8 @@ export function describeSecurityEvent(e: AuditEntry): string {
       const name = str(d.name) ?? str(d.id) ?? '?';
       const fields = Array.isArray(d.fields) && d.fields.length ? ` (${d.fields.filter((f): f is string => typeof f === 'string').join(', ')})` : '';
       const runs = str(d.script) ? `, running ${str(d.script)}${str(d.account) ? ` as ${str(d.account)}` : ''}` : '';
-      return `The ${what} ${name} was ${verb}${fields}${runs}${d.network === true ? ', allowed to reach the network' : ''}${str(d.sendsTo) ? `, sending changes to ${str(d.sendsTo)}` : ''}`;
+      const moved = str(d.movedTo) ? `, moved to the file ${str(d.movedTo)}` : str(d.movedFrom) ? `, moved here from the file ${str(d.movedFrom)}` : '';
+      return `The ${what} ${name} was ${verb}${fields}${moved}${runs}${d.network === true ? ', allowed to reach the network' : ''}${str(d.sendsTo) ? `, sending changes to ${str(d.sendsTo)}` : ''}`;
     }
     case 'blank-password-lan-disallowed': return 'Empty-password accounts limited to this computer again';
     default: return titleCase(e.kind);

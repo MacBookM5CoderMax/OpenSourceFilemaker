@@ -40,6 +40,8 @@ import { sameOriginRequest } from './browser-request.ts';
 import { PASSWORD_POLICY } from '../../store/src/index.ts';
 import { CertificateError, type ImportedCertificates } from './cert-import.ts';
 import { ScheduleError, type Schedule, type ScheduleInput, type Schedules } from './schedules.ts';
+import { clientAddress } from './client-address.ts';
+import type { AutomationActor } from './automation-audit.ts';
 import { said } from './said.ts';
 import { logFaultFor } from './fault-log.ts';
 import { sameSecret } from './secrets.ts';
@@ -315,7 +317,7 @@ export class AdminApi {
         return send(200, {}), true;
       }
       const body = method === 'PATCH' || method === 'POST' ? await this.body(req) : {};
-      send(200, await this.route(method, path, url, body));
+      send(200, await this.route(method, path, url, body, req));
     } catch (e) {
       if (e instanceof AdminApiError) send(e.status, {}, e.code, e.message, e.status === 401 ? { 'www-authenticate': 'Bearer realm="Tabularius admin"' } : e.allow ? { allow: e.allow } : {});
       else if (e instanceof ScheduleError) send(400, {}, 960, e.message);
@@ -382,7 +384,7 @@ export class AdminApi {
       && now - session.created < TOKEN_LIFETIME_MS;
   }
 
-  private async route(method: string, path: string, url: URL, body: Record<string, unknown>): Promise<unknown> {
+  private async route(method: string, path: string, url: URL, body: Record<string, unknown>, req: IncomingMessage): Promise<unknown> {
     if (path === '/server/metadata' && method === 'GET') return this.metadata();
     if (path === '/server/status') {
       if (method === 'GET') return { status: this.stopped ? 'STOPPED' : 'RUNNING' };
@@ -423,7 +425,7 @@ export class AdminApi {
         return { client: { id: client[1] } };
       }
     }
-    if (path.startsWith('/schedules')) return this.handleSchedules(method, path, url, body);
+    if (path.startsWith('/schedules')) return this.handleSchedules(method, path, url, body, req);
     const setting = /^\/server\/config\/(general|authenticatedstream|parallelbackup|persistentcache)$/.exec(path)?.[1]
       ?? (path === '/php/config' ? 'php' : path === '/xml/config' ? 'xml' : path === '/fmclients/httpstunneling' ? 'httpstunneling' : undefined);
     if (setting) {
@@ -815,9 +817,10 @@ export class AdminApi {
     return this.schedule(this.schedules!.all().find((x) => x.id === key && !x.sync && x.kind !== 'verify')!);
   }
 
-  private async handleSchedules(method: string, path: string, url: URL, body: Record<string, unknown>): Promise<unknown> {
+  private async handleSchedules(method: string, path: string, url: URL, body: Record<string, unknown>, req: IncomingMessage): Promise<unknown> {
     if (!this.schedules) throw new AdminApiError(10610, 'No schedules created in configuration file', 404);
     const schedules = this.schedules;
+    const actor: AutomationActor = { channel: 'Admin API', from: clientAddress(req) };
     if (path === '/schedules' && method === 'GET') return { schedules: schedules.all().filter((s) => !s.sync && s.kind !== 'verify').map((s) => this.schedule(s)) };
     if (path === '/schedules' && method === 'POST') {
       const source = url.searchParams.get('source');
@@ -830,7 +833,7 @@ export class AdminApi {
         everyMinutes: s.everyMinutes, at: s.at, enabled: s.enabled, network: s.network, onOpen: s.onOpen,
         // A copy of a schedule whose scripts changed since they were approved is held the same way.
         approveScripts: !schedules.connectionsHeld(s),
-      });
+      }, actor);
       return { schedule: this.current(copy.id) };
     }
     const create = /^\/schedules\/([a-z]+)$/.exec(path);
@@ -839,7 +842,7 @@ export class AdminApi {
       if (!bodyKey[create[1]]) throw new AdminApiError(21, `Not Supported: Tabularius schedules run FileMaker scripts, backups and messages (${create[1]})`);
       if (body[bodyKey[create[1]]] === undefined) throw new AdminApiError(958, `Parameter missing: ${bodyKey[create[1]]}`);
       for (const [path, key] of Object.entries(bodyKey)) if (path !== create[1] && body[key] !== undefined) throw new AdminApiError(958, `Parameter missing: ${bodyKey[create[1]]} (the path and the body name different kinds)`);
-      const made: Schedule = schedules.create(this.scheduleInput(body, true));
+      const made: Schedule = schedules.create(this.scheduleInput(body, true), actor);
       return { schedule: this.current(made.id) };
     }
     const one = /^\/schedules\/(\d+)$/.exec(path);
@@ -848,7 +851,7 @@ export class AdminApi {
     if (method === 'GET') return { schedule: this.schedule(s) };
     if (method === 'DELETE') {
       const shown = this.schedule(s);
-      schedules.remove(s.id);
+      schedules.remove(s.id, actor);
       return { schedule: shown };
     }
     if (method === 'PATCH') {
@@ -856,7 +859,7 @@ export class AdminApi {
       const run = said(body.status).toUpperCase();
       if (body.status !== undefined && run !== 'RUNNING') throw new AdminApiError(10601, 'Schedule is misconfigured; invalid taskType or run status');
       const { status: _status, ...rest } = body;
-      if (Object.keys(rest).length) schedules.update(s.id, this.scheduleInput(rest, false));
+      if (Object.keys(rest).length) schedules.update(s.id, this.scheduleInput(rest, false), actor);
       if (run === 'RUNNING') {
         if (s.running) throw new AdminApiError(10601, 'The schedule is already running', 409);
         void schedules.run(s.id).catch(() => {});

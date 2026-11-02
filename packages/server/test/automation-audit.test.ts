@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Server } from 'node:http';
-import { serve, type Host } from '../src/index.ts';
+import { serve, setAdminPassword, type Host } from '../src/index.ts';
 import { auditAutomation } from '../src/automation-audit.ts';
 import { InboundHooks } from '../src/inbound-hooks.ts';
 import { Schedules } from '../src/schedules.ts';
@@ -17,6 +17,7 @@ let dir: string;
 let server: Server;
 let base: string;
 let host: Host;
+const serverLog: string[] = [];
 const originalPath = process.env.PATH;
 const originalMarker = process.env.TABULARIUS_TEST_CHILD_MARKER;
 
@@ -30,7 +31,7 @@ before(async () => {
   for (const name of ['launchctl', 'systemctl', 'sc', 'git', 'npm', 'curl', 'sudo']) {
     writeFileSync(join(bin, name), '#!/bin/sh\nprintf forbidden >> "$TABULARIUS_TEST_CHILD_MARKER"\nexit 99\n', { mode: 0o700 });
   }
-  const s = await serve({ dir, port: 0, log: () => {}, inboundHooks: true, webhooks: true });
+  const s = await serve({ dir, port: 0, log: (m) => { serverLog.push(m); }, inboundHooks: true, webhooks: true });
   server = s.server;
   base = s.url;
   host = s.host;
@@ -149,7 +150,7 @@ test('schedule time edits name the changed settings without their values; unchan
   assert.equal(events('Shop').length, count + 1);
 });
 
-test('direct sync schedule changes are audited, while backup, verify and message schedules are not', () => {
+test('direct sync schedule changes are audited in the file, while backup, verify and message schedules are not', () => {
   const schedules = new Schedules(host);
   schedules.stop();
   schedules.syncJobs = { check: () => {}, run: async () => { throw new Error('must not run'); } };
@@ -169,7 +170,7 @@ test('direct sync schedule changes are audited, while backup, verify and message
   assert.equal(events('Shop').length, before + 3);
 });
 
-test('a failed security-log write is reported without undoing a saved hook; empty and unhosted files are ignored', (t) => {
+test('a failed security-log write is reported without undoing a saved hook; empty file names stay silent and unhosted files are reported', (t) => {
   const logs: string[] = [];
   const hooks = new InboundHooks(host, true, (m) => logs.push(m));
   const store = host.get('Shop')!;
@@ -186,13 +187,15 @@ test('a failed security-log write is reported without undoing a saved hook; empt
   assert.ok(logs.every((m) => m.includes('security log: could not record') && m.includes('audit unavailable')));
   assert.ok(!logs.join('\n').includes(hook.secret) && !logs.join('\n').includes(rotated.secret));
   assert.equal(events('Shop').length, before);
-  for (const database of ['', undefined, 'Not hosted']) {
+  for (const database of ['', undefined]) {
     auditAutomation(host, (m) => logs.push(m), database, 'added', { what: 'schedule', id: 'missing' });
   }
-  assert.equal(logs.length, 4, 'no file means there is nowhere to record an event');
+  assert.equal(logs.length, 4, 'a change with no file (or no name) has nowhere to be recorded and says nothing here');
+  auditAutomation(host, (m) => logs.push(m), 'Not hosted', 'added', { what: 'schedule', id: 'missing' });
+  assert.equal(logs.length, 5, 'a file that is not open is said in the server log, not dropped silently');
 });
 
-test('the store bounds detail and drops unrelated properties, and every automation event is a notice with no actor', () => {
+test('the store bounds detail and drops unrelated properties, and every automation event is a notice whose actor is never the run-as account', () => {
   const store = host.create('Bounds');
   const long = 'x'.repeat(250);
   const detail = { what: 'schedule' as const, id: long, name: long, script: long, account: long, sendsTo: long, network: true,
@@ -205,8 +208,118 @@ test('the store bounds detail and drops unrelated properties, and every automati
     for (const e of events(file)) {
       assert.equal(e.category, 'Automations');
       assert.equal(e.severity, 'notice');
-      assert.equal(e.account, null, 'the run-as account is detail, not the administrator who made the change');
+      assert.ok(e.account === null || e.account === 'admin console' || e.account === 'Admin API', 'the actor is the way in, never the run-as account');
     }
+  }
+});
+
+test('an entry made through the admin routes names the way in and the address, and a change made inside the server names neither', async () => {
+  // Every console mutation above, including secret rotation, must carry the same attribution.
+  const consoleEntries = [...events('Shop'), ...events('Other')].filter((e) => e.changes?.account === 'Admin' || e.changes?.what === 'webhook');
+  assert.ok(consoleEntries.length > 10);
+  for (const entry of consoleEntries) {
+    assert.equal(entry.account, 'admin console');
+    assert.ok(entry.from);
+    assert.doesNotMatch(entry.description, /admin console/);
+  }
+  const made = await admin('schedules', 'POST', { name: 'Who', database: 'Shop', script: 'Nightly', account: 'Admin', everyMinutes: 1440, enabled: false });
+  assert.equal(made.status, 201);
+  const entry = events('Shop').at(-1)!;
+  assert.equal(entry.account, 'admin console');
+  assert.ok(typeof entry.from === 'string' && entry.from.length > 0, 'the address it came from');
+  assert.equal((await admin(`schedules/${made.body.id}`, 'DELETE')).status, 200);
+  const schedules = new Schedules(host);
+  schedules.stop();
+  const direct = schedules.create({ name: 'Api', database: 'Shop', script: 'Nightly', account: 'Admin', enabled: false }, { channel: 'Admin API', from: '203.0.113.9' });
+  const viaApi = events('Shop').at(-1)!;
+  assert.equal(viaApi.account, 'Admin API');
+  assert.equal(viaApi.from, '203.0.113.9');
+  schedules.remove(direct.id);
+  const inside = events('Shop').at(-1)!;
+  assert.equal(inside.account, null);
+  assert.ok(!inside.from);
+});
+
+test('a schedule moved to another file is removed from the old file and added to the new one, each naming the other', async () => {
+  const made = await admin('schedules', 'POST', { name: 'Mover', database: 'Shop', script: 'Nightly', account: 'Admin', everyMinutes: 1440, enabled: false });
+  assert.equal(made.status, 201);
+  const shop = events('Shop').length, other = events('Other').length;
+  const path = `schedules/${made.body.id}`;
+  assert.equal((await admin(path, 'PATCH', { database: 'Other' })).status, 200);
+  const gone = events('Shop').slice(shop), came = events('Other').slice(other);
+  assert.deepEqual(gone.map((e) => e.kind), ['automation-removed']);
+  assert.deepEqual(came.map((e) => e.kind), ['automation-added']);
+  assert.equal(gone[0].changes?.movedTo, 'Other');
+  assert.equal(came[0].changes?.movedFrom, 'Shop');
+  assert.match(gone[0].description, /moved to the file Other/);
+  assert.match(came[0].description, /moved here from the file Shop/);
+  assert.equal(came[0].changes?.fields, undefined, 'nothing else changed with the move');
+  assert.equal((await admin(path, 'PATCH', { database: 'other', enabled: false })).status, 200);
+  assert.equal(events('Shop').length, shop + 1, 'the same file spelled another way is not a move');
+  assert.deepEqual(events('Other').slice(other).map((e) => e.kind), ['automation-added', 'automation-changed']);
+  host.get('Shop')!.applyDesign([{ op: 'createScript', name: 'Morning', text: 'Exit Script [ Text Result: "ok" ]' }]);
+  host.get('Shop')!.setPassword('Runner', 'pw', '[Full Access]');
+  const moved = await admin(path, 'PATCH', { database: 'Shop', script: 'Morning', account: 'Runner' });
+  assert.equal(moved.status, 200, JSON.stringify(moved.body));
+  const left = events('Other').at(-1)!, arrived = events('Shop').at(-1)!;
+  assert.equal(left.kind, 'automation-removed');
+  assert.equal(left.changes?.script, 'Nightly');
+  assert.equal(left.changes?.account, 'Admin');
+  assert.equal(arrived.kind, 'automation-added');
+  assert.equal(arrived.changes?.script, 'Morning');
+  assert.equal(arrived.changes?.account, 'Runner');
+  assert.deepEqual(arrived.changes?.fields, ['script', 'account']);
+  for (const e of [gone[0], came[0], left, arrived]) {
+    assert.equal(e.account, 'admin console');
+    assert.ok(e.from);
+  }
+  assert.equal((await admin(path, 'DELETE')).status, 200);
+});
+
+test('a change to a file that is not open is said in the server log with its kind and file name and nothing secret', () => {
+  const lines: string[] = [];
+  auditAutomation(host, (m) => lines.push(m), 'Closed File', 'removed', { what: 'webhook', id: 'abc123', name: 'Private label', script: 'Private script', account: 'Private account', sendsTo: 'collector.example.test' }, { channel: 'admin console', from: '203.0.113.9' });
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /webhook abc123 was removed by the admin console from 203\.0\.113\.9/);
+  assert.match(lines[0], /Closed File is not open/);
+  assert.doesNotMatch(lines[0], /collector|Private/, 'no destination address, script, run-as account or label');
+  assert.doesNotMatch(lines[0], /\b(error|failed|could not|can't|cannot)\b/i, 'a closed file is a notice, not a fault');
+  auditAutomation(host, (m) => lines.push(m), 'Closed File', 'changed', { what: 'inbound hook', id: 'abc123', fields: [] });
+  assert.equal(lines.length, 1, 'an unchanged save stays silent even for a closed file');
+  auditAutomation(host, (m) => lines.push(m), 'Closed File', 'removed', { what: 'inbound hook', id: 'abc123' });
+  assert.match(lines[1], /inbound hook abc123 was removed/);
+  assert.doesNotMatch(lines[1], / by | from /, 'an internal call has no actor');
+});
+
+test('a backup schedule belongs to no file: adding, moving its destination and removing it are said in the server log, not in a file', async () => {
+  const dest = mkdtempSync(join(tmpdir(), 'tabularius-automation-audit-dest-'));
+  const other = mkdtempSync(join(tmpdir(), 'tabularius-automation-audit-dest-'));
+  try {
+    const shop = events('Shop').length, elsewhere = events('Other').length, mark = serverLog.length;
+    const made = await admin('schedules', 'POST', { kind: 'backup', name: 'Nightly backup', dest, everyMinutes: 1440, enabled: false });
+    assert.equal(made.status, 201, JSON.stringify(made.body));
+    const path = `schedules/${made.body.id}`;
+    assert.equal((await admin(path, 'PATCH', { name: 'Renamed backup', keep: 3, everyMinutes: 720, at: '02:00' })).status, 200);
+    assert.equal(serverLog.slice(mark).filter((m) => /backup schedule/.test(m)).length, 1, 'a rename, retention or time edit is not a destination change');
+    assert.equal((await admin(path, 'PATCH', { dest: other })).status, 200);
+    assert.equal((await admin(path, 'DELETE')).status, 200);
+    const lines = serverLog.slice(mark).filter((m) => /backup schedule/.test(m));
+    assert.equal(lines.length, 3);
+    assert.match(lines[0], /was added.*destination .*by the admin console from /);
+    assert.match(lines[1], /was changed \(dest\).*destination .*by the admin console/);
+    assert.ok(lines[1].includes(other) && lines[0].includes(dest));
+    assert.match(lines[2], /was removed/);
+    assert.ok(lines.every((line) => line.includes(made.body.id)));
+    assert.ok(lines[0].includes('Nightly backup') && lines[2].includes('Renamed backup'));
+    const fallback = await admin('schedules', 'POST', { kind: 'backup', name: 'Default backup', enabled: false });
+    assert.equal(fallback.status, 201);
+    assert.match(serverLog.at(-1)!, /destination the default backup folder/);
+    assert.equal((await admin(`schedules/${fallback.body.id}`, 'DELETE')).status, 200);
+    assert.equal(events('Shop').length, shop);
+    assert.equal(events('Other').length, elsewhere);
+  } finally {
+    rmSync(dest, { recursive: true, force: true });
+    rmSync(other, { recursive: true, force: true });
   }
 });
 
@@ -223,4 +336,82 @@ test('the existing security-events API and CSV include the automation category a
   for (const kind of ['automation-added', 'automation-changed', 'automation-removed']) assert.ok(text.includes(kind));
   assert.match(text, /running Nightly as Admin/);
   assert.ok(!/sekret-path-part|hidden/.test(text));
+});
+
+test('the Admin API attributes creation, copy, update and removal to its channel and client address', async () => {
+  setAdminPassword(dir, 'audit-password');
+  const login = await fetch(`${base}/fmi/admin/api/v2/user/auth`, {
+    method: 'POST', headers: { authorization: 'Basic ' + btoa('admin:audit-password') },
+  });
+  assert.equal(login.status, 200);
+  const token = (await login.json()).response.token;
+  const api = async (path: string, method: string, body?: object) => {
+    const r = await fetch(`${base}/fmi/admin/api/v2${path}`, {
+      method, headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    const data = await r.json();
+    assert.equal(r.status, 200, JSON.stringify(data));
+    return data.response;
+  };
+  try {
+    const before = events('Shop').length;
+    const made = await api('/schedules/filemakerscript', 'POST', {
+      name: 'API schedule', enabled: false,
+      filemakerScriptType: { resource: 'file:Shop.fmp12', fmScriptName: 'Nightly', fmScriptAccount: 'Admin' },
+    });
+    const copied = await api(`/schedules?source=${made.schedule.id}`, 'POST');
+    await api(`/schedules/${made.schedule.id}`, 'PATCH', { name: 'API renamed' });
+    await api(`/schedules/${made.schedule.id}`, 'DELETE');
+    await api(`/schedules/${copied.schedule.id}`, 'DELETE');
+    const entries = events('Shop').slice(before);
+    assert.deepEqual(entries.map((e) => e.kind), ['automation-added', 'automation-added', 'automation-changed', 'automation-removed', 'automation-removed']);
+    for (const e of entries) {
+      assert.equal(e.account, 'Admin API');
+      assert.ok(e.from);
+      assert.doesNotMatch(e.description, /Admin API/);
+    }
+  } finally {
+    await api('/user/auth', 'DELETE');
+  }
+});
+
+test('the store bounds actor and move details separately and leaves the actor out of descriptions', () => {
+  const store = host.create('Move bounds');
+  const long = 'x'.repeat(250);
+  store.recordAutomationChange('removed', { what: 'schedule', id: 'bounded', movedTo: long }, { channel: long, from: long });
+  store.recordAutomationChange('added', { what: 'schedule', id: 'bounded', movedFrom: long });
+  const [removed, added] = events('Move bounds');
+  assert.equal(removed.account, long.slice(0, 80));
+  assert.equal(removed.from, long.slice(0, 80));
+  assert.equal(removed.changes?.movedTo, long.slice(0, 200));
+  assert.equal(added.changes?.movedFrom, long.slice(0, 200));
+  assert.equal(added.account, null);
+  assert.ok(!added.from);
+  assert.equal(removed.description, `The schedule bounded was removed, moved to the file ${long.slice(0, 200)}`);
+});
+
+test('a schedule move records each side independently when the old file is unavailable or its log write throws', (t) => {
+  const lines: string[] = [];
+  const schedules = new Schedules(host, (m) => lines.push(m));
+  schedules.stop();
+  const get = host.get.bind(host);
+  for (const unavailable of [true, false]) {
+    const made = schedules.create({ name: 'Independent move', database: 'Shop', script: 'Nightly', account: 'Admin', enabled: false });
+    const before = events('Other').length;
+    const mocked = unavailable
+      ? t.mock.method(host, 'get', (name: string) => name.toLowerCase() === 'shop' ? undefined : get(name))
+      : t.mock.method(get('Shop')!, 'recordAutomationChange', () => { throw new Error('audit unavailable'); });
+    try {
+      schedules.update(made.id, { database: 'Other' });
+      const entries = events('Other').slice(before);
+      assert.deepEqual(entries.map((e) => e.kind), ['automation-added']);
+      assert.equal(entries[0].changes?.movedFrom, 'Shop');
+      assert.ok(lines.at(-1)!.includes(made.id));
+      assert.match(lines.at(-1)!, unavailable ? /Shop is not open here/ : /could not record.*Shop/);
+    } finally {
+      mocked.mock.restore();
+      schedules.remove(made.id);
+    }
+  }
 });
