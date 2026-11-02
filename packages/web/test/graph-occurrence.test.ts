@@ -34,6 +34,9 @@ test('the graph makes each relationship line a focusable button that selects on 
   const block = src.slice(start, src.indexOf('canvas.append(g);', start));
   assert.match(block, /tabindex: 0, role: 'button', 'aria-label': relationshipName\(r\)/);
   assert.match(block, /g\.addEventListener\('keydown', \(e\) => \{\s*if \(!selectsLine\(e\)\) return;/);
+  // The key runs the same selection the click does, and keeps the page from scrolling on Space.
+  assert.match(block, /selectsLine\(e\)\) return;\s*e\.preventDefault\(\);\s*e\.stopPropagation\(\);\s*pick\(\);/);
+  assert.match(block, /g\.addEventListener\('click', \(e\) => \{\s*e\.stopPropagation\(\);\s*pick\(\);/);
   const css = readFileSync(new URL('../design.css', import.meta.url), 'utf8');
   assert.match(css, /\.d-rel:focus-visible \.d-rel-line/);
 });
