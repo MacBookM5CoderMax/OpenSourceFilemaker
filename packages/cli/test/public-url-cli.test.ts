@@ -54,7 +54,7 @@ for (const platform of ['darwin', 'linux', 'win32']) {
         delete env.TABULARIUS_PUBLIC_URL;
         if (source === 'environment') env.TABULARIUS_PUBLIC_URL = 'example.com';
         const args = source === 'flag' ? ['--', '--public-url', 'example.com'] : [];
-        const r = await runCli(main, ['service', 'install', join(dir, 'data'), '--platform', platform, '--port', '0', ...args], { env, timeout: 60_000 });
+        const r = await runCli(main, ['service', 'install', join(dir, 'data'), '--platform', platform, '--port', '18080', ...args], { env, timeout: 60_000 });
         assert.ifError(r.error);
         assert.equal(r.status, 1, r.stderr);
         assert.match(r.stderr, /give a full address/);

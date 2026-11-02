@@ -175,7 +175,9 @@ test('an unknown database name: a sign-in answers it as a wrong password on purp
   const refused = ((await mcp.json()) as { result: { isError?: boolean; content: { text: string }[] } }).result;
   assert.equal(refused.isError, true);
   assert.match(refused.content[0].text, /^No hosted database named "Nope"\. Hosted: Other, Shop$/);
-  const doctor = await cli(['doctor', dir, '--port', '0']);
+  const unused = await occupy();
+  await unused.close();
+  const doctor = await cli(['doctor', dir, '--port', String(unused.port)]);
   assert.match(doctor.stdout, /Files: 2 files to host/);
   const section = sectionOf('`Unable to open file`');
   assert.match(section, /212/);
@@ -222,7 +224,9 @@ test('a damaged file: refused with the quoted words, the rest keep working, and 
   const fd = openSync(file, 'r+');
   try { writeSync(fd, Buffer.alloc(4096), 0, 4096, 0); } finally { closeSync(fd); }
 
-  const doctor = await cli(['doctor', dir, '--port', '0']);
+  const unused = await occupy();
+  await unused.close();
+  const doctor = await cli(['doctor', dir, '--port', String(unused.port)]);
   assert.match(doctor.stdout, /PROBLEM Damaged file: Shop: file is not a database/);
 
   const down = await start(t, dir);
