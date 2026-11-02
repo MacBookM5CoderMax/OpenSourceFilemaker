@@ -45,7 +45,7 @@ Invoices: 1 error, 1 warning, 2 to tidy
 | `missing-table-occurrence`, `missing-field`, `missing-script`, `missing-layout`, `missing-value-list` | error | A script step, calculation, button, trigger, menu item, layout object or privilege names something that is not there. A layout object is also checked by the ids it stores, so a field deleted from a table is found even when the layout still shows its old name. |
 | `layout-table-missing` | error | A layout shows a table occurrence that no longer exists. |
 | `relationship-field-missing` | error | A relationship's match field is not a field of its table. |
-| `relationship-no-match-fields` | warning | A relationship has no match fields (deleting a field takes its match with it), so every record on one side relates to every record on the other. |
+| `relationship-no-match-fields` | warning | A relationship has no match fields (a file written elsewhere can hold one), so every record on one side relates to every record on the other. Deleting a relationship's last match field does not do this: the match stays, points at the missing field and is reported as `relationship-field-missing`, and the relationship finds no records. |
 | `value-list-source-missing` | error / warning | A value list takes its values from a field, a table or a data source that is gone (an error), or has no values and no field to take them from (a warning). |
 | `script-lint` | error / warning | The [script linter](design-mode.md)'s findings: loops that never end and guards that catch nothing. |
 | `step-unavailable` | warning | A step that gives error 3 in this build (see [script step support](script-steps-support.md)); the script goes on to the next step. |

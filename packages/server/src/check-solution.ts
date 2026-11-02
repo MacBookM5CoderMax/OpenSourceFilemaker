@@ -155,7 +155,7 @@ export function checkSolution(store: Store, opts: { account?: string } = {}): So
       if (!s.tableOccurrences.some((t) => t.id === toId)) add({ kind: 'missing-table-occurrence', severity: 'error', where, message: `The relationship joins ${quoted(name)}, which is not a table occurrence of this file.`, hint: 'Open the relationship graph and delete the relationship or join it to a table occurrence that exists.' }, name);
     }
     if (!r.predicates.length) {
-      add({ kind: 'relationship-no-match-fields', severity: 'warning', where, message: 'The relationship has no match fields, so every record of one side is related to every record of the other.', hint: 'Open the relationship and add the match fields (a field that went missing takes its match with it), or delete it.' });
+      add({ kind: 'relationship-no-match-fields', severity: 'warning', where, message: 'The relationship has no match fields, so every record of one side is related to every record of the other.', hint: 'Open the relationship and add the match fields, or delete it.' });
     }
     for (const p of r.predicates) {
       for (const [toId, fieldId, shown, side] of [[r.leftTableOccurrenceId, p.leftFieldId, p.leftField, left], [r.rightTableOccurrenceId, p.rightFieldId, p.rightField, right]] as const) {

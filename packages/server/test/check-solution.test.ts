@@ -72,7 +72,7 @@ const broken: [FindingKind, DesignOp[], (s: Store) => void][] = [
   ['plugin-not-installed', [{ op: 'createScript', name: 'Mail', text: 'Set Variable [ $v ; EmailVersion ]' }], () => {}],
   ['formula-problem', [{ op: 'deleteField', table: 'Invoices', field: 'Total' }], () => {}],
   // Deleting a match field takes its match out of the relationship; a file from FileMaker can still hold an id nothing has.
-  ['relationship-no-match-fields', [{ op: 'deleteField', table: 'Customers', field: 'Name' }], () => {}],
+  ['relationship-no-match-fields', [], (s) => { s.schema.relationships[0].predicates = []; }],
   ['relationship-field-missing', [], (s) => { s.schema.relationships[0].predicates[0].rightFieldId = 9999; }],
   ['step-unavailable', [{ op: 'createScript', name: 'Folder', text: 'Get Folder Path [ $path ]' }], () => {}],
   ['step-needs-setup', [{ op: 'createScript', name: 'Notify', text: 'Send Mail [ To: "a@example.test" ; Subject: "Hi" ; Message: "Hello" ]' }], () => {}],
@@ -93,6 +93,14 @@ for (const [kind, ops, setup] of broken) {
     });
   });
 }
+
+test('deleting a relationship\'s last match field leaves the match, reported as a missing match field', () => {
+  withSolution([{ op: 'deleteField', table: 'Customers', field: 'Name' }], (s) => {
+    const found = checkSolution(s).findings;
+    assert.ok(found.some((f) => f.kind === 'relationship-field-missing'), `no relationship-field-missing finding in ${[...kinds(s)].join(', ')}`);
+    assert.ok(!found.some((f) => f.kind === 'relationship-no-match-fields'));
+  });
+});
 
 test('a deleted field is reported once where a layout shows it, not once for its name and again for its id', () => {
   withSolution([{ op: 'deleteField', table: 'Customers', field: 'City' }], (s) => {
