@@ -17,7 +17,7 @@ test('the web client shows a caught error through plainMessage, except where a r
     'http-problem.ts': 1, // plainMessage itself returns the original message.
   };
   const found: Record<string, number> = {};
-  const raw = /\(e as Error\)\.message|\bString\((?:e|err)\)|\binstanceof Error \? \w+\.message : String\(\w+\)/g;
+  const raw = /\(e as Error\)\.message|\bString\((?:e|err)\)|\binstanceof Error \? \w+\.message : String\(\w+\)|\btoast\((?:e|err)\.message\)/g;
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const file = join(dir, entry.name);

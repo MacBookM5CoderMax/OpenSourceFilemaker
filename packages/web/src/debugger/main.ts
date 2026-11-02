@@ -214,7 +214,7 @@ async function start(): Promise<void> {
   onError.addEventListener('change', () => {
     pauseOnError = onError.checked;
     store(`tabularius.debug.pauseOnError.${s.db}`, pauseOnError);
-    if (run && !run.done && !run.error) void call('PUT', `/runs/${run.id}/options`, { pauseOnError }).catch((e) => toast(e.message));
+    if (run && !run.done && !run.error) void call('PUT', `/runs/${run.id}/options`, { pauseOnError }).catch((e) => toast(plainMessage(e)));
   });
   const onErrorLabel = h('label', { class: 'g-check', title: 'Pause after any step that sets an error' }, onError, ' Pause on error');
   // Scratch copy (not in FileMaker): the run works on a throwaway copy of the file, so the hosted records stay as they were.
@@ -428,7 +428,7 @@ async function start(): Promise<void> {
   function clearBreakpoints(): void {
     breakpoints = [];
     store(bpKey, breakpoints);
-    if (run?.paused) void call('PUT', `/runs/${run.id}/breakpoints`, { breakpoints }).catch((e) => toast(e.message));
+    if (run?.paused) void call('PUT', `/runs/${run.id}/breakpoints`, { breakpoints }).catch((e) => toast(plainMessage(e)));
     render();
   }
 
@@ -436,7 +436,7 @@ async function start(): Promise<void> {
     const has = breakpoints.some((b) => b.script === script && b.index === index);
     breakpoints = has ? breakpoints.filter((b) => !(b.script === script && b.index === index)) : [...breakpoints, { script, index }];
     store(bpKey, breakpoints);
-    if (run?.paused) void call('PUT', `/runs/${run.id}/breakpoints`, { breakpoints }).catch((e) => toast(e.message));
+    if (run?.paused) void call('PUT', `/runs/${run.id}/breakpoints`, { breakpoints }).catch((e) => toast(plainMessage(e)));
     render();
   }
 
@@ -660,7 +660,7 @@ async function start(): Promise<void> {
 
   window.addEventListener('focus', () => {
     if (!stopped) void call('GET', '/scripts').catch((e) => {
-      if (!stopped && shared!.active()) toast(e.message);
+      if (!stopped && shared!.active()) toast(plainMessage(e));
     });
   });
   render();
