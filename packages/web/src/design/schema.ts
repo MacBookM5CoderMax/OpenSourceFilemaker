@@ -85,7 +85,7 @@ export function tablesTab(studio: Studio): HTMLElement {
   const list = h('ul', { class: 'd-list' });
   for (const t of design.tables) {
     const item = h('li', { class: t === table ? 'selected' : '' },
-      h('button', { type: 'button' }, h('span', {}, t.name), peersAt(studio, 'table', t.id), h('span', { class: 'd-count' }, `${t.fields.length} fields · ${t.records ?? '?'} records`)));
+      h('button', { type: 'button', 'aria-current': t === table ? 'true' : undefined }, h('span', {}, t.name), peersAt(studio, 'table', t.id), h('span', { class: 'd-count' }, `${t.fields.length} fields · ${t.records ?? '?'} records`)));
     item.querySelector('button')!.addEventListener('click', () => {
       studio.selected.table = t.id;
       studio.selected.field = undefined;

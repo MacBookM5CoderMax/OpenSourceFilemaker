@@ -18,7 +18,7 @@ export function menusTab(studio: Studio): HTMLElement {
   const menu = set ? undefined : menus.find((m) => m.id === studio.selected.menu) ?? menus[0];
 
   const item = (label: string, sub: string, selected: boolean, pick: () => void) => {
-    const li = h('li', { class: selected ? 'selected' : '' }, h('button', { type: 'button' }, h('span', {}, label), h('span', { class: 'd-count' }, sub)));
+    const li = h('li', { class: selected ? 'selected' : '' }, h('button', { type: 'button', 'aria-current': selected ? 'true' : undefined }, h('span', {}, label), h('span', { class: 'd-count' }, sub)));
     li.querySelector('button')!.addEventListener('click', pick);
     return li;
   };

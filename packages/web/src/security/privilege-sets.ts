@@ -149,7 +149,7 @@ export function privilegeSetsTab(sec: Sec): HTMLElement {
   const list = h('ul', { class: 'd-list' });
   for (const p of privilegeSets) {
     const li = h('li', { class: p === current ? 'selected' : '' },
-      h('button', { type: 'button' }, h('span', {}, p.name), h('span', { class: 'd-count' }, isFull(p) ? 'full access' : '')));
+      h('button', { type: 'button', 'aria-current': p === current ? 'true' : undefined }, h('span', {}, p.name), h('span', { class: 'd-count' }, isFull(p) ? 'full access' : '')));
     li.querySelector('button')!.addEventListener('click', () => { sec.selected.set = p.name; sec.render(); });
     list.append(li);
   }

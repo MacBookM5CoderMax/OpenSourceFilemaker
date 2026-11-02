@@ -45,7 +45,7 @@ export function accountsTab(sec: Sec): HTMLElement {
   const list = h('ul', { class: 'd-list' });
   for (const a of accounts) {
     const li = h('li', { class: a === current ? 'selected' : '' },
-      h('button', { type: 'button' }, h('span', {}, a.name), h('span', { class: 'd-count' }, a.privilegeSet ?? 'no set')));
+      h('button', { type: 'button', 'aria-current': a === current ? 'true' : undefined }, h('span', {}, a.name), h('span', { class: 'd-count' }, a.privilegeSet ?? 'no set')));
     li.querySelector('button')!.addEventListener('click', () => {
       sec.selected.account = a.name;
       pendingTotp = undefined;

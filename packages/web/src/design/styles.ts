@@ -153,7 +153,7 @@ export async function themesTab(studio: Studio): Promise<HTMLElement> {
   const summary = d.themes.find((t) => t.id === studio.selected.theme) ?? d.themes[0];
   studio.selected.theme = summary?.id;
   const list = h('ul', { class: 'd-list' }, ...d.themes.map((t) => {
-    const li = h('li', { class: t === summary ? 'selected' : '' }, h('button', { type: 'button' }, h('span', {}, t.name), h('span', { class: 'd-count' }, `${t.styles?.length ?? 0} styles`)));
+    const li = h('li', { class: t === summary ? 'selected' : '' }, h('button', { type: 'button', 'aria-current': t === summary ? 'true' : undefined }, h('span', {}, t.name), h('span', { class: 'd-count' }, `${t.styles?.length ?? 0} styles`)));
     li.querySelector('button')!.addEventListener('click', () => {
       studio.selected.theme = t.id;
       studio.selected.style = undefined;
@@ -247,7 +247,7 @@ function themeDetail(studio: Studio, theme: Theme): HTMLElement[] {
   const styleIndex = studio.selected.style;
   const style = styleIndex !== undefined ? theme.styles[styleIndex] : undefined;
   const styleList = h('ul', { class: 'd-list d-style-list' }, ...styles.map(([i, s]) => {
-    const li = h('li', { class: i === styleIndex ? 'selected' : '' }, h('button', { type: 'button' }, h('span', {}, s.name), h('span', { class: 'd-count' }, elementName(s.element))));
+    const li = h('li', { class: i === styleIndex ? 'selected' : '' }, h('button', { type: 'button', 'aria-current': i === styleIndex ? 'true' : undefined }, h('span', {}, s.name), h('span', { class: 'd-count' }, elementName(s.element))));
     li.querySelector('button')!.addEventListener('click', () => {
       studio.selected.style = i;
       studio.render();

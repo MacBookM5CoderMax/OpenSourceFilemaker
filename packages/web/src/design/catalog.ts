@@ -32,7 +32,7 @@ function master<T extends { id: number; name: string }>(studio: Studio, key: str
   const current = items.find((i) => i.id === studio.selected[key]) ?? items[0];
   const list = h('ul', { class: 'd-list' });
   for (const it of ordered ? [] : items) {
-    const li = h('li', { class: it === current ? 'selected' : '' }, h('button', { type: 'button' }, h('span', {}, it.name), h('span', { class: 'd-count' }, describe(it))));
+    const li = h('li', { class: it === current ? 'selected' : '' }, h('button', { type: 'button', 'aria-current': it === current ? 'true' : undefined }, h('span', {}, it.name), h('span', { class: 'd-count' }, describe(it))));
     li.querySelector('button')!.addEventListener('click', () => {
       studio.selected[key] = it.id;
       studio.render();

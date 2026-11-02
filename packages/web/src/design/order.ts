@@ -81,7 +81,7 @@ export function orderedList<T extends { id: number; name: string }>(studio: Stud
     if (node.type === 'item') {
       const it = byId.get(node.id)!;
       li = h('li', { class: it === opts.current ? 'selected' : '', draggable: 'true' },
-        h('button', { type: 'button', style: `padding-left:${8 + depth * 14}px` }, h('span', {}, it.name), peersAt(studio, opts.list === 'layouts' ? 'layout' : 'script', it.id), h('span', { class: 'd-count' }, opts.describe(it))));
+        h('button', { type: 'button', 'aria-current': it === opts.current ? 'true' : undefined, style: `padding-left:${8 + depth * 14}px` }, h('span', {}, it.name), peersAt(studio, opts.list === 'layouts' ? 'layout' : 'script', it.id), h('span', { class: 'd-count' }, opts.describe(it))));
       li.querySelector('button')!.addEventListener('click', () => {
         studio.selected[opts.key] = it.id;
         studio.render();
