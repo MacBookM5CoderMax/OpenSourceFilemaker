@@ -4,10 +4,10 @@
 // leaves the entries out for an account that would be refused.
 
 import type { Api, CalendarFeed } from './api.ts';
+import { plainMessage } from './http-problem.ts';
 import type { FieldMeta, LayoutMeta } from './types.ts';
 import { h, button } from './design/dom.ts';
 import { toast } from './toast.ts';
-import { plainMessage } from './http-problem.ts';
 
 /** Fields of the layout's own table that can place an event (a date or timestamp), then the ones that can fill its text. */
 export function calendarFields(meta: LayoutMeta): { dates: FieldMeta[]; text: FieldMeta[] } {
@@ -81,7 +81,7 @@ export async function calendarDialog(api: Api, mode: 'feeds' | 'import', current
     try {
       fill(await api.layout(layoutPick.value));
     } catch (e) {
-      status.textContent = (e as Error).message;
+      status.textContent = plainMessage(e);
     }
   };
   layoutPick.addEventListener('change', () => void load());
@@ -112,7 +112,7 @@ export async function calendarDialog(api: Api, mode: 'feeds' | 'import', current
       try {
         draw(await api.calendarFeeds());
       } catch (e) {
-        list.replaceChildren(h('p', { role: 'alert' }, (e as Error).message));
+        list.replaceChildren(h('p', { role: 'alert' }, plainMessage(e)));
       }
     };
     const revoke = async (f: CalendarFeed) => {
@@ -122,7 +122,7 @@ export async function calendarDialog(api: Api, mode: 'feeds' | 'import', current
         status.textContent = 'Feed revoked.';
         await reload();
       } catch (e) {
-        status.textContent = (e as Error).message;
+        status.textContent = plainMessage(e);
       }
     };
     const make = button('Make link', () => void run(), { class: 'primary' });
@@ -146,7 +146,7 @@ export async function calendarDialog(api: Api, mode: 'feeds' | 'import', current
         label.value = '';
         await reload();
       } catch (e) {
-        status.textContent = (e as Error).message;
+        status.textContent = plainMessage(e);
       } finally {
         make.disabled = false;
       }
@@ -191,7 +191,7 @@ export async function calendarDialog(api: Api, mode: 'feeds' | 'import', current
         const done = await api.importCalendar(layoutPick.value, { ...(values() as Record<string, string>), zone: zone.value.trim() }, await chosen.text());
         status.textContent = importSummary(done);
       } catch (e) {
-        status.textContent = (e as Error).message;
+        status.textContent = plainMessage(e);
       } finally {
         go.disabled = false;
       }

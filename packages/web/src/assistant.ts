@@ -10,7 +10,7 @@ import { connectionCard } from './connection-card.ts';
 import { cleanupCard, type CleanupScan } from './cleanup-view.ts';
 import { agentPlanCard, type AgentPlan } from './agent-view.ts';
 import type { Widget, WidgetData } from './dashboard-view.ts';
-import { httpProblem } from './http-problem.ts';
+import { httpProblem, plainMessage } from './http-problem.ts';
 import { enterActivates } from './ime.ts';
 import { chatUsage, classifyError, confirmAction, destructiveChanges, ownerOf, toolView, type ChatError, type ToolStep } from './assistant-chat.ts';
 
@@ -767,7 +767,7 @@ export class AssistantPanel {
         status.replaceChildren(h('a', { href: `dashboard.html?id=${enc(id)}`, target: 'tabularius-dashboards' }, 'Open in Dashboards'));
         this.onDashboardSaved?.(id);
       } catch (e) {
-        status.textContent = (e as Error).message;
+        status.textContent = plainMessage(e);
         save.disabled = false;
       }
     });

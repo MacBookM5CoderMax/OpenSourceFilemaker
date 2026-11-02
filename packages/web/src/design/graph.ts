@@ -2,6 +2,7 @@
 // around, and panels to add, change and delete occurrences and relationships.
 
 import type { DesignOccurrence, DesignRelationship, GraphReview } from './client.ts';
+import { plainMessage } from '../http-problem.ts';
 import { h, button, select, field, check, toast } from './dom.ts';
 import type { Studio } from './main.ts';
 import { occurrenceFill } from './graph-color.ts';
@@ -361,7 +362,7 @@ async function review(studio: Studio): Promise<GraphReview> {
 
 /** Tidies the graph in one change; the toast puts every box back. */
 async function tidy(studio: Studio): Promise<void> {
-  const { arrange } = await review(studio).catch((e) => (toast(String(e)), { arrange: [] as never[] }));
+  const { arrange } = await review(studio).catch((e) => (toast(plainMessage(e)), { arrange: [] as never[] }));
   if (!arrange.length) return toast('The graph is already tidy.', 'info');
   const before = arrange.map((c) => {
     const to = studio.design.tableOccurrences.find((t) => t.id === (c as unknown as { occurrence: number }).occurrence);
@@ -388,7 +389,7 @@ function reviewPanel(studio: Studio): HTMLElement {
     out.replaceChildren(h('h3', {}, 'About this graph'), ...r.summary.map((line) => h('p', {}, line)),
       ...(r.issues.length ? [issues] : []),
       ...explain(studio, `Explain this relationship graph in plain English: what each group is for, how the tables relate, and what you'd change. Here is what a quick review found:\n${[...r.summary, ...r.issues.map((i) => `- ${i.message}`)].join('\n')}`));
-  }, (e) => out.replaceChildren(h('h3', {}, 'About this graph'), h('p', { class: 'd-muted' }, String(e))));
+  }, (e) => out.replaceChildren(h('h3', {}, 'About this graph'), h('p', { class: 'd-muted' }, plainMessage(e))));
   return out;
 }
 

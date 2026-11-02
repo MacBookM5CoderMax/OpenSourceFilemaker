@@ -3,7 +3,7 @@
 // below the dashboard (and as a notice in the web client when it is new). Nothing is emailed.
 
 import { h, button } from '../design/dom.ts';
-import { httpProblem } from '../http-problem.ts';
+import { httpProblem, plainMessage } from '../http-problem.ts';
 
 export interface DigestRun {
   id: string;
@@ -74,7 +74,7 @@ export function digestPanel(db: string, token: string, dashboard: { id: string; 
     try {
       list = await call<DigestList>('GET');
     } catch (e) {
-      el.replaceChildren(h('p', { class: 'dash-error' }, (e as Error).message));
+      el.replaceChildren(h('p', { class: 'dash-error' }, plainMessage(e)));
       return;
     }
     show();
@@ -90,7 +90,7 @@ export function digestPanel(db: string, token: string, dashboard: { id: string; 
           await run();
           await load();
         } catch (e) {
-          status.textContent = (e as Error).message;
+          status.textContent = plainMessage(e);
         }
       })(), opts);
       return h('div', { class: 'digest-item' },
@@ -140,7 +140,7 @@ export function digestPanel(db: string, token: string, dashboard: { id: string; 
         else await call('POST', '', { ...body, dashboard: dashboard.id });
         await load();
       } catch (e) {
-        status.textContent = (e as Error).message;
+        status.textContent = plainMessage(e);
         save.disabled = false;
       }
     })(), { class: 'primary' });

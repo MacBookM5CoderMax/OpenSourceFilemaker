@@ -2,6 +2,8 @@
 // to put it back. The server logs every create, edit and delete on its own; this only reads that log (and asks the
 // server to put a change back, which it does with the account's own privileges and logs as a revert).
 
+import { plainMessage } from './http-problem.ts';
+
 export interface HistoryChange { field: string; from?: unknown; to?: unknown; how?: string; seq: number }
 export interface HistoryEvent {
   at: string;
@@ -105,7 +107,7 @@ function act(label: string, title: string, run: () => Promise<RevertResult>, act
       actions.changed();
     } catch (e) {
       b.disabled = false;
-      status((e as Error).message);
+      status(plainMessage(e));
     }
   });
   return b;
@@ -122,7 +124,7 @@ export function showRecordHistory(title: string, load: () => Promise<RecordHisto
     try {
       body.replaceChildren(renderHistory(await load(), { revert: actions.revert, changed: () => { actions.changed(); void show(); } }, (m) => { message.textContent = m; }));
     } catch (e) {
-      message.textContent = (e as Error).message;
+      message.textContent = plainMessage(e);
     }
   };
   done.addEventListener('click', () => dialog.close());

@@ -2,6 +2,7 @@
 // as a script (editable), a Dry run that runs them once on a throwaway copy of
 // the file and lists what they would change, and Save, which adds the script.
 import { h, button } from './design/dom.ts';
+import { plainMessage } from './http-problem.ts';
 import type { ScriptDryRun } from './design/client.ts';
 import { dryRunSummary } from './design/dry-run-summary.ts';
 
@@ -46,7 +47,7 @@ export function macroDialog(recorded: { text: string; steps: number; notes: stri
         status.classList.toggle('macro-bad', !!r.ended.error);
         result.replaceChildren(changes(r));
       } catch (e) {
-        status.textContent = (e as Error).message;
+        status.textContent = plainMessage(e);
         status.classList.add('macro-bad');
       } finally {
         dry.disabled = false;

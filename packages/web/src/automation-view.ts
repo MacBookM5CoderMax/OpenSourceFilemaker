@@ -2,7 +2,7 @@
 // went, with Turn on (the assistant's proposal) or Turn off and Delete (one already saved).
 
 import { h } from './design/dom.ts';
-import { httpProblem } from './http-problem.ts';
+import { httpProblem, plainMessage } from './http-problem.ts';
 
 export interface DryRun {
   recordId?: number;
@@ -96,7 +96,7 @@ export function automationCard(a: AutomationOut, db: string, token: string): HTM
       off.textContent = 'Turn off';
       status.replaceChildren('On. ', h('a', { href: 'automations.html', target: 'tabularius-automations' }, 'See its runs'));
     } catch (e) {
-      status.textContent = (e as Error).message;
+      status.textContent = plainMessage(e);
       on.disabled = false;
     }
   });
@@ -107,7 +107,7 @@ export function automationCard(a: AutomationOut, db: string, token: string): HTM
       off.textContent = enabled ? 'Turn off' : 'Turn on again';
       status.textContent = enabled ? 'On.' : 'Off.';
     } catch (e) {
-      status.textContent = (e as Error).message;
+      status.textContent = plainMessage(e);
     }
   });
   del.addEventListener('click', async () => {
@@ -122,7 +122,7 @@ export function automationCard(a: AutomationOut, db: string, token: string): HTM
       id = undefined;
       enabled = false;
     } catch (e) {
-      status.textContent = (e as Error).message;
+      status.textContent = plainMessage(e);
       del.disabled = false;
     }
   });

@@ -7,7 +7,7 @@ import { h, button } from '../design/dom.ts';
 import { AssistantPanel, assistantInfo } from '../assistant.ts';
 import { renderWidget, tidyWidget, widgetEditor, type Widget, type WidgetData } from '../dashboard-view.ts';
 import { digestPanel } from './digest.ts';
-import { httpProblem } from '../http-problem.ts';
+import { httpProblem, plainMessage } from '../http-problem.ts';
 
 interface Summary { id: string; name: string; description?: string; widgets: number; account?: string; updated: string; canChange: boolean }
 interface Dashboard { id: string; name: string; description?: string; widgets: Widget[]; account?: string; updated: string }
@@ -116,7 +116,7 @@ async function start(): Promise<void> {
       updated.removeAttribute('role');
     } catch (e) {
       if (request !== openRequest || editing) return;
-      updated.textContent = `Couldn't update: ${(e as Error).message}`;
+      updated.textContent = `Couldn't update: ${plainMessage(e)}`;
       updated.setAttribute('role', 'alert');
     }
     if (!editing) render();
@@ -173,7 +173,7 @@ async function start(): Promise<void> {
           picker.value = d.id;
           render();
         } catch (e) {
-          updated.textContent = (e as Error).message;
+          updated.textContent = plainMessage(e);
           save.disabled = false;
         }
       })(), { class: 'primary' });
@@ -207,7 +207,7 @@ async function start(): Promise<void> {
       if (editing === session) editData = r.data;
       updated.textContent = '';
     } catch (e) {
-      updated.textContent = (e as Error).message;
+      updated.textContent = plainMessage(e);
     }
     if (!editing || editing !== session) return;
     // Typing goes on in the editors; only the widgets are drawn again.
@@ -226,7 +226,7 @@ async function start(): Promise<void> {
   try {
     await loadList();
   } catch (e) {
-    body.replaceChildren(h('p', { class: 'empty' }, (e as Error).message));
+    body.replaceChildren(h('p', { class: 'empty' }, plainMessage(e)));
     return;
   }
   const wanted = new URL(location.href).searchParams.get('id');

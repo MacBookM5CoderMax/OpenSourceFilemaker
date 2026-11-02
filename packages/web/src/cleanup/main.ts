@@ -4,7 +4,7 @@
 
 import { h, button } from '../design/dom.ts';
 import { cleanupCard, type CleanupScan } from '../cleanup-view.ts';
-import { httpProblem } from '../http-problem.ts';
+import { httpProblem, plainMessage } from '../http-problem.ts';
 
 interface Batch { id: string; at: string; account?: string; layout: string; summary: string; changes: number; undone?: string }
 
@@ -75,7 +75,7 @@ async function start(): Promise<void> {
       results.replaceChildren(cleanupCard(found, s!.db, s!.token));
       status.textContent = '';
     } catch (e) {
-      status.textContent = (e as Error).message;
+      status.textContent = plainMessage(e);
     }
     scanBtn.disabled = false;
   }

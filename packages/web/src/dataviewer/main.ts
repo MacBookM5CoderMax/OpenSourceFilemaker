@@ -10,7 +10,7 @@
 import { discardLegacyWatches, openWatches, watchAccessDenied } from '../watch-storage.ts';
 import { h, button } from '../design/dom.ts';
 import { AssistantPanel, assistantInfo } from '../assistant.ts';
-import { httpProblem } from '../http-problem.ts';
+import { httpProblem, plainMessage } from '../http-problem.ts';
 
 /** What the web client window shows, as it announces it. */
 interface WindowInfo { layout?: string; recordId?: number; mode?: string; view?: string; foundCount?: number; totalCount?: number; number?: number }
@@ -260,7 +260,7 @@ async function start(): Promise<void> {
     if (!win.layout && !paused) {
       try { await authorizeWindow(); } catch (e) {
         if (!stopped && n === rendering && shared!.active()) {
-          body.replaceChildren(h('p', { class: 'g-err', role: 'alert' }, (e as Error).message));
+          body.replaceChildren(h('p', { class: 'g-err', role: 'alert' }, plainMessage(e)));
         }
         return;
       }
@@ -306,7 +306,7 @@ async function start(): Promise<void> {
             paused = undefined;
             return void render();
           }
-          failure = (e as Error).message;
+          failure = plainMessage(e);
         }
       }
       const fieldRows = Object.entries(current?.fields ?? {}).map(([k, v]): [string, Node | string] => [`${current!.occurrence}::${k}`, v === '' ? h('span', { class: 'g-none' }, 'empty') : String(v)]);
@@ -367,4 +367,4 @@ async function start(): Promise<void> {
   await render();
 }
 
-start().catch((e) => app.replaceChildren(h('p', { class: 'empty' }, `Couldn't start: ${(e as Error).message}`)));
+start().catch((e) => app.replaceChildren(h('p', { class: 'empty' }, `Couldn't start: ${plainMessage(e)}`)));

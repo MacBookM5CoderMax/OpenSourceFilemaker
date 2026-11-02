@@ -12,8 +12,7 @@ import { discardLegacyWatches, openWatches, watchAccessDenied } from '../watch-s
 import { h, button, toast } from '../design/dom.ts';
 import { AssistantPanel, assistantInfo, type AssistantContext } from '../assistant.ts';
 import { describeChange, fieldChanges, variablesAt, type Recording } from './replay.ts';
-import { httpProblem } from '../http-problem.ts';
-import { plainMessage } from '../http-problem.ts';
+import { httpProblem, plainMessage } from '../http-problem.ts';
 
 interface ScriptInfo { id: number; name: string; steps: { line: string; enabled: boolean }[] }
 interface OrderItem { id: number; name: string; kind: 'item' | 'folder' | 'separator' | 'folder-end' | 'unknown'; depth: number }
@@ -129,7 +128,7 @@ async function start(): Promise<void> {
       ({ scripts, order } = await call<{ scripts: ScriptInfo[]; order?: OrderItem[] }>('GET', '/scripts'));
     });
   } catch (e) {
-    const msg = e instanceof DebugError && e.code === 952 ? 'Your session ended. Log in again, then open the Script Debugger.' : (e as Error).message;
+    const msg = e instanceof DebugError && e.code === 952 ? 'Your session ended. Log in again, then open the Script Debugger.' : plainMessage(e);
     app.replaceChildren(h('p', { class: 'empty' }, msg, ' ', h('a', { href: './' }, 'Back to the file')));
     return;
   }
@@ -215,7 +214,7 @@ async function start(): Promise<void> {
   onError.addEventListener('change', () => {
     pauseOnError = onError.checked;
     store(`tabularius.debug.pauseOnError.${s.db}`, pauseOnError);
-    if (run && !run.done && !run.error) void call('PUT', `/runs/${run.id}/options`, { pauseOnError }).catch((e) => toast(plainMessage(e)));
+    if (run && !run.done && !run.error) void call('PUT', `/runs/${run.id}/options`, { pauseOnError }).catch((e) => toast(e.message));
   });
   const onErrorLabel = h('label', { class: 'g-check', title: 'Pause after any step that sets an error' }, onError, ' Pause on error');
   // Scratch copy (not in FileMaker): the run works on a throwaway copy of the file, so the hosted records stay as they were.
@@ -429,7 +428,7 @@ async function start(): Promise<void> {
   function clearBreakpoints(): void {
     breakpoints = [];
     store(bpKey, breakpoints);
-    if (run?.paused) void call('PUT', `/runs/${run.id}/breakpoints`, { breakpoints }).catch((e) => toast(plainMessage(e)));
+    if (run?.paused) void call('PUT', `/runs/${run.id}/breakpoints`, { breakpoints }).catch((e) => toast(e.message));
     render();
   }
 
@@ -437,7 +436,7 @@ async function start(): Promise<void> {
     const has = breakpoints.some((b) => b.script === script && b.index === index);
     breakpoints = has ? breakpoints.filter((b) => !(b.script === script && b.index === index)) : [...breakpoints, { script, index }];
     store(bpKey, breakpoints);
-    if (run?.paused) void call('PUT', `/runs/${run.id}/breakpoints`, { breakpoints }).catch((e) => toast(plainMessage(e)));
+    if (run?.paused) void call('PUT', `/runs/${run.id}/breakpoints`, { breakpoints }).catch((e) => toast(e.message));
     render();
   }
 
@@ -470,7 +469,7 @@ async function start(): Promise<void> {
           const r = await call<{ value: string; error?: number; message?: string }>('POST', `/runs/${run.id}/evaluate`, { formula });
           value = r.error ? h('span', { class: 'g-err' }, `${r.value} (error ${r.error}${r.message ? `: ${r.message}` : ''})`) : r.value;
         } catch (e) {
-          value = h('span', { class: 'g-err' }, (e as Error).message);
+          value = h('span', { class: 'g-err' }, plainMessage(e));
         }
       }
       const remove = button('×', () => {
@@ -661,10 +660,10 @@ async function start(): Promise<void> {
 
   window.addEventListener('focus', () => {
     if (!stopped) void call('GET', '/scripts').catch((e) => {
-      if (!stopped && shared!.active()) toast(plainMessage(e));
+      if (!stopped && shared!.active()) toast(e.message);
     });
   });
   render();
 }
 
-start().catch((e) => app.replaceChildren(h('p', { class: 'empty' }, `Couldn't start: ${(e as Error).message}`)));
+start().catch((e) => app.replaceChildren(h('p', { class: 'empty' }, `Couldn't start: ${plainMessage(e)}`)));

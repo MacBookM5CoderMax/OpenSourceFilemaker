@@ -3,6 +3,7 @@
 // privileges. [Full Access] can only change its extended privileges.
 
 import { h, button, select, field, check } from '../design/dom.ts';
+import { plainMessage } from '../http-problem.ts';
 import { explain, type Sec } from './main.ts';
 import { cloneKeyed, keyed } from '../own-keys.ts';
 import type { FieldLevel, FieldMask, Level, PrivilegeSet, Rule, TablePrivileges } from './client.ts';
@@ -129,7 +130,7 @@ function rulePreview(t: TablePrivileges, table: string, sec: Sec, setViewRule: (
         button('Use as the View rule', () => { setViewRule(rule); calc.value = rule; }, { title: 'Set this table’s View rule to this calculation' }),
       );
     } catch (e) {
-      out.replaceChildren(h('p', { class: 'sec-bad' }, `Couldn't preview: ${(e as Error).message}`));
+      out.replaceChildren(h('p', { class: 'sec-bad' }, `Couldn't preview: ${plainMessage(e)}`));
     }
   });
 

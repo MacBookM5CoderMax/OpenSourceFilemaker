@@ -4,7 +4,7 @@
 // Every step runs as the signed-in account, so its privileges apply.
 
 import { h } from './design/dom.ts';
-import { httpProblem } from './http-problem.ts';
+import { httpProblem, plainMessage } from './http-problem.ts';
 import { confirmAction, stepNeedsConfirmation } from './assistant-chat.ts';
 
 export interface AgentPlan {
@@ -100,7 +100,7 @@ export function agentPlanCard(plan: AgentPlan, lines: string[], db: string, toke
       }
       if (!runId) ready();
     } catch (e) {
-      status.textContent = (e as Error).message;
+      status.textContent = plainMessage(e);
     }
     dry.disabled = false;
   });
@@ -124,7 +124,7 @@ export function agentPlanCard(plan: AgentPlan, lines: string[], db: string, toke
       dry.disabled = true;
       dry.title = 'The run has started';
     } catch (e) {
-      status.textContent = (e as Error).message;
+      status.textContent = plainMessage(e);
     }
     ready();
   }));
@@ -138,7 +138,7 @@ export function agentPlanCard(plan: AgentPlan, lines: string[], db: string, toke
       undo.hidden = true;
       runs.forEach((x) => (x.disabled = true));
     } catch (e) {
-      status.textContent = (e as Error).message;
+      status.textContent = plainMessage(e);
       undo.disabled = false;
     }
   });

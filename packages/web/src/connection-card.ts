@@ -6,7 +6,7 @@
 // and says where to finish it.
 
 import { h } from './design/dom.ts';
-import { httpProblem } from './http-problem.ts';
+import { httpProblem, plainMessage } from './http-problem.ts';
 
 interface ConnectionView {
   name: string;
@@ -88,7 +88,7 @@ export function connectionCard(ref: { name: string }, db: string, token: string)
       try {
         await f();
       } catch (e) {
-        status.textContent = (e as Error).message;
+        status.textContent = plainMessage(e);
         button.removeAttribute('disabled');
       }
     });
@@ -114,7 +114,7 @@ export function connectionCard(ref: { name: string }, db: string, token: string)
     allowed = r.allowed;
     draw(r.connection);
   }, (e) => {
-    card.replaceChildren(h('div', { class: 'ai-proposal-title' }, `Connection: ${ref.name}`), h('p', { class: 'ai-note' }, (e as Error).message));
+    card.replaceChildren(h('div', { class: 'ai-proposal-title' }, `Connection: ${ref.name}`), h('p', { class: 'ai-note' }, plainMessage(e)));
   });
   return card;
 }

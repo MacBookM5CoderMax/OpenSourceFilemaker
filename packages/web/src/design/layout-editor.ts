@@ -30,7 +30,7 @@ import { pageSize } from '../preview.ts';
 import { responsiveDesign, stackBreakpoint } from '../responsive.ts';
 import { returnFocus } from '../return-focus.ts';
 import { layoutViewClasses, loadLayoutViewOptions, saveLayoutViewOptions, type LayoutViewOptions } from './layout-view.ts';
-import { httpProblem } from '../http-problem.ts';
+import { httpProblem, plainMessage } from '../http-problem.ts';
 import { NOT_TABULARIUS_DATA, replyJson } from '../json-reply.ts';
 import { acknowledgeLayoutSave, findLayoutObject, pushBoundedHistory } from './async-state.ts';
 
@@ -1398,7 +1398,7 @@ class LayoutEditor {
       const li = h('li', { role: 'menuitem', ...(enabled ? {} : { class: 'disabled', 'aria-disabled': 'true' }) }, h('span', { class: 'label' }, label));
       if (enabled) li.addEventListener('click', () => {
         close();
-        void Promise.resolve(run()).catch((err) => toast(err instanceof Error ? err.message : String(err)));
+        void Promise.resolve(run()).catch((err) => toast(plainMessage(err)));
         this.overlay.focus({ preventScroll: true });
       });
       menu.append(li);

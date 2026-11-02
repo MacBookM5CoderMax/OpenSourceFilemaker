@@ -6,6 +6,7 @@
 // full name into first and last, "Springfield, IL 62704" into city, state and ZIP).
 
 import { h, button } from './design/dom.ts';
+import { plainMessage } from './http-problem.ts';
 
 /** The most the server takes in one import request, file and form fields together (webclient.ts MAX_FILE), less room for the form around the file. */
 export const IMPORT_MAX_BYTES = 50 * 1024 * 1024 - 64 * 1024;
@@ -128,7 +129,7 @@ export function importDialog(fileName: string, first: ImportPlan, api: ImportDia
         busy = false;
         importButton.disabled = false;
         show();
-        status.textContent = (e as Error).message;
+        status.textContent = plainMessage(e);
       }
     };
 
@@ -289,7 +290,7 @@ export function importDialog(fileName: string, first: ImportPlan, api: ImportDia
         result = await api.apply(choice(), { skipDuplicates: planAction === 'add' && skipDuplicates.checked, skipIssues: skipIssues.checked, action: planAction, addRemaining: planAction !== 'add' && addRemaining.checked, sheet: plan.sheet });
         dialog.close();
       } catch (e) {
-        status.textContent = (e as Error).message;
+        status.textContent = plainMessage(e);
         applying = false;
         body.inert = false;
         importButton.disabled = false;

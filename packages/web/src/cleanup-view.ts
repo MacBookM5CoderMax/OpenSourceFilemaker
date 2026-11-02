@@ -3,7 +3,7 @@
 // whole batch back. Nothing changes until Apply. Used by the assistant panel and the cleanup page.
 
 import { h } from './design/dom.ts';
-import { httpProblem } from './http-problem.ts';
+import { httpProblem, plainMessage } from './http-problem.ts';
 
 type Value = string | number | null;
 
@@ -119,7 +119,7 @@ export function cleanupCard(scan: CleanupScan, db: string, token: string, title?
         ...(r.total > r.changes.length ? [h('p', { class: 'ai-note' }, `And ${r.total - r.changes.length} more.`)] : []));
       preview.hidden = false;
     } catch (e) {
-      status.textContent = (e as Error).message;
+      status.textContent = plainMessage(e);
     }
     dry.disabled = false;
   });
@@ -135,7 +135,7 @@ export function cleanupCard(scan: CleanupScan, db: string, token: string, title?
       status.textContent = `${r.summary}. Every change is in the audit log.`;
       undo.hidden = false;
     } catch (e) {
-      status.textContent = (e as Error).message;
+      status.textContent = plainMessage(e);
       apply.disabled = false;
     }
   });
@@ -150,7 +150,7 @@ export function cleanupCard(scan: CleanupScan, db: string, token: string, title?
       apply.disabled = false;
       batch = undefined;
     } catch (e) {
-      status.textContent = (e as Error).message;
+      status.textContent = plainMessage(e);
     }
     undo.disabled = false;
   });

@@ -5,7 +5,7 @@
 import { h, button } from '../design/dom.ts';
 import { AssistantPanel, assistantInfo } from '../assistant.ts';
 import type { AutomationSpec } from '../automation-view.ts';
-import { httpProblem } from '../http-problem.ts';
+import { httpProblem, plainMessage } from '../http-problem.ts';
 
 interface Run { at: string; recordId: number; outcome: 'ok' | 'warning' | 'error' | 'skipped'; error?: number; steps?: number; ms?: number; message?: string }
 interface Saved extends AutomationSpec { id: string; trigger: string; runs: Run[]; updated: string }
@@ -54,7 +54,7 @@ async function start(): Promise<void> {
     try {
       body = await call('GET');
     } catch (e) {
-      list.replaceChildren(h('p', { class: 'empty' }, (e as Error).message));
+      list.replaceChildren(h('p', { class: 'empty' }, plainMessage(e)));
       return;
     }
     const note = h('p', { class: 'dash-note' }, `Scripts run on the server${body.network ? '; Insert from URL may reach the network for automations that allow it' : ", and can't reach the network until an administrator turns on Script network for this file"}. ` +

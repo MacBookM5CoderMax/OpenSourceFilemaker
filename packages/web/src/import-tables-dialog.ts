@@ -4,6 +4,7 @@
 // menu just leaves the entry out. The files are sent again for the import, so a preview keeps nothing on the server.
 
 import type { Api } from './api.ts';
+import { plainMessage } from './http-problem.ts';
 import { h, button } from './design/dom.ts';
 import { choicesFor, choose, chosen, currentChoice, filesProblem, importTablesForm, importTablesQuery, keepValid, sheetLine, type Choices, type ImportTablesDone, type ImportTablesPreview } from './import-tables-model.ts';
 
@@ -92,7 +93,7 @@ export async function importTablesDialog(api: Api, onImported: () => void): Prom
         draw(focus);
       }
     } catch (e) {
-      status.textContent = (e as Error).message;
+      status.textContent = plainMessage(e);
     } finally {
       busy--;
       settle();
