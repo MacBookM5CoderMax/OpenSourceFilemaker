@@ -8,6 +8,6 @@ Password supplied to migration or sync commands for the source server.
 | Accepted values | Password text |
 | Restart needed | Yes for a running server; new CLI invocations read the changed value. |
 | Explained in | [ADMIN.md](../../../../ADMIN.md) |
-| Code | [packages/cli/src/main.ts:1660](../../../../packages/cli/src/main.ts#L1660) |
+| Code | [packages/cli/src/main.ts:1661](../../../../packages/cli/src/main.ts#L1661) |
 
 [All environment variables](../../../environment-variables.md)

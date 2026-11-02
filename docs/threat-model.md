@@ -46,6 +46,8 @@ One page: what Tabularius is built to defend, against whom, and what it does not
 
 Same-folder credential reads reject symlinks, pipes and directories (the planted-file protection from #922). The admin password (`.openhbam-admin`), admin passkeys (`.openhbam-admin-passkeys`), MCP account tokens (`.openhbam-mcp-tokens.json`) and connections key (`.openhbam-connections.key`) also require one link, ownership by the server's user, and no group or world write permission. These checks use the opened descriptor, including reads inside locked credential updates. Windows skips the owner and mode checks because privacy there depends on ACLs; Windows ACL enforcement is unverified. <!-- known-difference: Windows hosting ;; ACL enforcement for same-folder credential files is unverified on Windows ;; Owner and mode checks are skipped there, so privacy depends on the hosted folder and file ACLs ;; Validate the credential-file ACLs on Windows --> An unusable admin password keeps password sign-in closed, reports `passwordSet: false`, and warns once until a valid file is read; `tabularius admin-password <folder>` atomically replaces an unsafe regular file.
 
+The hosted approval record also requires ownership by the server's user, at most one link, and no group or world write permission; a refusal is a damaged record and is never replaced automatically. Server-managed TLS pair pointers and certificates use the same permission threshold, while generation PEMs, earlier-layout private keys and the local CA private key forbid all group and world permission bits. These TLS checks do not apply to operator-supplied certificate or key paths. `migrate-fms --save` refuses an existing name before reading a password and creates the output exclusively, so a file planted after that check cannot be overwritten.
+
 The AI key path may be an operator-provided symlink: its private-mode check applies to the resolved file's mode through the descriptor used to read it. The connections key retains its stricter private-mode requirement (no group or world read, write or execute bits).
 
 These checks are not `openat(2)` and do not make path-based operations atomic. The folders must belong to the service user. A hostile concurrent rename of a parent folder is out of scope.
@@ -79,6 +81,7 @@ Known gap: the admin password file (`.openhbam-admin`) is refused when a link, p
 - `packages/server/src/hosted-record.ts`
 - `packages/server/src/inbound-hooks.ts`
 - `packages/server/src/local-admin.ts`
+- `packages/server/src/local-tls.ts`
 - `packages/server/src/logs.ts`
 - `packages/server/src/oauth.ts`
 - `packages/server/src/outbox.ts`

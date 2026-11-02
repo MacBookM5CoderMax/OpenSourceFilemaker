@@ -179,7 +179,7 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/cli/src/doctor.ts:140](../../packages/cli/src/doctor.ts#L140) `accountChecks` | `SQLite.all` (140); `SQLite.prepare` (140) | OPERATOR |
 | [packages/cli/src/main.ts:740](../../packages/cli/src/main.ts#L740) `accountsWithPasswordOff` | `SQLite.all` (740); `SQLite.prepare` (740) | OPERATOR |
 | [packages/cli/src/main.ts:769](../../packages/cli/src/main.ts#L769) `hostedRead` | `SQLite.all` (769, 772); `SQLite.prepare` (769, 772); `Store.sql` (769, 772) | OPERATOR |
-| [packages/cli/src/main.ts:2496](../../packages/cli/src/main.ts#L2496) `main` | `Store.orphanContainerReport` (2496); `Store.auditLog` (2973); `SQLite.get` (3235); `SQLite.prepare` (3235) | OPERATOR |
+| [packages/cli/src/main.ts:2497](../../packages/cli/src/main.ts#L2497) `main` | `Store.orphanContainerReport` (2497); `Store.auditLog` (2974); `SQLite.get` (3236); `SQLite.prepare` (3236) | OPERATOR |
 | [packages/scripts/src/data-api-step.ts:104](../../packages/scripts/src/data-api-step.ts#L104) `respond` | `Store.get` (104, 131, 140); `Store.find` (105, 117) | SCRIPT |
 | [packages/scripts/src/engine.ts:9443](../../packages/scripts/src/engine.ts#L9443) `clearRecords` | `SQLite.all` (9443); `SQLite.prepare` (9443) | SCRIPT |
 | [packages/scripts/src/engine.ts:8213](../../packages/scripts/src/engine.ts#L8213) `ScriptEngine/containerFile` | `Store.get` (8213); `Store.containerId` (8214); `Store.container` (8215) | SCRIPT |
@@ -312,9 +312,9 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/dry-run.ts:92](../../packages/server/src/dry-run.ts#L92) `dryRunChanges/runOnce` | `Store.auditLog` (92, 96) | DESIGN |
 | [packages/server/src/find-advice.ts:99](../../packages/server/src/find-advice.ts#L99) `findAdvice` | `Store.recordCount` (99) | DESIGN |
 | [packages/server/src/formula-preview.ts:31](../../packages/server/src/formula-preview.ts#L31) `previewFormula` | `Store.findIds` (31); `Store.evaluate` (42) | DESIGN |
-| [packages/server/src/hosted-record.ts:220](../../packages/server/src/hosted-record.ts#L220) `approveRestoredFiles` | `SQLite.get` (220); `SQLite.prepare` (220, 224) | OPERATOR |
-| [packages/server/src/hosted-record.ts:113](../../packages/server/src/hosted-record.ts#L113) `markStore` | `SQLite.get` (113); `SQLite.prepare` (113, 117) | OPERATOR |
-| [packages/server/src/hosted-record.ts:72](../../packages/server/src/hosted-record.ts#L72) `peekInstance` | `SQLite.get` (72); `SQLite.prepare` (72) | OPERATOR |
+| [packages/server/src/hosted-record.ts:221](../../packages/server/src/hosted-record.ts#L221) `approveRestoredFiles` | `SQLite.get` (221); `SQLite.prepare` (221, 225) | OPERATOR |
+| [packages/server/src/hosted-record.ts:114](../../packages/server/src/hosted-record.ts#L114) `markStore` | `SQLite.get` (114); `SQLite.prepare` (114, 118) | OPERATOR |
+| [packages/server/src/hosted-record.ts:73](../../packages/server/src/hosted-record.ts#L73) `peekInstance` | `SQLite.get` (73); `SQLite.prepare` (73) | OPERATOR |
 | [packages/server/src/import-mapping.ts:1024](../../packages/server/src/import-mapping.ts#L1024) `applyImportAddStream` | `SQLite.prepare` (1024); `Store.sql` (1024) | IMPORT |
 | [packages/server/src/import-mapping.ts:785](../../packages/server/src/import-mapping.ts#L785) `applyImportRun` | `SQLite.prepare` (785); `Store.sql` (785) | IMPORT |
 | [packages/server/src/import-mapping.ts:505](../../packages/server/src/import-mapping.ts#L505) `existingKeys` | `Store.viewableIds` (505); `Store.query` (507) | IMPORT |

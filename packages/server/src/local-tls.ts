@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { pageCss } from './pages.ts';
 import { atomicWrite } from '../../store/src/durable.ts';
+import { readCredentialFileSync } from '../../store/src/fs-boundary.ts';
 
 const DIR = join('.openhbam-tls', 'local');
 /** Apple devices refuse server certificates valid for longer. */
@@ -156,7 +157,7 @@ export function localCertificate(folder: string, names = localNames()): LocalTls
   let caKey: KeyObject;
   let caDer: Buffer;
   if (existsSync(caKeyPath) && existsSync(caPath)) {
-    caKey = createPrivateKey(readFileSync(caKeyPath));
+    caKey = createPrivateKey(readCredentialFileSync(caKeyPath, 0o077));
     const keptCa = new X509Certificate(readFileSync(caPath));
     if (!keptCa.checkPrivateKey(caKey)) throw new Error('Local TLS authority key does not match its certificate');
     caDer = keptCa.raw;

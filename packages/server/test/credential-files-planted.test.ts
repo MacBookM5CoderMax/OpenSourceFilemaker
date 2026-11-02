@@ -183,3 +183,12 @@ test('AI files refuse pipes and directories while operator links to regular file
   assert.equal(badWorkspace.workspaceId, workspaceText);
   assert.match(badWorkspace.problem!, /not a plain file/);
 });
+
+test('a named pipe at the hosted record is damaged without blocking the reader', { skip, timeout: 30_000 }, (t) => {
+  const { folder, pipe, child } = sandbox(t);
+  pipe(join(folder, '.openhbam-hosted.json'));
+  const ran = child(`import { loadHostedRecord } from './packages/server/src/hosted-record.ts';
+    console.log(loadHostedRecord(${JSON.stringify(folder)}));`);
+  assert.equal(ran.status, 0, `the check ended (signal ${ran.signal}, ${ran.stderr})`);
+  assert.equal(ran.stdout.trim(), 'null');
+});

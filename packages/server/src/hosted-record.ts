@@ -29,7 +29,8 @@ export function loadHostedRecord(dir: string): HostedRecord | null | undefined {
       const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0));
       try {
         const stat = fstatSync(fd);
-        if (!stat.isFile() || stat.nlink > 1) return null;
+        if (!stat.isFile() || stat.nlink > 1 || (process.platform !== 'win32' &&
+            (stat.uid !== process.getuid!() || (stat.mode & 0o022) !== 0))) return null;
         if (stat.nlink === 0 && attempt < 20) continue;
         raw = readFileSync(fd, 'utf8');
         break;

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, linkSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -265,4 +265,46 @@ test('two processes writing the record at once never leave it unreadable for a r
   assert.ok(reads > 0);
   assert.equal(damaged, 0, `the record was unreadable in ${damaged} of ${reads} reads`);
   assert.equal(readdirSync(dir).filter((n) => n.startsWith(HOSTED_RECORD_FILE) && n !== HOSTED_RECORD_FILE).length, 0, 'no temp file is left');
+});
+
+const modeSkip = process.platform === 'win32' && 'POSIX ownership and mode bits are not enforced on Windows';
+for (const attack of ['hard link', 'symlink', 'group writable', 'world writable', 'simulated owner'] as const) {
+  test(`hosted record refuses ${attack} without replacing it`, {
+    skip: attack === 'symlink' ? process.platform === 'win32' && 'links need privileges on Windows'
+      : attack === 'hard link' ? false : modeSkip,
+  }, (t) => {
+    const dir = folder(t);
+    firstStartRecord(dir, []);
+    const file = join(dir, HOSTED_RECORD_FILE), alias = file + '-alias';
+    const before = readFileSync(file, 'utf8');
+    assert.deepEqual(loadHostedRecord(dir), JSON.parse(before), 'a private, single-link record works');
+    if (attack === 'hard link') linkSync(file, alias);
+    else if (attack === 'symlink') { renameSync(file, alias); symlinkSync(alias, file); }
+    else if (attack === 'simulated owner') {
+      const uid = statSync(file).uid;
+      t.mock.method(process as NodeJS.Process & { getuid(): number }, 'getuid', () => uid + 1);
+    } else chmodSync(file, attack === 'group writable' ? 0o620 : 0o602);
+    assert.equal(loadHostedRecord(dir), null);
+    firstStartRecord(dir, []);
+    assert.throws(() => approveInRecord(dir, 'Synthetic', '00000000-0000-4000-8000-000000000001', 'admin', 'admin'), /damaged/);
+    assert.equal(readFileSync(file, 'utf8'), before);
+  });
+}
+
+test('hosted record permits shared reads because it is not a secret', { skip: modeSkip }, (t) => {
+  const dir = folder(t);
+  firstStartRecord(dir, []);
+  const before = loadHostedRecord(dir);
+  chmodSync(join(dir, HOSTED_RECORD_FILE), 0o644);
+  assert.deepEqual(loadHostedRecord(dir), before);
+});
+
+test('a dangling symlink is a damaged hosted record, not an absent one', {
+  skip: process.platform === 'win32' && 'links need privileges on Windows',
+}, (t) => {
+  const dir = folder(t), file = join(dir, HOSTED_RECORD_FILE);
+  symlinkSync(join(dir, 'missing'), file);
+  assert.equal(loadHostedRecord(dir), null);
+  firstStartRecord(dir, []);
+  assert.ok(lstatSync(file).isSymbolicLink());
 });

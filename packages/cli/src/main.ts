@@ -15,7 +15,7 @@ import { availableParallelism, homedir, tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { createServer as createNetServer } from 'node:net';
-import { accessSync, closeSync, constants, existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, readFileSync, statSync } from 'node:fs';
+import { accessSync, closeSync, constants, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { readSecret } from './prompt.ts';
 import { askServer } from './ask-server.ts';
@@ -1649,6 +1649,7 @@ function main(argv: string[]): number {
       const from = flag(args, '--from');
       const fmsDir = flag(args, '--fms-dir');
       const save = flag(args, '--save');
+      if (save && lstatSync(save, { throwIfNoEntry: false })) throw new Error(`migrate-fms: ${save} already exists; choose another name or remove it`);
       const dryRun = bool(args, '--dry-run');
       if (!from && !fmsDir) throw new Error('migrate-fms: give the FileMaker Server folder (--fms-dir) and/or its Admin API (--from URL)');
       if (fmsDir && !existsSync(fmsDir)) throw new Error(`migrate-fms: ${fmsDir} doesn't exist`);
@@ -1660,7 +1661,7 @@ function main(argv: string[]): number {
         : (process.env.TABULARIUS_FMS_PASSWORD !== undefined ? Promise.resolve(process.env.TABULARIUS_FMS_PASSWORD) : readSecret(`FileMaker Server password for ${user}`))
           .then((password) => fetchFmsExport(from, user, password, bool(args, '--insecure')));
       read.then((exp) => {
-        if (save) writeChecked(save, JSON.stringify(exp, null, 2) + '\n', { mode: 0o600 });
+        if (save) writeChecked(save, JSON.stringify(exp, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
         const report = migrateFms(exp, resolve(path), { fmsDir, keyPassphrase: process.env.TABULARIUS_FMS_KEY_PASSPHRASE, dryRun,
           onProgress: dryRun ? undefined : ({ completed, total, elapsedMs, etaMs }) => {
             process.stderr.write(`Migration: ${completed}/${total} files checked (${Math.round(elapsedMs / 1000)}s elapsed${etaMs === null ? '' : `, about ${Math.round(etaMs / 1000)}s remaining`})\n`);

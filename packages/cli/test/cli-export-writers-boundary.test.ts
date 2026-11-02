@@ -36,21 +36,22 @@ test('migrate-fms --save creates a private file during a dry run without changin
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('migrate-fms --save makes its file private and does not write through a planted link', { skip }, () => {
+test('migrate-fms --save preserves existing files and does not write through a planted link', { skip }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-save-boundary-'));
   try {
     const exported = join(dir, 'export.json');
     writeFileSync(exported, JSON.stringify({ general: { name: 'Synthetic server' } }));
     const dest = join(dir, 'dest');
     mkdirSync(dest);
-    // A file that is already there, readable by others, is replaced whole and made private.
+    // An existing export is refused without changing its bytes or permissions.
     const saved = join(dir, 'saved.json');
     writeFileSync(saved, 'left over'.repeat(100));
     chmodSync(saved, 0o644);
     const first = cli('migrate-fms', dest, '--from', exported, '--save', saved, '--dry-run');
-    assert.equal(first.status, 0, first.stderr);
-    assert.equal(statSync(saved).mode & 0o777, 0o600);
-    assert.deepEqual(JSON.parse(readFileSync(saved, 'utf8')), { general: { name: 'Synthetic server' } });
+    assert.equal(first.status, 1, first.stderr);
+    assert.match(first.stderr, /already exists; choose another name or remove it/);
+    assert.equal(statSync(saved).mode & 0o777, 0o644);
+    assert.equal(readFileSync(saved, 'utf8'), 'left over'.repeat(100));
     // A link planted at the name is refused, and what it points to is left alone.
     const victim = join(dir, 'victim.txt');
     writeFileSync(victim, 'keep');
@@ -58,7 +59,7 @@ test('migrate-fms --save makes its file private and does not write through a pla
     symlinkSync(victim, link);
     const second = cli('migrate-fms', dest, '--from', exported, '--save', link, '--dry-run');
     assert.equal(second.status, 1, second.stderr);
-    assert.match(second.stderr, REFUSAL);
+    assert.match(second.stderr, /already exists; choose another name or remove it/);
     assert.equal(readFileSync(victim, 'utf8'), 'keep');
     assert.ok(lstatSync(link).isSymbolicLink());
   } finally { rmSync(dir, { recursive: true, force: true }); }

@@ -1,9 +1,9 @@
 import { createHash, createPrivateKey, X509Certificate } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { lstatSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { createSecureContext } from 'node:tls';
 import { atomicWrite } from '../../store/src/durable.ts';
-import { readFileSync } from '../../store/src/fs-boundary.ts';
+import { readCredentialFileSync } from '../../store/src/fs-boundary.ts';
 
 export interface TlsPair { cert: string; key: string }
 
@@ -17,15 +17,15 @@ export function validateTlsPair(pair: TlsPair): void {
 export function readTlsPair(base: string): TlsPair | undefined {
   try {
     let pair: TlsPair;
-    if (existsSync(base + '.current')) {
-      const file = readFileSync(base + '.current', 'utf8').trim();
+    if (lstatSync(base + '.current', { throwIfNoEntry: false })) {
+      const file = readCredentialFileSync(base + '.current', 0o022).trim();
       if (!file.startsWith(basename(base) + '.') || !/^[a-f0-9]{64}\.pem$/.test(file.slice(basename(base).length + 1))) return undefined;
-      const pem = readFileSync(join(dirname(base), file), 'utf8');
+      const pem = readCredentialFileSync(join(dirname(base), file), 0o077);
       const cert = pem.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g)?.join('\n');
       if (!cert) return undefined;
       pair = { cert: cert + '\n', key: createPrivateKey(pem).export({ type: 'pkcs8', format: 'pem' }) as string };
     } else {
-      pair = { cert: readFileSync(base + '.crt', 'utf8'), key: readFileSync(base + '.key', 'utf8') };
+      pair = { cert: readCredentialFileSync(base + '.crt', 0o022), key: readCredentialFileSync(base + '.key', 0o077) };
     }
     validateTlsPair(pair);
     return pair;
