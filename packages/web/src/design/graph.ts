@@ -105,7 +105,7 @@ export function graphTab(studio: Studio): HTMLElement {
     const a = at.get(r.leftTableOccurrenceId);
     const b = at.get(r.rightTableOccurrenceId);
     if (!a || !b) continue;
-    const g = svg('g', { class: `d-rel${sel.relationship === r.id ? ' selected' : ''}` });
+    const g = svg('g', { class: `d-rel${sel.relationship === r.id ? ' selected' : ''}`, tabindex: 0, role: 'button', 'aria-label': relationshipName(r), 'aria-pressed': String(sel.relationship === r.id) });
     // A line from field to field for each pair of match fields, leaving each box from its nearer side.
     const rightward = a.left + a.width / 2 <= b.left + b.width / 2;
     const ax = rightward ? a.left + a.width : a.left;
@@ -122,11 +122,20 @@ export function graphTab(studio: Studio): HTMLElement {
     const tip = svg('title');
     tip.textContent = r.predicates.map((x) => `${r.leftTableOccurrence}::${x.leftField} ${x.operator} ${r.rightTableOccurrence}::${x.rightField}`).join('\n');
     g.append(label, tip);
-    g.addEventListener('click', (e) => {
-      e.stopPropagation();
+    const pick = () => {
       sel.relationship = r.id;
       sel.occurrence = undefined;
       studio.render();
+    };
+    g.addEventListener('click', (e) => {
+      e.stopPropagation();
+      pick();
+    });
+    g.addEventListener('keydown', (e) => {
+      if (!selectsLine(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      pick();
     });
     canvas.append(g);
   }
@@ -435,6 +444,19 @@ function occurrencePanel(studio: Studio, to: DesignOccurrence): HTMLElement[] {
   });
   if (!fieldsOf(studio, to.id).length) relate.hidden = true;
   return [edit, relate];
+}
+
+/** What a relationship line is called to a screen reader: the two occurrences and the comparisons between them. */
+export function relationshipName(r: DesignRelationship): string {
+  const left = r.leftTableOccurrence ?? 'the left table';
+  const right = r.rightTableOccurrence ?? 'the right table';
+  const pairs = r.predicates.map((p) => `${p.leftField ?? 'a field'} ${p.operator} ${p.rightField ?? 'a field'}`).join(', ');
+  return pairs ? `Relationship between ${left} and ${right}: ${pairs}` : `Relationship between ${left} and ${right}`;
+}
+
+/** Enter or Space on a focused relationship line selects it, as a click does. */
+export function selectsLine(e: { key: string; altKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }): boolean {
+  return (e.key === 'Enter' || e.key === ' ') && !e.altKey && !e.ctrlKey && !e.metaKey;
 }
 
 /** Build the occurrence edit without turning an empty table choice into table id zero. */

@@ -186,7 +186,8 @@ legend { padding: 0 var(--s1); color: var(--text); font-size: var(--t-sm); font-
 .d-graph-issues .warning button { border-left-color: var(--warn); }
 .d-rel-line { stroke: var(--d-graph-line); stroke-width: 1.5; }
 .d-rel-hit { stroke: transparent; stroke-width: 12; cursor: pointer; }
-.d-rel.selected .d-rel-line { stroke: var(--accent); stroke-width: 2.5; }
+.d-rel:focus { outline: none; }
+.d-rel.selected .d-rel-line, .d-rel:focus-visible .d-rel-line { stroke: var(--accent); stroke-width: 2.5; }
 .d-rel-label { font-size: 12px; fill: var(--text); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; }
 .d-to-toggle { font-size: 11px; fill: var(--text); cursor: pointer; }
 g.d-field { cursor: crosshair; }
