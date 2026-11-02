@@ -34,7 +34,7 @@ A second model reviewed this change before the pull request and found ten issues
 
 ## Verification and limits
 
-Still open: the CSRF cookie uses the `__Host-` prefix only when the server knows it is behind HTTPS, so a TLS-terminating proxy without a configured public address gets the plain cookie name; the authorize form carries its CSRF value in a single cookie, so two sign-in tabs open at once invalidate each other. Registration limits are counted per process, so a cluster multiplies them.
+Still open: the authorize form carries its CSRF value in a single cookie, so two sign-in tabs open at once invalidate each other. Registration limits are counted per process, so a cluster multiplies them.
 
 `node --test --test-concurrency=2 --test-reporter=spec packages/server/test/oauth-conformance.test.ts`: **11 passed, 0 failed** (the registration and token-spelling cases moved to `oauth-registration.test.ts`: 4 passed). The file completed in under 30 seconds. The final combined OAuth and MCP-origin run passed **23/23**; the earlier generated-data MCP-origin and MCP-signin-parity run passed **21/21**. `npm run typecheck` and `./node_modules/.bin/tsc -p tsconfig.json --noEmit`: passed.
 

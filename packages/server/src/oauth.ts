@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { openSync as openChecked } from '../../store/src/fs-boundary.ts';
 import { spendPasswordCheck, StoreError, type Store } from '../../store/src/index.ts';
+import { secureConnection } from './exposure-headers.ts';
 import { publicPasswordLockout } from './password-login-policy.ts';
 import { aiBlocker, aiRefusal } from './ai-access.ts';
 import type { Host } from './host.ts';
@@ -262,7 +263,8 @@ export class OAuthServer {
   }
 
   private csrfCookie(req?: IncomingMessage): { name: string; attributes: string } {
-    const secure = (this.opts.publicUrl ? new URL(this.opts.publicUrl).protocol === 'https:' : false) || (req?.socket as { encrypted?: boolean } | undefined)?.encrypted;
+    // HTTPS ended here, or in a proxy this server believes (the same test the console's cookie uses), or the public address is https.
+    const secure = (this.opts.publicUrl ? new URL(this.opts.publicUrl).protocol === 'https:' : false) || (req !== undefined && secureConnection(req));
     return secure
       ? { name: '__Host-tabularius_oauth_csrf', attributes: 'Path=/; HttpOnly; SameSite=Strict; Max-Age=600; Secure' }
       : { name: 'tabularius_oauth_csrf', attributes: 'Path=/oauth/authorize; HttpOnly; SameSite=Strict; Max-Age=600' };
