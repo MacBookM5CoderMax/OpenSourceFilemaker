@@ -14,7 +14,7 @@ for (const failure of ['abort', 500, 404] as const) {
         await addWatch(page);
         await page.route(debugRoute, fail);
         await page.goto(hosted.url + `/app/${tool}.html`);
-        await until(() => page.locator('#app').textContent(), (s) => /Synthetic failure|Failed to fetch/.test(s ?? ''), 10_000);
+        await until(() => page.locator('#app').textContent(), (s) => /Synthetic failure|Can't reach the server/.test(s ?? ''), 10_000);
         await saved(page);
         assert.ok(!(await page.locator('#app').textContent())?.includes(formula));
         await page.unroute(debugRoute, fail);
