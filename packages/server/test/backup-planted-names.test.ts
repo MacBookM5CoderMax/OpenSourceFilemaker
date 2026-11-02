@@ -4,7 +4,7 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore } from '../../store/src/index.ts';
@@ -128,4 +128,61 @@ test('a link or folder at a set\'s manifest or at a log is refused and never rea
   rmSync(join(logs, '2026-01-01_000000.000Z.log'));
   mkdirSync(join(logs, '2026-01-01_000000.000Z.log'));
   assert.throws(() => scanLogs(logs));
+});
+
+for (const target of ['existing', 'missing']) {
+  test(`next backup copies fresh when the previous manifest is a link to ${target} file`, { skip, timeout: 60_000 }, async (t) => {
+    const { dir } = sandbox(t);
+    const live = join(dir, 'live');
+    const dest = join(dir, 'backups');
+    const container = join(live, 'Files', 'A', 'one.txt');
+    mkdirSync(join(live, 'Files', 'A'), { recursive: true });
+    createStore(join(live, 'A.openhbam.sqlite'));
+    writeFileSync(container, 'synthetic container');
+    const first = await backupFolder(live, dest, 0, '');
+    const manifest = join(first.dir, 'backup.json');
+    const outside = join(dir, 'outside.json');
+    if (target === 'existing') writeFileSync(outside, readFileSync(manifest));
+    rmSync(manifest);
+    symlinkSync(outside, manifest);
+    const lines: string[] = [];
+    const warn = console.warn;
+    console.warn = (...args: unknown[]) => { lines.push(args.map(String).join(' ')); };
+    let next;
+    try { next = await backupFolder(live, dest, 1, ''); }
+    finally { console.warn = warn; }
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /previous backup set .* could not be used as a base.*backup\.json.*symlink/i);
+    assert.notEqual(statSync(join(first.dir, 'Files', 'A', 'one.txt')).ino, statSync(join(next.dir, 'Files', 'A', 'one.txt')).ino);
+    assert.equal(readFileSync(join(next.dir, 'Files', 'A', 'one.txt'), 'utf8'), 'synthetic container');
+    assert.ok(lstatSync(manifest).isSymbolicLink());
+    assert.equal(existsSync(outside), target === 'existing');
+  });
+}
+
+test('next backup copies fresh when a previous container copy is a symlink', { skip, timeout: 60_000 }, async (t) => {
+  const { dir } = sandbox(t);
+  const live = join(dir, 'live');
+  const dest = join(dir, 'backups');
+  const relativeCopy = join('Files', 'A', 'one.txt');
+  mkdirSync(join(live, 'Files', 'A'), { recursive: true });
+  createStore(join(live, 'A.openhbam.sqlite'));
+  writeFileSync(join(live, relativeCopy), 'synthetic container');
+  const first = await backupFolder(live, dest, 0, '');
+  const oldCopy = join(first.dir, relativeCopy);
+  const outside = join(dir, 'outside.txt');
+  writeFileSync(outside, readFileSync(oldCopy));
+  rmSync(oldCopy);
+  symlinkSync(outside, oldCopy);
+  const lines: string[] = [];
+  const warn = console.warn;
+  console.warn = (...args: unknown[]) => { lines.push(args.map(String).join(' ')); };
+  let next;
+  try { next = await backupFolder(live, dest, 1, ''); }
+  finally { console.warn = warn; }
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /previous backup set .* could not be used as a base.*one\.txt.*symlink/i);
+  assert.equal(readFileSync(join(next.dir, relativeCopy), 'utf8'), 'synthetic container');
+  assert.ok(lstatSync(oldCopy).isSymbolicLink());
+  assert.notEqual(statSync(join(next.dir, relativeCopy)).ino, statSync(outside).ino);
 });

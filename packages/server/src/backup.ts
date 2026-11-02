@@ -112,6 +112,35 @@ export function backupSets(dest: string): string[] {
   return readdirSync(dest).filter((n) => SET.test(n) && isFolder(n)).sort();
 }
 
+/** Check paths the incremental container copy may read, including a link in a copy's parent path. */
+function unusableBase(folder: string, names: string[], setDir: string, passphrase: string | undefined): string | undefined {
+  const check = (path: string, label: string): string | undefined => {
+    try {
+      const st = lstatSync(path);
+      if (st.isSymbolicLink()) return `${label} is a symlink`;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+    }
+    return undefined;
+  };
+  const manifest = check(join(setDir, 'backup.json'), 'backup.json');
+  if (manifest) return manifest;
+  for (const rel of externalFiles(folder, names.map((f) => f.slice(0, -STORE_EXT.length)))) {
+    let path = setDir;
+    const parts = rel.split('/');
+    for (const [index, part] of parts.entries()) {
+      path = join(path, part);
+      const problem = index < parts.length - 1 || !passphrase ? check(path, rel) : undefined;
+      if (problem) return problem;
+    }
+    if (passphrase) {
+      const encrypted = check(path + ENCRYPTED_EXT, rel + ENCRYPTED_EXT);
+      if (encrypted) return encrypted;
+    }
+  }
+  return undefined;
+}
+
 /** The passphrase backups are encrypted with, if one is set (set but empty is an error, not "no passphrase"). */
 export function backupKey(): string | undefined {
   return secret('TABULARIUS_BACKUP_KEY') ?? secret('TABULARIUS_ENCRYPTION_KEY');
@@ -255,8 +284,12 @@ async function backupOnceHeld(folder: string, dest: string, keep: number, passph
       : `${folder} has no database files to back up; check that the data folder is mounted and is the right one`);
   }
   const previous = backupSets(dest).at(-1);
+  const previousSet = previous && join(dest, previous);
+  const problem = previousSet && unusableBase(folder, names, previousSet, passphrase);
+  if (problem) console.warn(`Previous backup set ${previous} could not be used as a base: ${problem}; copying fresh from source`);
+  const base = problem ? undefined : previousSet;
   // Before anything is made: a backup that cannot fit would fill the disk the files themselves are on.
-  checkRoom(folder, names, dest, previous && join(dest, previous), statfs);
+  checkRoom(folder, names, dest, base, statfs);
   const latest = previous;
   let name = stamp(new Date(now()));
   if (latest && name <= latest) name = afterStamp(latest);
@@ -295,13 +328,13 @@ async function backupOnceHeld(folder: string, dest: string, keep: number, passph
       await recordChecksum(partial, f, stored(join(partial, f))!);
     }
     check();
-    await backupExternal(folder, names.map((f) => f.slice(0, -STORE_EXT.length)), partial, previous && join(dest, previous), passphrase, signal);
+    await backupExternal(folder, names.map((f) => f.slice(0, -STORE_EXT.length)), partial, base, passphrase, signal);
     check();
     crashPoint('backup:after-external');
     const verified = await verifySet(partial, passphrase);
     if (!verified.ok) {
       // A container linked from the previous set may be the damaged one: the next backup copies it fresh.
-      if (previous) blockReuse(join(dest, previous), Object.keys(await verifyExternal(partial, passphrase)));
+      if (base) blockReuse(base, Object.keys(await verifyExternal(partial, passphrase)));
       throw new Error(describeCheck(name, verified));
     }
     check();
@@ -315,7 +348,7 @@ async function backupOnceHeld(folder: string, dest: string, keep: number, passph
     throw e;
   }
   const sets = backupSets(dest);
-  const removed = keep > 0 ? sets.slice(0, Math.max(0, sets.length - keep)) : [];
+  const removed = keep > 0 ? sets.slice(0, Math.max(0, sets.length - keep)).filter((set) => !problem || set !== previous) : [];
   // Said before the sets go, so the off-site mirror removes those, and only those, from the bucket.
   try { recordPrunedSets(dest, removed); } catch { /* the sets stay off-site: the mirror removes only what is recorded */ }
   for (const old of removed) rmSync(join(dest, old), { recursive: true, force: true });
