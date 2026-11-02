@@ -62,6 +62,8 @@ Known gap: the admin password file (`.openhbam-admin`) is refused when a link, p
 - `packages/server/src/ai-credentials.ts`
 - `packages/server/src/ai-usage.ts`
 - `packages/server/src/backup-external.ts`
+- `packages/server/src/backup-info.ts`
+- `packages/server/src/backup-log-chain.ts`
 - `packages/server/src/backup-verify.ts`
 - `packages/server/src/backup.ts`
 - `packages/server/src/connections.ts`
