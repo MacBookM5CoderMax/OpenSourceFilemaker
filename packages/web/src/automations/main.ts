@@ -24,7 +24,7 @@ function session(): { db: string; token: string } | undefined {
 async function start(): Promise<void> {
   const s = session();
   if (!s) {
-    app.replaceChildren(h('p', { class: 'empty' }, 'Log in to a file first, then open Automations from its toolbar. ', h('a', { href: './' }, 'Log in')));
+    app.replaceChildren(h('p', { class: 'empty', role: 'status' }, 'Log in to a file first, then open Automations from its toolbar. ', h('a', { href: './' }, 'Log in')));
     return;
   }
   const base = `/tabularius/automations/v1/databases/${encodeURIComponent(s.db)}`;
@@ -54,7 +54,7 @@ async function start(): Promise<void> {
     try {
       body = await call('GET');
     } catch (e) {
-      list.replaceChildren(h('p', { class: 'empty' }, plainMessage(e)));
+      list.replaceChildren(h('p', { class: 'empty', role: 'alert' }, plainMessage(e)));
       return;
     }
     const note = h('p', { class: 'dash-note' }, `Scripts run on the server${body.network ? '; Insert from URL may reach the network for automations that allow it' : ", and can't reach the network until an administrator turns on Script network for this file"}. ` +

@@ -60,7 +60,7 @@ function session(): { db: string; token: string } | undefined {
 async function start(): Promise<void> {
   const s = session();
   if (!s) {
-    app.replaceChildren(h('div', { class: 'd-empty' }, h('p', {}, 'Log in to a file first, then open Manage Security.'), h('a', { href: './' }, 'Log in')));
+    app.replaceChildren(h('div', { class: 'd-empty', role: 'status' }, h('p', {}, 'Log in to a file first, then open Manage Security.'), h('a', { href: './' }, 'Log in')));
     return;
   }
   const client = new SecurityClient(s.db, s.token);
@@ -71,7 +71,7 @@ async function start(): Promise<void> {
     const msg = e instanceof SecurityError && e.code === 952 ? 'Your session ended. Log in again, then open Manage Security.'
       : e instanceof SecurityError && e.code === 9 ? 'Manage Security needs an account with full access.'
       : errorText(e);
-    app.replaceChildren(h('div', { class: 'd-empty' }, h('p', {}, msg), h('a', { href: './' }, 'Back to the file')));
+    app.replaceChildren(h('div', { class: 'd-empty', role: 'alert' }, h('p', {}, msg), h('a', { href: './' }, 'Back to the file')));
     return;
   }
 
@@ -113,7 +113,7 @@ async function start(): Promise<void> {
       try {
         body.replaceChildren(make(sec));
       } catch (e) {
-        body.replaceChildren(h('p', { class: 'd-empty' }, errorText(e)));
+        body.replaceChildren(h('p', { class: 'd-empty', role: 'alert' }, errorText(e)));
       }
     },
   };
@@ -147,4 +147,4 @@ async function start(): Promise<void> {
   }
 }
 
-start().catch((e) => app.replaceChildren(h('p', { class: 'd-empty' }, `Couldn't start: ${errorText(e)}`)));
+start().catch((e) => app.replaceChildren(h('p', { class: 'd-empty', role: 'alert' }, `Couldn't start: ${errorText(e)}`)));

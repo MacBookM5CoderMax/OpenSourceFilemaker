@@ -88,7 +88,7 @@ function store(key: string, value: unknown): void {
 async function start(): Promise<void> {
   const s = session();
   if (!s) {
-    app.replaceChildren(h('p', { class: 'empty' }, 'Log in to a file first, then open the Script Debugger. ', h('a', { href: './' }, 'Log in')));
+    app.replaceChildren(h('p', { class: 'empty', role: 'status' }, 'Log in to a file first, then open the Script Debugger. ', h('a', { href: './' }, 'Log in')));
     return;
   }
   discardLegacyWatches(s.db);
@@ -129,7 +129,7 @@ async function start(): Promise<void> {
     });
   } catch (e) {
     const msg = e instanceof DebugError && e.code === 952 ? 'Your session ended. Log in again, then open the Script Debugger.' : plainMessage(e);
-    app.replaceChildren(h('p', { class: 'empty' }, msg, ' ', h('a', { href: './' }, 'Back to the file')));
+    app.replaceChildren(h('p', { class: 'empty', role: 'alert' }, msg, ' ', h('a', { href: './' }, 'Back to the file')));
     return;
   }
 
@@ -666,4 +666,4 @@ async function start(): Promise<void> {
   render();
 }
 
-start().catch((e) => app.replaceChildren(h('p', { class: 'empty' }, `Couldn't start: ${plainMessage(e)}`)));
+start().catch((e) => app.replaceChildren(h('p', { class: 'empty', role: 'alert' }, `Couldn't start: ${plainMessage(e)}`)));

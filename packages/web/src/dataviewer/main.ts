@@ -61,7 +61,7 @@ function save(key: string, value: unknown): void {
 async function start(): Promise<void> {
   const s = session();
   if (!s) {
-    app.replaceChildren(h('p', { class: 'empty' }, 'Log in to a file first, then open the Data Viewer from its toolbar. ', h('a', { href: './' }, 'Log in')));
+    app.replaceChildren(h('p', { class: 'empty', role: 'status' }, 'Log in to a file first, then open the Data Viewer from its toolbar. ', h('a', { href: './' }, 'Log in')));
     return;
   }
   discardLegacyWatches(s.db);
@@ -367,4 +367,4 @@ async function start(): Promise<void> {
   await render();
 }
 
-start().catch((e) => app.replaceChildren(h('p', { class: 'empty' }, `Couldn't start: ${plainMessage(e)}`)));
+start().catch((e) => app.replaceChildren(h('p', { class: 'empty', role: 'alert' }, `Couldn't start: ${plainMessage(e)}`)));

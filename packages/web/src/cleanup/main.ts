@@ -22,7 +22,7 @@ function session(): { db: string; token: string } | undefined {
 async function start(): Promise<void> {
   const s = session();
   if (!s) {
-    app.replaceChildren(h('p', { class: 'empty' }, 'Log in to a file first, then open Clean Up Data from its toolbar. ', h('a', { href: './' }, 'Log in')));
+    app.replaceChildren(h('p', { class: 'empty', role: 'status' }, 'Log in to a file first, then open Clean Up Data from its toolbar. ', h('a', { href: './' }, 'Log in')));
     return;
   }
   const auth = { authorization: `Bearer ${s.token}`, 'content-type': 'application/json' };

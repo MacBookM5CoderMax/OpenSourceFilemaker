@@ -1689,7 +1689,7 @@ class Session implements Host {
     }
     if (!first) {
       const design = h('a', { href: 'design.html' }, 'Open Design');
-      this.content.replaceChildren(h('p', { class: 'empty' }, 'This file has no layouts the web client can show yet. ', design, ' to add tables and layouts.'));
+      this.content.replaceChildren(h('p', { class: 'empty', role: 'status' }, 'This file has no layouts the web client can show yet. ', design, ' to add tables and layouts.'));
       this.renderToolbar();
       return;
     }
@@ -8522,7 +8522,7 @@ function showBusyScreen(): void {
 
 start().catch((e) => {
   if (e instanceof ApiError && e.status === 503) showBusyScreen();
-  else app.replaceChildren(h('p', { class: 'fatal' }, `Couldn't start: ${errorText(e)}`));
+  else app.replaceChildren(h('p', { class: 'fatal', role: 'alert' }, `Couldn't start: ${errorText(e)}`));
 });
 
 // Installable: the service worker keeps the client's own files so the app opens without a connection (it keeps no

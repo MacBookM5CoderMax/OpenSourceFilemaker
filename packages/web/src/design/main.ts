@@ -81,7 +81,7 @@ function session(): { db: string; token: string } | undefined {
 async function start(): Promise<void> {
   const s = session();
   if (!s) {
-    app.replaceChildren(h('div', { class: 'd-empty' }, h('p', {}, 'Log in to a file first, then open Design.'), h('a', { href: './' }, 'Log in')));
+    app.replaceChildren(h('div', { class: 'd-empty', role: 'status' }, h('p', {}, 'Log in to a file first, then open Design.'), h('a', { href: './' }, 'Log in')));
     return;
   }
   const client = new DesignClient(s.db, s.token);
@@ -90,7 +90,7 @@ async function start(): Promise<void> {
     design = await client.design();
   } catch (e) {
     const msg = e instanceof DesignError && e.code === 952 ? 'Your session ended. Log in again, then open Design.' : errorText(e);
-    app.replaceChildren(h('div', { class: 'd-empty' }, h('p', {}, msg), h('a', { href: './' }, 'Back to the file')));
+    app.replaceChildren(h('div', { class: 'd-empty', role: 'alert' }, h('p', {}, msg), h('a', { href: './' }, 'Back to the file')));
     return;
   }
 
@@ -467,7 +467,7 @@ function designContext(studio: Studio, tab: TabId): { tab: string; selection?: {
   return { tab: label, ...(selection.length ? { selection } : {}) };
 }
 
-start().catch((e) => app.replaceChildren(h('p', { class: 'd-empty' }, `Couldn't start: ${errorText(e)}`)));
+start().catch((e) => app.replaceChildren(h('p', { class: 'd-empty', role: 'alert' }, `Couldn't start: ${errorText(e)}`)));
 
 /** Where someone is in design mode, in words. */
 function whereIs(studio: Studio, d: Designer): string {

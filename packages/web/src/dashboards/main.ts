@@ -29,7 +29,7 @@ function session(): { db: string; token: string } | undefined {
 async function start(): Promise<void> {
   const s = session();
   if (!s) {
-    app.replaceChildren(h('p', { class: 'empty' }, 'Log in to a file first, then open Dashboards from its toolbar. ', h('a', { href: './' }, 'Log in')));
+    app.replaceChildren(h('p', { class: 'empty', role: 'status' }, 'Log in to a file first, then open Dashboards from its toolbar. ', h('a', { href: './' }, 'Log in')));
     return;
   }
   const base = `/tabularius/dashboards/v1/databases/${encodeURIComponent(s.db)}`;
@@ -226,7 +226,7 @@ async function start(): Promise<void> {
   try {
     await loadList();
   } catch (e) {
-    body.replaceChildren(h('p', { class: 'empty' }, plainMessage(e)));
+    body.replaceChildren(h('p', { class: 'empty', role: 'alert' }, plainMessage(e)));
     return;
   }
   const wanted = new URL(location.href).searchParams.get('id');
