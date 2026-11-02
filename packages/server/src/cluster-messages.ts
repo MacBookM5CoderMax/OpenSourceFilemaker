@@ -149,7 +149,7 @@ function shaped(note: Record<string, unknown>, sender: number): Verdict<Note> {
     case 'open-state': {
       if (!isFileName(note.file) || (note.error !== undefined && typeof note.error !== 'string')) return { refused: 'an open-state note of the wrong shape' };
       // Keep the report even when the reason is long.
-      return { ok: { k: 'open-state', from: sender, file: note.file, ...(note.error !== undefined ? { error: note.error.slice(0, OPEN_STATE_TEXT_MAX) } : {}) } };
+      return { ok: { k: 'open-state', from: sender, file: note.file, ...(note.error !== undefined ? { error: note.error.length > OPEN_STATE_TEXT_MAX ? note.error.slice(0, OPEN_STATE_TEXT_MAX - 1) + '…' : note.error } : {}) } };
     }
     default: return { refused: 'a note of an unknown kind' };
   }

@@ -80,7 +80,7 @@ test('a long error text is cut to the longest the front process passes on, and t
   const long = 'EPERM '.repeat(2000);
   const note = openStateNote({ k: 'open-state', from: 0, file: 'Sales', error: long }, 3);
   assert.equal(note?.from, 3);
-  assert.equal(note?.error, long.slice(0, 4096));
+  assert.equal(note?.error, long.slice(0, 4095) + '…');
   assert.equal(note?.error?.length, 4096);
   assert.equal(openStateNote({ k: 'open-state', file: 'Sales', error: 'e'.repeat(4096) }, 1)?.error?.length, 4096);
   for (const bad of [{ k: 'open-state', file: 'a', error: 3 }, { k: 'open-state', file: 'a', error: { length: 1 } }, { k: 'open-state', file: 'a'.repeat(256) }]) assert.equal(openStateNote(bad, 1), undefined);

@@ -24,31 +24,39 @@ function looksLikePath(text: string): boolean {
 const NAME = String.raw`(?:[^\s'"` + '`' + String.raw`;,<>|\\/:]|:(?=[^\s]))`;
 // A drive, two separators (a network share) or one separator that does not follow a word, a dot, a home mark or another separator
 // (so a URL's slashes and "./x" are not taken), then at least one folder, then the last name.
-const ABSOLUTE = new RegExp(String.raw`(?:(?<!\w)[A-Za-z]:[\\/]|(?<![:\w])[\\/]{2}|(?<![\w.~…:/\\])[\\/])(?:${NAME}+[\\/])+(${NAME}*)`, 'g');
+const ABSOLUTE = new RegExp(String.raw`(?:(?<!\w)[A-Za-z]:[\\/]|(?<![:\w])[\\/]{2}|(?<![\w.~…/\\])[\\/])(?:${NAME}+[\\/])+(${NAME}*)`, 'g');
 // Relative to the folder the process runs in, or to a home folder.
 const RELATIVE = new RegExp(String.raw`(?<![\w.…~/\\])(?:\.{1,2}|~)[\\/](?:${NAME}+[\\/])*(${NAME}*)`, 'g');
+// A bare relative path needs two separators, so prose such as "read/write" stays intact.
+// The first folder excludes colons so an error prefix is not consumed with the path.
+const BARE_RELATIVE = new RegExp(String.raw`(?<![\w.…~/\\])[^\s'"` + '`' + String.raw`;,<>|\\/:]+[\\/](?:${NAME}+[\\/])+(${NAME}*)`, 'g');
 
 /**
  * An error's text as an administrator may see it: paths inside the hosted folder are relative to it, any other path (absolute or
  * relative, with spaces or colons in its names, quoted the way Node quotes it or not) is cut to its last segment, control
  * characters become spaces, and the text is capped. A path with a space that is not quoted cannot be told from the words
  * after it: it is cut at the first space, and the rest stays.
+ * Operator-written URLs, including any credentials in them, are preserved rather than redacted.
  */
 export function plainOpenError(text: string, dir: string): string {
-  let out = text;
   // The hosted folder, as given, normalized and resolved, with either separator, longest first.
   const bases = new Set<string>();
   for (const d of dir ? [dir, normalize(dir), resolve(dir)] : []) { bases.add(d); bases.add(d.replace(/\\/g, '/')); }
-  for (const base of [...bases].sort((a, b) => b.length - a.length)) {
-    const bare = base.replace(/[\\/]+$/, '');
-    // Not inside a longer name or path ("metadata/" is not "data/").
-    if (bare) out = out.replace(new RegExp(String.raw`(?<![\w.~…/\\-])${bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\/]`, 'g'), '');
-  }
-  // A quoted path (Node quotes the path of a failed call): all of it between the quotes goes but its last segment.
-  out = out.replace(/(['"`])([^'"`\n]*[\\/][^'"`\n]*)\1/g, (all, quote: string, inside: string) => (looksLikePath(inside) ? `${quote}…/${lastSegment(inside)}${quote}` : all));
-  out = out.replace(RELATIVE, '…/$1').replace(ABSOLUTE, '…/$1');
+  // Keep URLs out of path matching, including quoted URLs and their path components; a file: URL is a local path and is redacted like one.
+  let out = text.split(/((?<![A-Za-z0-9+.-])(?!file:)[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s'"`<>]+)/gi).map((part, index) => {
+    if (index % 2) return part;
+    let out = part;
+    for (const base of [...bases].sort((a, b) => b.length - a.length)) {
+      const bare = base.replace(/[\\/]+$/, '');
+      // Not inside a longer name or path ("metadata/" is not "data/").
+      if (bare) out = out.replace(new RegExp(String.raw`(?<![\w.~…/\\-])${bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\/]`, 'g'), '');
+    }
+    // A quoted path (Node quotes the path of a failed call): all of it between the quotes goes but its last segment.
+    out = out.replace(/(['"`])([^'"`\n]*[\\/][^'"`\n]*)\1/g, (all, quote: string, inside: string) => (looksLikePath(inside) ? `${quote}…/${lastSegment(inside)}${quote}` : all));
+    return out.replace(RELATIVE, '…/$1').replace(ABSOLUTE, '…/$1').replace(BARE_RELATIVE, '…/$1');
+  }).join('');
   // eslint-disable-next-line no-control-regex
-  out = out.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+  out = out.replace(/[\u0000-\u001f\u007f\u0085\u200e\u200f\u2028-\u202e\u2066-\u2069]+/g, ' ').trim();
   return out.length > OPEN_FAILURE_TEXT_MAX ? out.slice(0, OPEN_FAILURE_TEXT_MAX - 1) + '…' : out;
 }
 

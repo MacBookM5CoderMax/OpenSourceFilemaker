@@ -52,7 +52,7 @@ test('the front process takes an open-state note of the right shape and puts the
     assert.equal(openStateNote(bad, 1), undefined);
   }
   // A text over the longest is cut, not refused (see cluster-open-failures-hardening.test.ts).
-  assert.equal(openStateNote({ k: 'open-state', file: 'a', error: 'e'.repeat(4097) }, 1)?.error, 'e'.repeat(4096));
+  assert.equal(openStateNote({ k: 'open-state', file: 'a', error: 'e'.repeat(4097) }, 1)?.error, 'e'.repeat(4095) + '…');
 });
 
 test('a worker that fails to open a file reports it, and the leader lists it until the file opens', { timeout: 10_000 }, async () => {
