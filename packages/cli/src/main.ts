@@ -525,7 +525,7 @@ Hosting (point it at a folder of .fmp12 files; each is converted once):
       ... status                             Accounts that have two-factor sign-in
       ... disable <account>                  Turn it off for an account
   tabularius audit <folder> <database> [--table T] [--record N] [--account A] [--since ISO] [--limit N]
-                                             Who created, changed and deleted which records
+                                             Who created, changed and deleted which records (--limit: 1 to 10000, 200 if left out)
   tabularius audit verify <folder> <database> [--chain security|records] [--sign-key FILE [--check ANCHOR.json]]
                                              Check history read-only; prints JSON. security (the
                                              default) is sign-ins and privilege changes, records
@@ -1083,7 +1083,7 @@ function serviceCommand(cmd: string, args: string[]): number {
   }
   const o: ServiceOptions = {
     ...base,
-    port: Number(flag(args, '--port') ?? 8080),
+    port: wholeFlag(args, '--port', { min: 1, max: 65535 }) ?? 8080,
     // This computer only unless told otherwise: reaching it from the network is a choice made with --host (and HTTPS).
     host: flag(args, '--host') ?? defaultServiceHost(extra),
     system: bool(args, '--system'),
@@ -1324,12 +1324,13 @@ function main(argv: string[]): number {
   if (cmd === 'demo') return demoCommand(args);
   if (cmd === 'doctor') {
     // flag() takes its pair out of args, so each is read once, before the folder is picked from what is left.
-    const port = flag(args, '--port');
+    const port = wholeFlag(args, '--port', { min: 1, max: 65535 });
     const url = flag(args, '--url');
+    if (url !== undefined && !/^https?:\/\/[^\s/]+/i.test(url)) throw new Error(`doctor: --url takes the address people use, such as https://files.example.com, not "${url}"`);
     if (args.includes('--exposure')) {
       // What a running server is open to; asks it like a stranger would (no password), and reads the installed service's options.
-      const sqlPort = flag(args, '--sql-port');
-      runExposure({ ...(url ? { url } : {}), ...(port ? { port: Number(port) } : {}), ...(sqlPort ? { sqlPort: Number(sqlPort) } : {}), service: installed() }).then((checks) => {
+      const sqlPort = wholeFlag(args, '--sql-port', { min: 1, max: 65535 });
+      runExposure({ ...(url ? { url } : {}), ...(port ? { port } : {}), ...(sqlPort ? { sqlPort } : {}), service: installed() }).then((checks) => {
         process.stdout.write(doctorText(checks));
         if (checks.some((c) => c.level === 'problem')) process.exitCode = 1;
       }, (e) => { process.stderr.write(`error: ${plainError(e)}\n`); process.exitCode = 1; });
@@ -1339,7 +1340,7 @@ function main(argv: string[]): number {
     const embedModel = flag(args, '--ai-embed-model');
     const full = args.includes('--full');
     const folder = args.find((a) => !a.startsWith('--')) ?? '.';
-    runDoctor(resolve(folder), { full, ...(port ? { port: Number(port) } : {}), url, embedUrl, embedModel }).then((checks) => {
+    runDoctor(resolve(folder), { full, ...(port ? { port } : {}), url, embedUrl, embedModel }).then((checks) => {
       process.stdout.write(doctorText(checks));
       if (checks.some((c) => c.level === 'problem')) process.exitCode = 1;
     }, (e) => { process.stderr.write(`error: ${plainError(e)}\n`); process.exitCode = 1; });
@@ -2967,11 +2968,11 @@ function main(argv: string[]): number {
       const store = openDatabase(path, database);
       try {
         const n = flag(args, '--record');
-        const limit = flag(args, '--limit');
+        const limit = wholeFlag(args, '--limit', { min: 1, max: 10_000 });
         const since = flag(args, '--since');
         if (n !== undefined && !/^[1-9]\d*$/.test(n)) throw new Error(`audit: --record takes a record id (a whole number), not "${n}"`);
         if (since !== undefined && Number.isNaN(Date.parse(since))) throw new Error(`audit: --since takes a date or time such as 2026-10-01 or 2026-10-01T08:00:00Z, not "${since}"`);
-        for (const e of store.auditLog({ table: flag(args, '--table'), recordId: n === undefined ? undefined : Number(n), account: flag(args, '--account'), since, limit: limit === undefined ? undefined : Number(limit) })) {
+        for (const e of store.auditLog({ table: flag(args, '--table'), recordId: n === undefined ? undefined : Number(n), account: flag(args, '--account'), since, limit })) {
           console.log(auditJsonLine(e));
         }
       } finally {

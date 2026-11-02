@@ -7,7 +7,7 @@ This command's usage comes from `tabularius help audit`. Statements comparing be
 ```text
 Usage:
   tabularius audit <folder> <database> [--table T] [--record N] [--account A] [--since ISO] [--limit N]
-                                             Who created, changed and deleted which records
+                                             Who created, changed and deleted which records (--limit: 1 to 10000, 200 if left out)
   tabularius audit verify <folder> <database> [--chain security|records] [--sign-key FILE [--check ANCHOR.json]]
                                              Check history read-only; prints JSON. security (the
                                              default) is sign-ins and privilege changes, records
