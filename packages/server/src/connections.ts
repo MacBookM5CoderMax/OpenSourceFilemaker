@@ -27,11 +27,11 @@
 import { secret } from '../../store/src/settings.ts';
 import { encryptionKeyFromEnv } from './setting-values.ts';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { lstatSync, mkdirSync, statSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
 import { readJsonStateSync, updateJsonStateSync, withStateLock } from '../../store/src/durable.ts';
-import { readFileSync as readChecked, writeFileSync } from '../../store/src/fs-boundary.ts';
+import { readCredentialFileSync, writeFileSync } from '../../store/src/fs-boundary.ts';
 import { captureOnly, type ConnectionRequest, type ScriptConnections } from '../../scripts/src/index.ts';
 import { OutboundRefused, guardedFetch as guardedRequest, isInternalHost, mappedIPv4 } from '../../scripts/src/net-guard.ts';
 import { S3 } from './s3.ts';
@@ -746,7 +746,7 @@ class Vault {
     return Buffer.concat([d.update(raw.subarray(28)), d.final()]).toString('utf8');
   }
 
-  /** Reads the file again if it changed (another process of a cluster may have written it), and makes the key. */
+  /** Recheck file-backed keys on every use; passphrase-backed state can reuse an unchanged document. */
   private load(): void {
     let st;
     try {
@@ -754,7 +754,7 @@ class Vault {
     } catch {
       st = undefined;
     }
-    if (this.key && (st ? this.seen?.mtimeMs === st.mtimeMs && this.seen.size === st.size : !this.seen)) return;
+    if (this.key && this.salt && (st ? this.seen?.mtimeMs === st.mtimeMs && this.seen.size === st.size : !this.seen)) return;
     this.problem = undefined;
     this.items = {};
     this.seen = st ? { mtimeMs: st.mtimeMs, size: st.size } : undefined;
@@ -780,22 +780,16 @@ class Vault {
     } else {
       this.salt = undefined;
       if (lstatOrNothing(this.keyFile)) {
-        // Read through the boundary: a link or a pipe at the key's name is refused, never followed or waited on (a key a stranger chose would seal every secret with it).
-        let text: string;
         try {
-          text = readChecked(this.keyFile, 'utf8');
+          // Read through the boundary on one descriptor: a link, a pipe or a folder at the key's name is refused, never followed or waited on,
+          // and so is a key another user owns, a second name for it or a mode other users can read (a key a stranger chose would seal every secret with it).
+          this.key = Buffer.from(readCredentialFileSync(this.keyFile, 0o077).trim(), 'hex');
         } catch (e) {
           if ((e as NodeJS.ErrnoException).code !== 'ESTALE') throw e;
           this.key = undefined;
-          this.problem = `${KEY_FILE} is not a plain file (a link, a pipe or a folder stands there); remove it`;
+          this.problem = `${KEY_FILE} is not a plain file owned by the server's user with one link and private permissions (chmod 600)`;
           return;
         }
-        if (process.platform !== 'win32' && statSync(this.keyFile).mode & 0o077) {
-          this.key = undefined;
-          this.problem = `${KEY_FILE} can be read by other users (chmod 600)`;
-          return;
-        }
-        this.key = Buffer.from(text.trim(), 'hex');
         if (this.key.length !== 32) {
           this.key = undefined;
           this.problem = `${KEY_FILE} is damaged`;
