@@ -9,6 +9,6 @@
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | [`TABULARIUS_AI_IMAGE_EMBED`](../environment/tabularius_ai_image_embed.md) |
 | Explained in | [docs/local-embeddings.md](../../../local-embeddings.md) |
-| Code | [packages/cli/src/main.ts:1526](../../../../packages/cli/src/main.ts#L1526) |
+| Code | [packages/cli/src/main.ts:1527](../../../../packages/cli/src/main.ts#L1527) |
 
 [All serve flags](../serve-flags.md)

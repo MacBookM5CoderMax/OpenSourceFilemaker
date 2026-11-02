@@ -8,6 +8,6 @@ How often a backup is made (`1d` by default).
 | Accepted values | interval such as 1d |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1456](../../../../packages/cli/src/main.ts#L1456) |
+| Code | [packages/cli/src/main.ts:1457](../../../../packages/cli/src/main.ts#L1457) |
 
 [All environment variables](../../../environment-variables.md)

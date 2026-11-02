@@ -9,6 +9,6 @@
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | [`TABULARIUS_LDAP_EMAIL_ATTRIBUTE`](../environment/tabularius_ldap_email_attribute.md) |
 | Explained in | [docs/reference/settings/serve-flags.md](../serve-flags.md) |
-| Code | [packages/cli/src/main.ts:1520](../../../../packages/cli/src/main.ts#L1520) |
+| Code | [packages/cli/src/main.ts:1521](../../../../packages/cli/src/main.ts#L1521) |
 
 [All serve flags](../serve-flags.md)

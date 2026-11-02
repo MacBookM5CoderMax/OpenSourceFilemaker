@@ -17,9 +17,10 @@ Usage:
                                              reach a whole state are refused unless serve gets
                                              --accept-partial-standby. URL
                                              is https://, or http:// for this computer
-                                             only; --allow-plain-http (or
-                                             TABULARIUS_ALLOW_PLAIN_HTTP) accepts http://
-                                             to another computer on a network you trust.
+                                             only; --allow-plain-http accepts http://
+                                             to another computer on a network you trust
+                                             (TABULARIUS_ALLOW_PLAIN_HTTP is for serve
+                                             and does not apply here).
 ```
 
 ## Options

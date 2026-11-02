@@ -8,6 +8,6 @@ The contact address given to Let's Encrypt.
 | Accepted values | Contact email address |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1395](../../../../packages/cli/src/main.ts#L1395) |
+| Code | [packages/cli/src/main.ts:1396](../../../../packages/cli/src/main.ts#L1396) |
 
 [All environment variables](../../../environment-variables.md)

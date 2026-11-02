@@ -434,10 +434,10 @@ export const ROWS: Row[] = [
   {
     id: 'standby-transport', section: 'What can reach outside', setting: 'A standby\'s address for the main server',
     default: 'https://, or http:// for this computer only; http:// to another computer is refused, and a redirect from the main server is not followed',
-    changedBy: '`tabularius standby --allow-plain-http` (or `TABULARIUS_ALLOW_PLAIN_HTTP`) accepts http:// to another computer',
+    changedBy: '`tabularius standby --allow-plain-http` accepts http:// to another computer; `TABULARIUS_ALLOW_PLAIN_HTTP` (which the Docker image sets for the server\'s own listener) does not',
     risk: 'Over plain http the replication token and a copy of every hosted file, password hashes and one-time secrets included, cross the network where anyone on the path can read them',
     how: 'probed', expect: 'refused',
-    observe: async (c) => (grep(c.source('packages/cli/src/main.ts'), /(checkPrimaryAddress)\(primary, bool\(args, '--allow-plain-http'\)/) ? 'refused' : 'sent'),
+    observe: async (c) => (grep(c.source('packages/cli/src/main.ts'), /(checkPrimaryAddress)\(primary, bool\(args, '--allow-plain-http'\)\)/) ? 'refused' : 'sent'),
   },
   {
     id: 'update-check', section: 'What can reach outside', setting: 'Telemetry and update checks',

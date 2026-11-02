@@ -177,9 +177,9 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/cli/src/diagnostics.ts:207](../../packages/cli/src/diagnostics.ts#L207) `designCopy` | `SQLite.all` (207); `SQLite.prepare` (207, 210) | OPERATOR |
 | [packages/cli/src/diagnostics.ts:447](../../packages/cli/src/diagnostics.ts#L447) `diagnostics` | `SQLite.get` (447); `SQLite.prepare` (447, 451); `SQLite.all` (451) | OPERATOR |
 | [packages/cli/src/doctor.ts:140](../../packages/cli/src/doctor.ts#L140) `accountChecks` | `SQLite.all` (140); `SQLite.prepare` (140) | OPERATOR |
-| [packages/cli/src/main.ts:739](../../packages/cli/src/main.ts#L739) `accountsWithPasswordOff` | `SQLite.all` (739); `SQLite.prepare` (739) | OPERATOR |
-| [packages/cli/src/main.ts:768](../../packages/cli/src/main.ts#L768) `hostedRead` | `SQLite.all` (768, 771); `SQLite.prepare` (768, 771); `Store.sql` (768, 771) | OPERATOR |
-| [packages/cli/src/main.ts:2494](../../packages/cli/src/main.ts#L2494) `main` | `Store.orphanContainerReport` (2494); `Store.auditLog` (2971); `SQLite.get` (3233); `SQLite.prepare` (3233) | OPERATOR |
+| [packages/cli/src/main.ts:740](../../packages/cli/src/main.ts#L740) `accountsWithPasswordOff` | `SQLite.all` (740); `SQLite.prepare` (740) | OPERATOR |
+| [packages/cli/src/main.ts:769](../../packages/cli/src/main.ts#L769) `hostedRead` | `SQLite.all` (769, 772); `SQLite.prepare` (769, 772); `Store.sql` (769, 772) | OPERATOR |
+| [packages/cli/src/main.ts:2496](../../packages/cli/src/main.ts#L2496) `main` | `Store.orphanContainerReport` (2496); `Store.auditLog` (2973); `SQLite.get` (3235); `SQLite.prepare` (3235) | OPERATOR |
 | [packages/scripts/src/data-api-step.ts:104](../../packages/scripts/src/data-api-step.ts#L104) `respond` | `Store.get` (104, 131, 140); `Store.find` (105, 117) | SCRIPT |
 | [packages/scripts/src/engine.ts:9443](../../packages/scripts/src/engine.ts#L9443) `clearRecords` | `SQLite.all` (9443); `SQLite.prepare` (9443) | SCRIPT |
 | [packages/scripts/src/engine.ts:8213](../../packages/scripts/src/engine.ts#L8213) `ScriptEngine/containerFile` | `Store.get` (8213); `Store.containerId` (8214); `Store.container` (8215) | SCRIPT |

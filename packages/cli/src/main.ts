@@ -188,9 +188,10 @@ Hosting (point it at a folder of .fmp12 files; each is converted once):
                                              reach a whole state are refused unless serve gets
                                              --accept-partial-standby. URL
                                              is https://, or http:// for this computer
-                                             only; --allow-plain-http (or
-                                             TABULARIUS_ALLOW_PLAIN_HTTP) accepts http://
-                                             to another computer on a network you trust.
+                                             only; --allow-plain-http accepts http://
+                                             to another computer on a network you trust
+                                             (TABULARIUS_ALLOW_PLAIN_HTTP is for serve
+                                             and does not apply here).
   tabularius migrate-fms <folder> [--fms-dir DIR] [--from URL|export.json] [--user admin] [--insecure]
                 [--save export.json] [--dry-run]
                                              Switch from FileMaker Server in one step: its hosted
@@ -1814,7 +1815,8 @@ function main(argv: string[]): number {
       const primary = (flag(args, '--primary') ?? process.env.TABULARIUS_PRIMARY)?.trim();
       const token = tokenOption(args, '--token', '--token-file', secret('TABULARIUS_REPLICATION_TOKEN'), process.env.TABULARIUS_REPLICATION_TOKEN_FILE, 'standby').value;
       if (!primary || !token) throw new Error('standby: give --primary URL and --token or --token-file (the main server\'s replication token)');
-      checkPrimaryAddress(primary, bool(args, '--allow-plain-http') || boolean('TABULARIUS_ALLOW_PLAIN_HTTP'));
+      // Only the flag lifts the refusal here: TABULARIUS_ALLOW_PLAIN_HTTP is for the server's own listener (the Docker image sets it), and must not also lift this one.
+      checkPrimaryAddress(primary, bool(args, '--allow-plain-http'));
       const standby = new Standby({ folder: path, primary, token, overwrite: bool(args, '--overwrite'), log: (m) => console.log(m) });
       standby.start();
       const stop = () => {

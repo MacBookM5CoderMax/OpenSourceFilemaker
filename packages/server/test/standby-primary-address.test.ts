@@ -100,14 +100,18 @@ test('the standby command refuses unsafe addresses before it creates anything, a
   assert.ok(!withSecret.stderr.includes(inAddress) && !withSecret.stdout.includes(inAddress), 'a password in the address is not echoed');
   assert.deepEqual(readdirSync(folder), [], 'credentials are refused before any file is made');
 
-  for (const extra of [{ args: ['--allow-plain-http'], env: {} }, { args: [], env: { TABULARIUS_ALLOW_PLAIN_HTTP: '1' } }]) {
-    const started = await run({ ...env, ...extra.env }, ['standby', folder, '--primary', address, '--token', TOKEN, ...extra.args], /standby of /);
-    // On Windows a signal ends the process at once: it never prints "stopped" and has no exit status.
-    if (process.platform === 'win32') assert.equal(started.signal, 'SIGINT', started.stderr);
-    else { assert.equal(started.status, 0, started.stderr); assert.match(started.stdout, /stopped/); }
-    assert.match(started.stdout, /standby of /);
-    assert.ok(!started.stdout.includes(TOKEN) && !started.stderr.includes(TOKEN));
-  }
+  // TABULARIUS_ALLOW_PLAIN_HTTP is the server listener's switch (the Docker image sets it); it must not also lift this refusal.
+  const viaEnv = await run({ ...env, TABULARIUS_ALLOW_PLAIN_HTTP: '1' }, ['standby', folder, '--primary', address, '--token', TOKEN], /standby of /);
+  assert.equal(viaEnv.status, 1, viaEnv.stderr);
+  assert.match(viaEnv.stderr, /plain http to another computer.*--allow-plain-http/);
+  assert.deepEqual(readdirSync(folder), [], 'no state file was made');
+
+  const started = await run(env, ['standby', folder, '--primary', address, '--token', TOKEN, '--allow-plain-http'], /standby of /);
+  // On Windows a signal ends the process at once: it never prints "stopped" and has no exit status.
+  if (process.platform === 'win32') assert.equal(started.signal, 'SIGINT', started.stderr);
+  else { assert.equal(started.status, 0, started.stderr); assert.match(started.stdout, /stopped/); }
+  assert.match(started.stdout, /standby of /);
+  assert.ok(!started.stdout.includes(TOKEN) && !started.stderr.includes(TOKEN));
 });
 
 test('the standby command trims blanks around the primary address, for the check and for the requests', { timeout: 60_000 }, async (t) => {

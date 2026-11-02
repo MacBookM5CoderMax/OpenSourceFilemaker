@@ -101,7 +101,7 @@ export function checkPrimaryAddress(primary: string, allowPlainHttp = false): vo
   // Empty ? and # parts also swallow routes appended to the original address; URL.search/hash omit those empty parts.
   if (url.href.includes('?') || url.href.includes('#')) throw new Error('standby: --primary is the address of the server only, without a ? or # part');
   if (url.protocol === 'http:' && !allowPlainHttp && !isLoopbackHost(url.hostname)) {
-    throw new Error(`standby: --primary ${url.protocol}//${url.host} is plain http to another computer: the replication token and a copy of every hosted file (with password hashes and one-time secrets) would cross the network unencrypted. Use an https:// address, or add --allow-plain-http (TABULARIUS_ALLOW_PLAIN_HTTP) on a network you trust`);
+    throw new Error(`standby: --primary ${url.protocol}//${url.host} is plain http to another computer: the replication token and a copy of every hosted file (with password hashes and one-time secrets) would cross the network unencrypted. Use an https:// address, or add --allow-plain-http on a network you trust`);
   }
 }
 
