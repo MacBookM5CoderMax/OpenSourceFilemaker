@@ -5,7 +5,7 @@
 :root {
   color-scheme: light dark;
   --bg: #f3f5f6; --panel: #ffffff; --sunken: #eef1f3; --field: #ffffff;
-  --text: #1a2226; --muted: #5b676e; --faint: #66727a; --line: #dde3e6; --line-strong: #c6cfd4;
+  --text: #1a2226; --muted: #5b676e; --faint: #606c74; --line: #dde3e6; --line-strong: #c6cfd4;
   --brand: #0d6e7c; --brand-hover: #0a5c68; --brand-text: #ffffff; --brand-soft: #e2f1f3;
   --accent: var(--brand); --accent-hover: var(--brand-hover); --accent-text: var(--brand-text); --accent-soft: var(--brand-soft);
   --ok: #18794e; --ok-soft: #e3f4ea; --bad: #b42318; --bad-soft: #fdecea; --warn: #7a4a00; --warn-soft: #fff4dc;
