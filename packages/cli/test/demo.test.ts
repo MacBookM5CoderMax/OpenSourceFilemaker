@@ -358,7 +358,8 @@ test('the real command: --full prints the sign-ins, the SQL line and the AI hand
   child.stdout.setEncoding('utf8').on('data', (c: string) => { out += c; });
   const exited = new Promise<number | null>((done) => child.on('close', done));
   const started = Date.now();
-  while (!/Claude Desktop/.test(out) && Date.now() - started < 30_000) await new Promise((r) => setTimeout(r, 100));
+  // The banner arrives in several chunks: wait for its last line, the one after the uncleanly-stopped note, before reading any of it.
+  while (!/stopped uncleanly[^\n]*\n\n(?:The files are in|Nothing is kept)[^\n]*\n/.test(out) && Date.now() - started < 30_000) await new Promise((r) => setTimeout(r, 100));
   try {
     assert.match(out, /Also\s+Ava \(Rep\), Morgan \(Manager\), Eli \(Executive\)/);
     assert.match(out, /SQL\s+read-only/);
