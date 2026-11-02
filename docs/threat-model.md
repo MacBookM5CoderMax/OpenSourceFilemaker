@@ -78,6 +78,7 @@ Known gap: the admin password file (`.openhbam-admin`) is refused when a link, p
 - `packages/server/src/server-logs.ts`
 - `packages/server/src/standby.ts`
 - `packages/server/src/stats-log.ts`
+- `packages/server/src/tls-pair.ts`
 - `packages/server/src/uploads.ts`
 - `packages/store/src/durable.ts`
 - `packages/store/src/file-ops.ts`
