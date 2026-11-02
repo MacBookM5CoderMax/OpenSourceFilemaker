@@ -42,8 +42,8 @@ export function plainOpenError(text: string, dir: string): string {
   // The hosted folder, as given, normalized and resolved, with either separator, longest first.
   const bases = new Set<string>();
   for (const d of dir ? [dir, normalize(dir), resolve(dir)] : []) { bases.add(d); bases.add(d.replace(/\\/g, '/')); }
-  // Keep URLs out of path matching, including quoted URLs and their path components; a file: URL is a local path and is redacted like one.
-  let out = text.split(/((?<![A-Za-z0-9+.-])(?!file:)[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s'"`<>]+)/gi).map((part, index) => {
+  // Only web URLs (http, https, ws, wss) are kept as written; file: and every other scheme go through the path rules below like any local path.
+  let out = text.split(/((?<![A-Za-z0-9+.-])(?:https?|wss?):\/\/[^\s'"`<>]+)/gi).map((part, index) => {
     if (index % 2) return part;
     let out = part;
     for (const base of [...bases].sort((a, b) => b.length - a.length)) {

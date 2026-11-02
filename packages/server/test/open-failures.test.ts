@@ -63,3 +63,9 @@ test('a file: URL is a local path and is cut to its final name, while other URLs
   assert.equal(shown('open "file:///Users/me/Databases/a.sqlite" failed'), 'open "…/a.sqlite" failed');
   assert.equal(shown('GET https://example.test/a/b/c failed'), 'GET https://example.test/a/b/c failed');
 });
+
+test('only web URLs are kept as written: any other scheme\'s local path is cut like a file: URL', () => {
+  assert.equal(shown('cannot open sqlite:///home/x/secret/db.sqlite now'), 'cannot open sqlite:/…/db.sqlite now');
+  assert.equal(shown('cannot open xfile:///home/x/secret/db now'), 'cannot open xfile:/…/db now');
+  assert.equal(shown('GET HTTPS://example.test/a/b failed'), 'GET HTTPS://example.test/a/b failed');
+});
