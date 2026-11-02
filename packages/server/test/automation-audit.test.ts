@@ -4,7 +4,7 @@
 // change and removal is a security event of the file it belongs to, naming what runs and as whom, and never a secret or a full address.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Server } from 'node:http';
@@ -54,6 +54,12 @@ after(async () => {
   if (dir) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   assert.equal(Boolean(called), false, 'a forbidden child command ran');
 });
+
+async function adminLog(): Promise<string[]> {
+  await host.logs!.flush();
+  const file = join(dir, 'Logs', 'Admin.log');
+  return existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter((l) => l.includes('[security notice]')) : [];
+}
 
 const admin = (path: string, method = 'GET', body?: object) => fetch(`${base}/tabularius/admin/v1/${path}`, {
   method, headers: { 'x-tabularius-admin': '1', 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}),
@@ -291,29 +297,32 @@ test('a change to a file that is not open is said in the server log with its kin
   assert.doesNotMatch(lines[1], / by | from /, 'an internal call has no actor');
 });
 
-test('a backup schedule belongs to no file: adding, moving its destination and removing it are said in the server log, not in a file', async () => {
+test('a backup schedule belongs to no file: adding, editing, moving its destination and removing it are said once, in the server-wide notices', async () => {
   const dest = mkdtempSync(join(tmpdir(), 'tabularius-automation-audit-dest-'));
   const other = mkdtempSync(join(tmpdir(), 'tabularius-automation-audit-dest-'));
   try {
-    const shop = events('Shop').length, elsewhere = events('Other').length, mark = serverLog.length;
+    const shop = events('Shop').length, elsewhere = events('Other').length, mark = (await adminLog()).length;
+    let current: string[] = [];
+    const settle = async () => { current = (await adminLog()).slice(mark).filter((m) => /server-schedule-changed: The backup schedule /.test(m)); return current; };
     const made = await admin('schedules', 'POST', { kind: 'backup', name: 'Nightly backup', dest, everyMinutes: 1440, enabled: false });
     assert.equal(made.status, 201, JSON.stringify(made.body));
     const path = `schedules/${made.body.id}`;
     assert.equal((await admin(path, 'PATCH', { name: 'Renamed backup', keep: 3, everyMinutes: 720, at: '02:00' })).status, 200);
-    assert.equal(serverLog.slice(mark).filter((m) => /backup schedule/.test(m)).length, 1, 'a rename, retention or time edit is not a destination change');
+    assert.equal((await admin(path, 'PATCH', { name: 'Renamed backup', keep: 3 })).status, 200);
+    assert.equal((await settle()).length, 2, 'a save that changes nothing writes nothing');
     assert.equal((await admin(path, 'PATCH', { dest: other })).status, 200);
     assert.equal((await admin(path, 'DELETE')).status, 200);
-    const lines = serverLog.slice(mark).filter((m) => /backup schedule/.test(m));
-    assert.equal(lines.length, 3);
-    assert.match(lines[0], /was added.*destination .*by the admin console from /);
-    assert.match(lines[1], /was changed \(dest\).*destination .*by the admin console/);
-    assert.ok(lines[1].includes(other) && lines[0].includes(dest));
-    assert.match(lines[2], /was removed/);
-    assert.ok(lines.every((line) => line.includes(made.body.id)));
-    assert.ok(lines[0].includes('Nightly backup') && lines[2].includes('Renamed backup'));
+    const lines = await settle();
+    assert.equal(lines.length, 4);
+    assert.match(lines[0], /Nightly backup was added, to /);
+    assert.match(lines[1], /Renamed backup was changed \(name, everyMinutes, at, keep\), to /);
+    assert.match(lines[2], /was changed \(dest\), to /);
+    assert.match(lines[3], /was removed, to /);
+    assert.ok(lines[0].includes(dest) && lines[2].includes(other));
+    assert.ok(lines.every((line) => line.endsWith('(via admin console)')), 'the way in, as for a file\'s entries');
     const fallback = await admin('schedules', 'POST', { kind: 'backup', name: 'Default backup', enabled: false });
     assert.equal(fallback.status, 201);
-    assert.match(serverLog.at(-1)!, /destination the default backup folder/);
+    assert.doesNotMatch((await settle()).at(-1)!, /, to /, 'no destination named: the default folder');
     assert.equal((await admin(`schedules/${fallback.body.id}`, 'DELETE')).status, 200);
     assert.equal(events('Shop').length, shop);
     assert.equal(events('Other').length, elsewhere);

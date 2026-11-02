@@ -100,7 +100,7 @@ test('ending one session, all of an account\'s, and disconnecting a client recor
   assert.equal(log.length, 2);
   assert.match(log[0].description, /ended 1 session of Admin/);
   assert.match(log[1].description, /ended all 2 of the sessions of Admin/);
-  assert.equal(log[0].account, 'this computer, no admin password set');
+  assert.equal(log[0].account, 'admin console');
   assert.ok(log[0].from, 'the address is kept');
   assert.equal(log[0].severity, 'info');
   assert.equal(fileEvents('Other', 'sessions-ended').length, 1);
@@ -129,7 +129,7 @@ test('copy and replace restores record every concerned file, preserve history, a
   assert.equal(live.length, 1);
   assert.match(live[0].description, /Shop was put back as it was at .*, over the live file/);
   assert.equal(live[0].severity, 'notice');
-  assert.equal(live[0].account, 'this computer, no admin password set');
+  assert.equal(live[0].account, 'admin console');
   assert.ok(live[0].from);
   assert.deepEqual(fileEvents('Shop', 'sessions-ended'), sessionsBefore, 'live security history survives replacement');
   const source = fileEvents('Other', 'file-restored');
@@ -157,7 +157,7 @@ test('server-wide settings record changed values and email domains, with no entr
   const lines = (await adminLog()).slice(before);
   const text = lines.join('\n');
   assert.equal(lines.length, 7, text);
-  assert.match(lines[0], /\[security notice\] server-setting-changed: .*"block new users" was changed from false to true \(via this computer, no admin password set\)/);
+  assert.match(lines[0], /\[security notice\] server-setting-changed: .*"block new users" was changed from false to true \(via admin console\)/);
   assert.match(text, /Data API session timeout \(minutes\)" was changed from 15 to 45/);
   assert.match(text, /web client session timeout \(minutes\)" was changed from 15 to 50/);
   assert.match(text, /email notifications" was changed.*to an address at alerts\.example\.test, warnings and errors/);
@@ -314,9 +314,7 @@ test('the way in follows proven authentication, including header precedence and 
     assert.equal((await call('device-storage', 'POST', { on: true }, { cookie, ...unproved, 'x-tabularius-local': localAccess(dir)!.token })).status, 200);
     const lines = (await adminLog()).slice(before);
     assert.equal(lines.length, 4, lines.join('\n'));
-    for (const [i, channel] of ['this computer, no admin password set', 'Admin API', 'admin console', 'local command'].entries()) {
-      assert.ok(lines[i].endsWith(`(via ${channel})`), lines[i]);
-    }
+    for (const line of lines) assert.ok(line.endsWith('(via admin console)'), line);
   } finally {
     rmSync(join(dir, '.openhbam-admin'), { force: true });
   }

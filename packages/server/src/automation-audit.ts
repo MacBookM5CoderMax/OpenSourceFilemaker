@@ -24,7 +24,7 @@ export interface AutomationDetail {
 
 /** Who made a change: the way in and the address, never a name (these routes have none). Absent for a change made inside the server. */
 export interface AutomationActor {
-  channel: 'admin console' | 'Admin API';
+  channel: string;
   from?: string;
 }
 
@@ -53,11 +53,4 @@ export function auditAutomation(host: Host, log: (m: string) => void, database: 
   } catch (e) {
     log(`security log: could not record that ${detail.what} ${detail.id} was ${change} in ${database}: ${(e as Error).message}`);
   }
-}
-
-/** A backup schedule belongs to no file: its changes are said in the server's log, with the destination folder. */
-export function logServerWideAutomation(log: (m: string) => void, change: 'added' | 'changed' | 'removed', detail: { what: string; id: string; name?: string; dest?: string; fields?: string[] }, actor?: AutomationActor): void {
-  const fields = detail.fields?.length ? ` (${detail.fields.slice(0, 20).join(', ')})` : '';
-  const where = detail.dest ? `, destination ${detail.dest.slice(0, 300)}` : ', destination the default backup folder';
-  log(`server-wide: the ${detail.what} ${detail.name ? `${detail.name.slice(0, 120)} ` : ''}(${detail.id}) was ${change}${fields}${where}${byText(actor)}`);
 }

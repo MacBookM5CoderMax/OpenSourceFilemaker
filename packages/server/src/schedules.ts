@@ -21,7 +21,8 @@ import { basename, join } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { captureOnly, runScript } from '../../scripts/src/index.ts';
 import type { Host } from './host.ts';
-import { auditAutomation, changedFields, logServerWideAutomation, type AutomationActor, type AutomationDetail } from './automation-audit.ts';
+import { auditAutomation, changedFields, type AutomationActor, type AutomationDetail } from './automation-audit.ts';
+import { recordServerSecurityEvent } from './server-security.ts';
 import { backupFolder, defaultBackupDir } from './backup.ts';
 import { describeCheck, verifyAfterBackup } from './backup-verify.ts';
 import { backupFolderProblem, checkBackupFolder } from './backup-folder.ts';
@@ -499,7 +500,7 @@ export class Schedules {
     if (s.kind === 'backup' && s.dest && s.dest !== old.dest) this.backupProblems.set(s.id, { dest: s.dest, at: performance.now() });
     else if (!s.dest) this.backupProblems.delete(s.id);
     this.save(s);
-    this.audit('changed', s, changedFields(old, s, ['name', 'database', 'script', 'account', 'parameter', 'everyMinutes', 'at', 'enabled', 'network', 'onOpen', 'sealed', 'sync', 'dest']), actor, old);
+    this.audit('changed', s, changedFields(old, s, ['name', 'database', 'script', 'account', 'parameter', 'everyMinutes', 'at', 'enabled', 'network', 'onOpen', 'sealed', 'sync', 'dest', 'keep', 'verify', 'message']), actor, old);
     const current = this.get(s.id);
     if (current) this.arm(current);
     return s;
@@ -507,16 +508,18 @@ export class Schedules {
 
   /**
    * A schedule that names a file (a script, a sync) is kept in that file's security log. A schedule moved to another file is a removal from
-   * the old file and an addition to the new one, each cross-referencing the other. A backup schedule belongs to no file: a change of its
-   * destination is said in the server's log. A check and a message are not recorded.
+   * the old file and an addition to the new one, each cross-referencing the other. A backup, a check and a message belong to no file: they go to
+   * the server's Admin log.
    */
   private audit(change: 'added' | 'changed' | 'removed', s: Schedule, fields?: string[], actor?: AutomationActor, old?: Schedule): void {
-    if (s.kind === 'backup') {
-      if (change === 'changed' && !fields?.includes('dest')) return;
-      logServerWideAutomation(this.log, change, { what: 'backup schedule', id: s.id, name: s.name, dest: s.dest, ...(change === 'changed' ? { fields: ['dest'] } : {}) }, actor);
+    // A backup, a check and a message belong to no file: the server's Admin log says so, once, whichever route made the change.
+    if (s.kind === 'backup' || s.kind === 'verify' || s.kind === 'message') {
+      if (!actor || (change === 'changed' && !fields?.length)) return;
+      recordServerSecurityEvent(this.host, this.log, { channel: actor.channel, address: actor.from ?? 'unknown' }, 'server-schedule-changed', {
+        change, kind: s.kind, name: s.name, ...(s.kind === 'backup' && s.dest ? { dest: s.dest } : {}), ...(fields?.length ? { fields: fields.join(', ') } : {}),
+      });
       return;
     }
-    if (s.kind === 'verify' || s.kind === 'message') return;
     const detail = (x: Schedule): AutomationDetail => ({ what: 'schedule', id: x.id, name: x.name, script: x.sync ? 'sync' : x.script, account: x.account, network: x.network });
     if (change === 'changed' && old && old.database.toLowerCase() !== s.database.toLowerCase()) {
       auditAutomation(this.host, this.log, old.database, 'removed', { ...detail(old), movedTo: s.database }, actor);
