@@ -11,6 +11,7 @@ import { errorText, type Studio } from './main.ts';
 import type { FileRestyle, ThemeTokens } from './client.ts';
 import { proposalPicture } from './layout-editor.ts';
 import { cssText, parseCss } from './css-text.ts';
+import { parseJsonFile } from '../json-reply.ts';
 
 /** Elements people style most, by their theme element type. */
 export const ELEMENTS: [number, string][] = [
@@ -195,8 +196,8 @@ function importTheme(studio: Studio): HTMLElement {
     file.value = '';
     if (!f) return;
     try {
-      const t = JSON.parse(await f.text()) as Partial<Theme> & { format?: string };
-      if (t.format !== THEME_FORMAT) throw new Error('This isn\'t a theme exported from Tabularius');
+      const t = parseJsonFile(await f.text(), 'a theme exported from Tabularius') as Partial<Theme> & { format?: string };
+      if (!t || t.format !== THEME_FORMAT) throw new Error('This isn\'t a theme exported from Tabularius');
       const taken = new Set(studio.design.themes.map((x) => x.name));
       let name = String(t.name || 'Imported theme');
       for (let n = 2; taken.has(name); n++) name = `${t.name} ${n}`;

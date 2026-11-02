@@ -31,6 +31,7 @@ import { responsiveDesign, stackBreakpoint } from '../responsive.ts';
 import { returnFocus } from '../return-focus.ts';
 import { layoutViewClasses, loadLayoutViewOptions, saveLayoutViewOptions, type LayoutViewOptions } from './layout-view.ts';
 import { httpProblem } from '../http-problem.ts';
+import { NOT_TABULARIUS_DATA, replyJson } from '../json-reply.ts';
 import { acknowledgeLayoutSave, findLayoutObject, pushBoundedHistory } from './async-state.ts';
 
 const SCOPE = 'fm-layout';
@@ -318,8 +319,9 @@ async function appMeta(studio: Studio, name: string): Promise<LayoutMeta> {
   const r = await fetch(`/tabularius/app/v1/databases/${encodeURIComponent(studio.client.db)}/layouts/${encodeURIComponent(name)}`, {
     headers: { authorization: `Bearer ${studio.client.token}` },
   });
-  const json = await r.json();
-  if (!r.ok) throw new Error(json.error?.message ?? httpProblem(r.status));
+  const json = await replyJson(r);
+  if (!r.ok) throw new Error(json?.error?.message ?? httpProblem(r.status));
+  if (!json) throw new Error(NOT_TABULARIUS_DATA);
   return json;
 }
 

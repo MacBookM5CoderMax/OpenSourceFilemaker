@@ -1,4 +1,5 @@
 import { browserFeatures, browserFeatureMessage } from './browser-features.ts';
+import { NOT_TABULARIUS_DATA, replyJson } from './json-reply.ts';
 
 const list = document.querySelector<HTMLUListElement>('#checks')!;
 const output = document.querySelector<HTMLElement>('#results')!;
@@ -41,7 +42,8 @@ async function run(): Promise<void> {
     const response = await fetch('/tabularius/health', { cache: 'no-store' });
     const received = Date.now();
     if (!response.ok) throw new Error(`server returned HTTP ${response.status}`);
-    const body = await response.json() as { status?: string; serverTime?: string };
+    const body = await replyJson(response) as { status?: string; serverTime?: string } | undefined;
+    if (!body) throw new Error(NOT_TABULARIUS_DATA);
     if (!body.serverTime) throw new Error('server did not report its clock');
     const serverTime = Date.parse(body.serverTime);
     if (!Number.isFinite(serverTime)) throw new Error('server clock value was invalid');
