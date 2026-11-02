@@ -953,6 +953,12 @@ function plainMessage(e) {
   return e instanceof Error ? e.message : String(e);
 }
 // END http-problem
+// What a 200 reply that is not JSON (a proxy's or a sign-in page's HTML) is told as, in place of each browser's own parser words.
+// Kept the same as NOT_TABULARIUS_DATA in packages/web/src/json-reply.ts; packages/server/test/admin-json-reply.test.ts compares them.
+const NOT_TABULARIUS_DATA = 'The server answered with something that is not Tabularius data. If Tabularius is behind a proxy or a sign-in page, check that /tabularius/ and /fmi/ reach it.';
+async function replyJson(r) {
+  try { return await r.json(); } catch { return undefined; }
+}
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 /**
@@ -1194,7 +1200,11 @@ $('passkeys').addEventListener('click', async (e) => {
 $('signin-passkey').addEventListener('click', async () => {
   $('signin-error').textContent = '';
   try {
-    const begin = await fetch('/tabularius/admin/v1/passkey-sign-in', { method: 'POST', headers: { 'x-tabularius-admin': '1', 'content-type': 'application/json' }, body: '{}' }).then((r) => r.json());
+    const begin = await fetch('/tabularius/admin/v1/passkey-sign-in', { method: 'POST', headers: { 'x-tabularius-admin': '1', 'content-type': 'application/json' }, body: '{}' }).then(async (r) => {
+      const b = await replyJson(r);
+      if (b === undefined) throw new Error(r.ok ? NOT_TABULARIUS_DATA : httpProblem(r.status));
+      return b;
+    });
     if (begin.error) throw new Error(begin.error);
     const cred = await navigator.credentials.get({
       publicKey: {
@@ -1234,7 +1244,9 @@ async function call(method, path, body) {
     if (b.signIn && r.status === 401) showSignIn();
     throw Object.assign(new Error(b.error || httpProblem(r.status)), { body: b, status: r.status });
   }
-  return r.json();
+  const reply = await replyJson(r);
+  if (reply === undefined) throw new Error(NOT_TABULARIUS_DATA);
+  return reply;
 }
 
 // The passphrase of a .fmp12 that uses Encryption at Rest, asked for in a dialog (hidden as it is typed).
