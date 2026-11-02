@@ -30,9 +30,26 @@ export function secureConnection(req: IncomingMessage): boolean {
   return first(req.headers['x-forwarded-proto']) === 'https' && (fromThisComputer(req) || hasTrustedClientAddress(req));
 }
 
-/** On every response, however it is made. */
+/** On every response, however it is made (and, for the programs' routes, the cache and type headers below). */
 export function setExposureHeaders(req: IncomingMessage, res: ServerResponse): void {
   res.setHeader('permissions-policy', PERMISSIONS_POLICY);
   // Browsers ignore this over plain HTTP; it is not sent there so a plain-HTTP answer never claims otherwise.
   if (secureConnection(req)) res.setHeader('strict-transport-security', STRICT_TRANSPORT_SECURITY);
+  setApiHeaders(req, res);
+}
+
+/** The programs' side of the server: Data API, OData, SCIM, the Admin API, /mcp and the product's own /tabularius/ routes. The pages (/app/, /admin/, /docs) and the sign-in routes (/oauth/) say their own caching. */
+export const API_PATH = /^\/(?:fmi|odata|scim|tabularius)\/|^\/mcp(?:\/|$)/;
+
+/**
+ * What an answer about records, accounts or tokens says unless its route says otherwise: no cache keeps it, and a browser does
+ * not guess its type. A route's own header (a container's `private, no-store`, the OpenAPI document's short public cache) replaces
+ * these, because it is written after them. The path is read the way the request handler reads it.
+ */
+function setApiHeaders(req: IncomingMessage, res: ServerResponse): void {
+  let pathname: string;
+  try { pathname = new URL(req.url ?? '/', 'http://localhost').pathname; } catch { return; }
+  if (!API_PATH.test(pathname)) return;
+  res.setHeader('cache-control', 'no-store');
+  res.setHeader('x-content-type-options', 'nosniff');
 }
