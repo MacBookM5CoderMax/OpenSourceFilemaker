@@ -1,0 +1,6 @@
+{
+  "target": "fmp12",
+  "finding": "SCSU stream cut inside a Unicode-mode pair",
+  "signature": "Error | requireBytes@packages/fmp12/src/scsu.ts:62 | scsu@packages/fmp12/src/scsu.ts:96 | decodeScsu@packages/fmp12/src/scsu.ts:33",
+  "input": "DwI="
+}

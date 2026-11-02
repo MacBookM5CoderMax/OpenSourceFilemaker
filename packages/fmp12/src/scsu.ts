@@ -3,6 +3,8 @@
 // Unlike that port, tabs and line breaks are kept as-is: FileMaker stores
 // CR as its paragraph separator, which we normalise to LF.
 
+import { FmpError } from './file.ts';
+
 const SQ0 = 0x01, SQ7 = 0x08, SDX = 0x0b, SQU = 0x0e, SCU = 0x0f;
 const SC0 = 0x10, SC7 = 0x17, SD0 = 0x18, SD7 = 0x1f;
 const UC0 = 0xe0, UC7 = 0xe7, UD0 = 0xe8, UD7 = 0xef, UQU = 0xf0, UDX = 0xf1;
@@ -59,7 +61,7 @@ export function scsu(src: Uint8Array, maxUnits: number, xorMask = 0): { text: st
   let i = 0;
   const n = src.length;
   const requireBytes = (count: number) => {
-    if (i + count > n) throw new Error(`truncated SCSU command at byte ${i - 1}`);
+    if (i + count > n) throw new FmpError(`truncated SCSU command at byte ${i - 1}`);
   };
   const byte = (at: number) => src[at] ^ xorMask;
   const emit = (cp: number) => {
@@ -148,6 +150,6 @@ export function decodeText(raw: Uint8Array, xorMask = 0x5a): string {
 /** decodeText for a value of known length in characters; also returns the bytes used. */
 export function decodeTextChars(raw: Uint8Array, chars: number, xorMask = 0x5a): { text: string; end: number } {
   const r = scsu(raw, chars, xorMask);
-  if (r.text.length !== chars) throw new Error(`truncated SCSU text: expected ${chars} characters, got ${r.text.length}`);
+  if (r.text.length !== chars) throw new FmpError(`truncated SCSU text: expected ${chars} characters, got ${r.text.length}`);
   return { text: r.text.replace(/\r\n?/g, '\n'), end: r.end };
 }
