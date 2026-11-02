@@ -7666,12 +7666,13 @@ export class ScriptEngine {
         for (const record of records) yield record.map((values) => values[0]);
       }();
       if (format === 'XLXE') {
-        // Numbers stay numbers, dates, times and timestamps are Excel's own cell types; other values are text as FileMaker shows them.
+        // Numbers stay numbers; dates, timestamps and times of day use Excel cells. A time outside one day is duration text.
         if (fs.ids.length > 1_048_576) throw new ScriptError(ERROR.unavailable, 'Excel allows at most 1,048,576 rows; no file was written');
         const cells: XlsxOutCell[][] = [];
         for (const row of rows) {
           await this.checkpoint(f);
           cells.push(row.map((v): XlsxOutCell => (v.type === 'number' && v.value !== null ? Number(v.value)
+          : v.type === 'time' && (v.value < 0 || v.value >= 86400) ? asText(v, win.store.dateOrder)
           : v.type === 'date' || v.type === 'time' || v.type === 'timestamp' ? serialOf[v.type](v.value)
           : asText(v, win.store.dateOrder))));
         }
@@ -9858,8 +9859,9 @@ export function excelDate(v: number, type: string | undefined): string | number 
   if (!Number.isFinite(ms) || !Number.isFinite(new Date(ms).getTime())) throw new ScriptError(ERROR.wrongFileType, 'Excel date is out of range');
   const iso = new Date(ms).toISOString();
   if (type === 'date') return iso.slice(0, 10);
-  if (type === 'time') return iso.slice(11, 19);
-  return iso.slice(0, 19);
+  const fraction = iso.slice(19, 23).replace(/0+$/, '').replace(/\.$/, '');
+  if (type === 'time') return iso.slice(11, 19) + fraction;
+  return iso.slice(0, 19) + fraction;
 }
 
 /** Rows of FileMaker XML (FMPXMLRESULT). Multiple DATA values require repetition support. */
