@@ -4,7 +4,7 @@
 // newest messages in two files (outbox.jsonl and outbox-older.jsonl), each up to
 // about OUTBOX_MAX_BYTES, so it cannot grow without end.
 
-import { closeSync, mkdirSync, statSync } from 'node:fs';
+import { closeSync, lstatSync, mkdirSync, statSync } from 'node:fs';
 import { appendFileSync, cleanupPath, openSync, renameSync } from '../../store/src/fs-boundary.ts';
 import { linesNewestFirst, linesOldestFirst } from './tail-lines.ts';
 import { join } from 'node:path';
@@ -23,6 +23,7 @@ const KEEP_LIST = 50;
 const KEEP_SHORT = 2048;
 
 export class Outbox {
+  private readonly folder: string;
   private readonly file: string;
   private readonly older: string;
   private readonly maxBytes: number;
@@ -30,6 +31,7 @@ export class Outbox {
   constructor(dir: string, opts: { maxBytes?: number } = {}) {
     const folder = join(dir, 'Outbox');
     mkdirSync(folder, { recursive: true, mode: 0o700 });
+    this.folder = folder;
     this.file = join(folder, 'outbox.jsonl');
     this.older = join(folder, 'outbox-older.jsonl');
     this.maxBytes = opts.maxBytes ?? OUTBOX_MAX_BYTES;
@@ -64,6 +66,7 @@ export class Outbox {
 
   /** Newest first, without attachment contents. Reads only as far back as the newest limit entries. */
   list(limit = 200): StoredEntry[] {
+    this.checkFolder();
     const out: StoredEntry[] = [];
     if (limit <= 0) return out;
     for (const file of [this.file, this.older]) {
@@ -78,6 +81,7 @@ export class Outbox {
 
   /** One entry by id, reading chunks and parsing only lines that contain the id. */
   get(id: string): StoredEntry | undefined {
+    this.checkFolder();
     for (const file of [this.older, this.file]) {
       for (const line of linesOldestFirst(file)) {
         if (!line.includes(id)) continue;
@@ -88,10 +92,21 @@ export class Outbox {
     return undefined;
   }
 
-  /** Removes the outbox file itself (never what a link at its name points to); a failure to remove it is thrown. */
+  /** Removes the two outbox entries; missing entries are already clear, while unsafe paths and removal failures are refused. */
   clear(): void {
+    this.checkFolder();
     cleanupPath(this.file, { force: true })({ throwOnError: true });
     cleanupPath(this.older, { force: true })({ throwOnError: true });
+  }
+
+  private checkFolder(): void {
+    try {
+      if (lstatSync(this.folder).isDirectory()) return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
+    }
+    throw new Error('Outbox folder is not a safe directory');
   }
 }
 

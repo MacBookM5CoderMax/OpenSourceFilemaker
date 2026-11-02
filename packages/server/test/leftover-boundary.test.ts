@@ -117,6 +117,33 @@ test('clearing the outbox leaves a replaced file or parent folder alone', { skip
   assert.ok(existsSync(join(dir, 'Outbox.moved', 'outbox.jsonl')));
 });
 
+test('a removed Outbox folder is already clear', { skip }, (t) => {
+  const { dir } = workspace(t);
+  const outbox = new Outbox(dir);
+  outbox.record(mail('ordinary'));
+  rmSync(join(dir, 'Outbox'), { recursive: true });
+  assert.doesNotThrow(() => outbox.clear());
+  assert.deepEqual(outbox.list(), []);
+  assert.equal(outbox.get('missing'), undefined);
+  assert.equal(existsSync(join(dir, 'Outbox')), false);
+});
+
+test('an Outbox folder link cannot clear its target', { skip }, (t) => {
+  const { dir } = workspace(t);
+  const outbox = new Outbox(dir);
+  const target = join(dir, 'target');
+  mkdirSync(target);
+  writeFileSync(join(target, 'outbox.jsonl'), 'keep');
+  rmSync(join(dir, 'Outbox'), { recursive: true });
+  symlinkSync(target, join(dir, 'Outbox'));
+  assert.throws(() => outbox.clear(), /Outbox folder is not a safe directory/);
+  assert.equal(readFileSync(join(target, 'outbox.jsonl'), 'utf8'), 'keep');
+  rmSync(join(dir, 'Outbox'));
+  symlinkSync(join(dir, 'missing'), join(dir, 'Outbox'));
+  assert.throws(() => outbox.list(), /Outbox folder is not a safe directory/);
+  assert.throws(() => outbox.get('x'), /Outbox folder is not a safe directory/);
+});
+
 test('applying a log removes -shm as itself, leaves replacements alone, and refuses folders and unsafe -wal entries', { skip, timeout: 30_000 }, (t) => {
   const { dir, victim, pipe } = workspace(t);
   const db = join(dir, 'Tasks.openhbam.sqlite');
@@ -159,6 +186,11 @@ test('applying a log removes -shm as itself, leaves replacements alone, and refu
   assert.equal(readFileSync(join(`${db}-wal`, 'inside.txt'), 'utf8'), 'inside');
   assert.equal(existsSync(db), false);
   rmSync(`${db}-wal`, { recursive: true });
+  symlinkSync(join(dir, 'missing-wal'), `${db}-wal`);
+  assert.throws(() => applyLog(db, page()), refused);
+  assert.ok(lstatSync(`${db}-wal`).isSymbolicLink());
+  assert.equal(existsSync(db), false);
+  rmSync(`${db}-wal`);
   if (pipe(`${db}-wal`)) {
     assert.throws(() => applyLog(db, page()), refused);
     assert.ok(lstatSync(`${db}-wal`).isFIFO());

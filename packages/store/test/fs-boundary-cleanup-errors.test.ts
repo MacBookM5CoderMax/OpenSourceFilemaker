@@ -52,6 +52,12 @@ test('strict cleanup retains its own error and never removes a replacement', (t)
   assert.equal(existsSync(path), true);
 });
 
+test('strict cleanup accepts a missing parent folder', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-cleanup-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  assert.doesNotThrow(() => cleanupPath(join(dir, 'removed', 'outbox.jsonl'), { force: true })({ throwOnError: true }));
+});
+
 for (const code of ['ENOENT', 'ESTALE', 'ENOTDIR']) test(`cleanup ignores expected ${code}`, (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-cleanup-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));

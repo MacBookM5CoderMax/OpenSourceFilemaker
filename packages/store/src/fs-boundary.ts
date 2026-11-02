@@ -240,7 +240,14 @@ function warnCleanup(error: unknown): void {
  */
 export function cleanupPath(path: string, { onError = warnCleanup, ...options }: CleanupOptions = { force: true }): PathCleanup {
   // One look at the entry gives both answers: whether it is there, and which entry it is.
-  const p = name(path), checkParents = parents(p), beforeId = fileId(p);
+  const p = name(path);
+  let checkParents: () => void;
+  try { checkParents = parents(p); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return () => {};
+    throw error;
+  }
+  const beforeId = fileId(p);
   if (beforeId === undefined) return () => {}; // absence is not ownership of a future entry
   return ({ throwOnError = false } = {}) => {
     try {
