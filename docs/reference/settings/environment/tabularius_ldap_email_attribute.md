@@ -8,6 +8,6 @@ The attribute holding the email address.
 | Accepted values | LDAP distinguished name, template, attribute, or password as named by the variable |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1522](../../../../packages/cli/src/main.ts#L1522) |
+| Code | [packages/cli/src/main.ts:1541](../../../../packages/cli/src/main.ts#L1541) |
 
 [All environment variables](../../../environment-variables.md)

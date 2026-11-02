@@ -8,6 +8,6 @@ Where backups go, instead of `<folder>/Backups`.
 | Accepted values | Directory path |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1464](../../../../packages/cli/src/main.ts#L1464) |
+| Code | [packages/cli/src/main.ts:1483](../../../../packages/cli/src/main.ts#L1483) |
 
 [All environment variables](../../../environment-variables.md)

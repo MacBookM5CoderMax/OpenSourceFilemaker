@@ -8,6 +8,6 @@ Whether unsigned callers can see hosted file names.
 | Accepted values | 1, true, yes or on; 0, false, no, off or empty for off; anything else stops `serve` |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/data-api-compatibility.md](../../../data-api-compatibility.md) |
-| Code | [packages/cli/src/main.ts:1413](../../../../packages/cli/src/main.ts#L1413) |
+| Code | [packages/cli/src/main.ts:1432](../../../../packages/cli/src/main.ts#L1432) |
 
 [All environment variables](../../../environment-variables.md)

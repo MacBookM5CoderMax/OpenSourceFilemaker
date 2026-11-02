@@ -8,6 +8,6 @@ The model used for simple questions.
 | Accepted values | model id or off |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1546](../../../../packages/cli/src/main.ts#L1546) |
+| Code | [packages/cli/src/main.ts:1565](../../../../packages/cli/src/main.ts#L1565) |
 
 [All environment variables](../../../environment-variables.md)
