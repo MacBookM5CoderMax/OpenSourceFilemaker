@@ -175,19 +175,42 @@ function copyVerifiedTree(from: string, to: string, dest: string): void {
 
 // Reading the Admin API ------------------------------------------------------
 
+/** The most one Admin API answer may hold, and the longest one call may take in all. (An object so a test can shorten them.) */
+export const ADMIN_API_LIMITS = { maxBytes: 16 * 1024 * 1024, deadlineMs: 120_000 };
+
 function call(base: URL, method: string, path: string, headers: Record<string, string>, insecure: boolean): Promise<{ status: number; body: any; text: string }> {
   return new Promise((done, fail) => {
     const url = new URL(`/fmi/admin/api/v2${path}`, base);
     // The socket's lookup is not asked about an address written out (http://169.254.169.254): checked here.
     const refused = hostRefusal({ private: true }, url.hostname);
     if (refused) return fail(new Error(refused));
+    const limits = { ...ADMIN_API_LIMITS };
+    let deadline: ReturnType<typeof setTimeout> | undefined;
     const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, {
       method, headers: { 'content-type': 'application/json', 'content-length': '0', ...headers },
       agent: false, lookup: FMS_LOOKUP, ...(insecure ? { rejectUnauthorized: false } : {}),
     }, (res) => {
+      const tooBig = () => {
+        clearTimeout(deadline);
+        fail(new Error(`response from ${url.host} exceeded the ${limits.maxBytes}-byte limit`));
+        req.destroy();
+      };
+      // The connection is being torn down on purpose when it is too big; its reset is not news.
+      res.on('error', () => {});
+      const declared = Number(res.headers?.['content-length']);
+      if (Number.isFinite(declared) && declared > limits.maxBytes) return tooBig();
       const chunks: Buffer[] = [];
-      res.on('data', (c: Buffer) => chunks.push(c));
+      let size = 0;
+      res.on('data', (c: Buffer) => {
+        size += c.length;
+        if (size > limits.maxBytes) {
+          chunks.length = 0;
+          return tooBig();
+        }
+        chunks.push(c);
+      });
       res.on('end', () => {
+        clearTimeout(deadline);
         const text = Buffer.concat(chunks).toString('utf8');
         let body: any;
         try {
@@ -198,8 +221,11 @@ function call(base: URL, method: string, path: string, headers: Record<string, s
         done({ status: res.statusCode ?? 0, body, text });
       });
     });
+    // The idle timeout below stops a server that goes quiet; this one stops a server that keeps a trickle going for ever.
+    deadline = setTimeout(() => req.destroy(new Error(`${url.host} took longer than ${limits.deadlineMs / 1000} seconds to answer`)), limits.deadlineMs);
+    deadline.unref();
     req.setTimeout(30_000, () => req.destroy(new Error(`${url.host} didn't answer`)));
-    req.on('error', fail);
+    req.on('error', (e) => { clearTimeout(deadline); fail(e); });
     req.end();
   });
 }
