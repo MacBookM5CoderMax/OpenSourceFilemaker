@@ -96,7 +96,7 @@ test('a named pipe where a set\'s manifest or a log belongs is refused, not wait
   assert.equal(scan.stdout.trim(), 'refused: ESTALE');
 });
 
-test('a link or folder at a set\'s manifest or at a log is refused and never read through', { skip, timeout: 60_000 }, async (t) => {
+test('a link or folder at a set manifest is refused; a linked log is skipped and never read through', { skip, timeout: 60_000 }, async (t) => {
   const { dir } = sandbox(t);
   const live = join(dir, 'live');
   const dest = join(dir, 'backups');
@@ -124,7 +124,7 @@ test('a link or folder at a set\'s manifest or at a log is refused and never rea
   const victim = join(dir, 'log-elsewhere.log');
   writeFileSync(victim, 'not a log');
   symlinkSync(victim, join(logs, '2026-01-01_000000.000Z.log'));
-  assert.throws(() => scanLogs(logs), (e: NodeJS.ErrnoException) => e.code === 'ESTALE');
+  assert.deepEqual(scanLogs(logs), { records: [], legacy: [], plain: [] }, 'the link is not opened or counted');
   rmSync(join(logs, '2026-01-01_000000.000Z.log'));
   mkdirSync(join(logs, '2026-01-01_000000.000Z.log'));
   assert.throws(() => scanLogs(logs));

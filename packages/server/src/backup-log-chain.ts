@@ -11,8 +11,8 @@
 // two leaves a genuine record the manifest does not know about yet.
 
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { lstatSync, readdirSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { readFileSync } from '../../store/src/fs-boundary.ts';
 import { logRecords } from './logs.ts';
 
@@ -45,11 +45,51 @@ export interface ScannedLogs {
   plain: string[];
 }
 
+function logPathKind(path: string): 'missing' | 'link' | 'directory' | 'file' | 'other' {
+  try {
+    const stat = lstatSync(path);
+    return stat.isSymbolicLink() ? 'link' : stat.isDirectory() ? 'directory' : stat.isFile() ? 'file' : 'other';
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return 'missing';
+    throw e;
+  }
+}
+
+/** A set's progressive path and a database log folder must both be real directories. */
+export function ordinaryLogDir(logDir: string): boolean {
+  const parent = dirname(logDir);
+  return (basename(parent) !== 'progressive' || logPathKind(parent) === 'directory') && logPathKind(logDir) === 'directory';
+}
+
+/** Links planted among a set's saved logs, reported by backup verification. */
+export function logLinkProblems(setDir: string): Record<string, string> {
+  const root = join(setDir, 'progressive');
+  const problems: Record<string, string> = {};
+  if (logPathKind(root) === 'link') {
+    problems.progressive = 'is a symbolic link, not a backup log folder';
+    return problems;
+  }
+  if (logPathKind(root) !== 'directory') return problems;
+  for (const name of readdirSync(root)) {
+    const dir = join(root, name);
+    if (logPathKind(dir) === 'link') {
+      problems[`progressive/${name}`] = 'is a symbolic link, not a backup log folder';
+      continue;
+    }
+    if (logPathKind(dir) !== 'directory') continue;
+    for (const file of readdirSync(dir)) {
+      if (logPathKind(join(dir, file)) === 'link')
+        problems[`progressive/${name}/${file}`] = 'is a symbolic link, not a backup log file';
+    }
+  }
+  return problems;
+}
+
 /** Reads a database's log files in the order they were written. */
 export function scanLogs(logDir: string): ScannedLogs {
   const out: ScannedLogs = { records: [], legacy: [], plain: [] };
-  if (!existsSync(logDir)) return out;
-  const names = readdirSync(logDir);
+  if (!ordinaryLogDir(logDir)) return out;
+  const names = readdirSync(logDir).filter((file) => logPathKind(join(logDir, file)) !== 'link');
   out.legacy = names.filter((f) => OLD_LOG.test(f)).sort();
   out.plain = names.filter((f) => LOGS.test(f) && !f.endsWith('.enc')).sort();
   let chain = EMPTY_CHAIN;
@@ -73,8 +113,9 @@ export function chainOf(logDir: string): LogChain {
 export function logInventory(setDir: string): Record<string, LogChain> {
   const root = join(setDir, 'progressive');
   const out: Record<string, LogChain> = {};
-  if (!existsSync(root)) return out;
+  if (logPathKind(root) !== 'directory') return out;
   for (const name of readdirSync(root)) {
+    if (logPathKind(join(root, name)) !== 'directory') continue;
     const chain = chainOf(join(root, name));
     if (chain.n) out[name] = chain;
   }

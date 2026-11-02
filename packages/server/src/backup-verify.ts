@@ -32,7 +32,7 @@ import { decryptFile, ENCRYPTED_EXT } from './encrypt.ts';
 import { backupKey, backupSets } from './backup.ts';
 import { checkManifest, isEncryptedSet, signManifest } from './backup-auth.ts';
 import { verifyExternal } from './backup-external.ts';
-import { logInventory } from './backup-log-chain.ts';
+import { logInventory, logLinkProblems } from './backup-log-chain.ts';
 import { Store } from '../../store/src/index.ts';
 import { integrity, pageCheck, type PageCheck } from './integrity-check.ts';
 
@@ -260,6 +260,7 @@ async function verifySetNow(setDir: string, passphrase: string | undefined, opti
   } finally {
     if (scratch) rmSync(scratch, { recursive: true, force: true });
   }
+  Object.assign(files, logLinkProblems(setDir));
   // Every copy the manifest lists is there, and its signature (encrypted sets) is the one for these checksums.
   for (const name of Object.keys(info.sha256 ?? {})) {
     if (!copies.some((c) => (c.endsWith(ENCRYPTED_EXT) ? c.slice(0, -ENCRYPTED_EXT.length) : c).toLowerCase() === name.toLowerCase())) files[name] = 'listed in backup.json but missing from the set';

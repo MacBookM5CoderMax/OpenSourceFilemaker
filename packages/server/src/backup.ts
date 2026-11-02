@@ -51,7 +51,7 @@ import { backupInventory, checkedBackupCopies } from './backup-inventory.ts';
 import { readBackupInfo, updateBackupInfo, writeBackupInfo } from './backup-info.ts';
 import { isEncryptedSet, openAmenderSync, readVerified, signManifest, signedByOlderVersion } from './backup-auth.ts';
 import type { Amender } from './backup-auth.ts';
-import { EMPTY_CHAIN, LOGS, OLD_LOG, chainOf, extendChain, verifyLogs } from './backup-log-chain.ts';
+import { EMPTY_CHAIN, LOGS, OLD_LOG, chainOf, extendChain, ordinaryLogDir, verifyLogs } from './backup-log-chain.ts';
 import type { LogChain } from './backup-log-chain.ts';
 import { atomicWrite, sweepStateTempsSync, writeDurable } from '../../store/src/durable.ts';
 import { commitRestore, recoverRestore } from './restore-files.ts';
@@ -1082,10 +1082,11 @@ export interface SavedLog {
 }
 
 function savedLogs(logDir: string): SavedLog[] {
-  if (!existsSync(logDir)) return [];
+  if (!ordinaryLogDir(logDir)) return [];
   const out: SavedLog[] = [];
   for (const l of readdirSync(logDir)) {
     const path = join(logDir, l);
+    if (lstatSync(path).isSymbolicLink()) continue;
     if (OLD_LOG.test(l)) {
       out.push({
         at: parseStamp(l),
