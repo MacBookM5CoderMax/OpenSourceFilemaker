@@ -31,6 +31,7 @@ export const SECURITY_EVENT_KINDS = [
   'blank-password-lan-allowed', 'blank-password-lan-disallowed',
   'audit-settings-changed', 'audit-pruned',
   'plugin-installed', 'plugin-install-refused',
+  'file-restored', 'sessions-ended',
   'script-network-on', 'script-network-off',
   'file-approved',
   'sql-privilege-required', 'sql-privilege-not-required',
@@ -70,6 +71,7 @@ export const SECURITY_EVENT_CATEGORIES: Record<string, readonly SecurityEventKin
   'Audit log': ['audit-settings-changed', 'audit-pruned'],
   'Blank passwords': ['blank-password-lan-allowed', 'blank-password-lan-disallowed'],
   'Plug-ins': ['plugin-installed', 'plugin-install-refused'],
+  'Restore and sessions': ['file-restored', 'sessions-ended'],
   'Script network access': ['script-network-on', 'script-network-off'],
   'Held files': ['file-approved'],
   'SQL access': ['sql-privilege-required', 'sql-privilege-not-required'],
@@ -103,7 +105,7 @@ export type SecurityEventSeverity = 'alert' | 'notice' | 'info';
 const ALERT = new Set<string>(['sign-in-failed', 'locked-out', 'accounts-import-rejected', 'plugin-install-refused', 'data-export-refused']);
 const NOTICE = new Set<string>([
   'account-removed', 'account-disabled', 'account-local-only-cleared',
-  'lockout-cleared',
+  'lockout-cleared', 'file-restored',
   'account-require-2fa-cleared', 'require-2fa-cleared',
   'privilege-set-deleted', 'privilege-denied', 'password-policy-changed',
   'two-factor-disabled', 'passkey-removed', 'recovery-code-used',
@@ -187,6 +189,12 @@ export function describeSecurityEvent(e: AuditEntry): string {
       return `Taken over from a standby of ${str(d.standbyOf) ?? 'another server'}; its copy was last updated ${str(d.lastChange) ?? 'at an unknown time'}. ${kept ? 'API tokens kept' : `${num(d.tokensEnded) ?? 0} API token${num(d.tokensEnded) === 1 ? '' : 's'} ended`}. Accounts, passwords and privileges changed on the main server after that are not here: review them`;
     }
     case 'file-approved': return `This file was approved to run its scripts, schedules, automations, digests, hooks and connections${str(d.reason) ? ` (it was held: ${str(d.reason)})` : ''}`;
+    case 'file-restored': return str(d.mode) === 'replace'
+      ? `${str(d.source) ?? 'This file'} was put back as it was at ${str(d.asOf) ?? '?'}, over the live file`
+      : `${str(d.source) ?? 'A file'} as it was at ${str(d.asOf) ?? '?'} was hosted as ${str(d.into) ?? '?'}, next to the live file`;
+    case 'sessions-ended': return d.scope === 'account'
+      ? `An administrator ended all ${num(d.count) ?? 0} of the sessions of${t}`
+      : `An administrator ended ${num(d.count) ?? 1} session of${t}`;
     case 'script-network-on': return 'Script network access turned on: this file\'s scripts can reach the network';
     case 'script-network-off': return 'Script network access turned off for this file';
     case 'web-viewer-hosts-changed': {

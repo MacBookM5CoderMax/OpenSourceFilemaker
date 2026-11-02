@@ -173,6 +173,7 @@ import { BackupStopped, backupFolder, backupKey, backupRunning, stopBackups, bac
 import { approveRestoredFiles, verifiedHostedRecord } from './hosted-record.ts';
 import { ENCRYPTED_EXT } from './encrypt.ts';
 import { isLocalAdmin } from './local-admin.ts';
+import { recordServerSecurityEvent, type AdminActor, type ServerEventDetail, type ServerSecurityEventKind } from './server-security.ts';
 import { tokenExpiry } from './token-expiry.ts';
 import { localAuthority } from './local-tls.ts';
 import { describeCheck, describeRestore, testRestore, verifyAfterBackup, verifySet } from './backup-verify.ts';
@@ -184,7 +185,7 @@ import type { Replication } from './replication.ts';
 import type { CertificateState } from './acme.ts';
 import type { OffsiteSchedule } from './s3.ts';
 import { HookError, type InboundHooks } from './inbound-hooks.ts';
-import { ScheduleError, type ScheduleInput, type Schedules } from './schedules.ts';
+import { ScheduleError, type Schedule, type ScheduleInput, type Schedules } from './schedules.ts';
 import { BackupFolderError, checkBackupFolder } from './backup-folder.ts';
 import { SyncConsoleError, type ApplyRequest, type SyncConsole } from './sync-console.ts';
 import type { Metrics } from './metrics.ts';
@@ -990,6 +991,8 @@ export class Admin {
       send(403, { error: 'missing x-tabularius-admin header' });
       return true;
     }
+    // Capture the proven channel before reading a body or awaiting a restore; a console session may expire meanwhile.
+    this.requestActors.set(req, this.actorOf(req));
     const done = this.inFlight.enter('admin', res);
     if (!done) {
       busyHeaders(res);
@@ -1006,6 +1009,7 @@ export class Admin {
         else {
           if (body.on !== this.host.config.blockNewUsers()) {
             this.host.config.setBlockNewUsers(body.on);
+            this.serverEvent(req, 'server-setting-changed', { setting: 'block new users', before: !body.on, after: body.on });
             this.log(body.on ? 'New users are blocked (admin console): only sessions already open carry on' : 'New users may sign in again (admin console)');
           }
           send(200, { blockNewUsers: body.on });
@@ -1021,11 +1025,18 @@ export class Admin {
           const config = this.host.config;
           const before = config.sessionIdleMinutes();
           const webBefore = config.webSessionIdleMinutes();
+          const webOwnBefore = config.webSessionIdleIsOwn();
           // Both are checked before either is saved, and saved together.
           config.setIdleMinutes(body.minutes as number | undefined, body.webMinutes as number | null | undefined);
           const now = config.sessionIdleMinutes();
+          if (now !== before) this.serverEvent(req, 'server-setting-changed', { setting: 'Data API session timeout (minutes)', before, after: now });
           if (now !== before) this.log(`The Data API session timeout is ${now} ${now === 1 ? 'minute' : 'minutes'} (admin console), was ${before}`);
           const webNow = config.webSessionIdleMinutes();
+          const webOwnNow = config.webSessionIdleIsOwn();
+          if (body.webMinutes !== undefined && (webNow !== webBefore || webOwnNow !== webOwnBefore)) {
+            this.serverEvent(req, 'server-setting-changed', { setting: 'web client session timeout (minutes)', before: webBefore, after: webNow,
+              ...(webOwnNow !== webOwnBefore ? { mode: webOwnNow ? 'its own timeout' : 'follows the Data API timeout' } : {}) });
+          }
           if (webNow !== webBefore && body.webMinutes !== undefined) this.log(`The web client session timeout is ${webNow} ${webNow === 1 ? 'minute' : 'minutes'} (admin console), was ${webBefore}`);
           send(200, { sessionIdleMinutes: now, ...(body.webMinutes !== undefined ? { webSessionIdleMinutes: webNow } : {}) });
         } catch (e) {
@@ -1037,6 +1048,7 @@ export class Admin {
         else {
           const before = this.host.config.stopKeepingRecordData();
           this.host.config.setStopKeepingRecordData(body.on);
+          if (body.on !== before) this.serverEvent(req, 'server-setting-changed', { setting: 'stop keeping record data on devices', before, after: body.on });
           if (body.on !== before) this.log(body.on ? 'Stop keeping record data on devices is on (admin console): web sign-out clears the browser, and web sessions end 30 days after sign-in' : 'Stop keeping record data on devices is off (admin console)');
           send(200, { stopKeepingRecordData: body.on });
         }
@@ -1056,6 +1068,8 @@ export class Admin {
       } else if (path === '/tabularius/admin/v1/notifications' && req.method === 'POST') {
         // Email an address when the server logs an error (and, if asked, a warning), as a digest.
         const body = await readJson(req) as { to?: unknown; level?: unknown };
+        const before = this.host.config.notifications();
+        const describe = (n: typeof before) => n ? `an address at ${n.to.split('@').pop()!.toLowerCase()}, ${n.level === 'Warning' ? 'warnings and errors' : 'errors only'}` : 'off';
         try {
           if (body.to === '' || body.to === null) {
             this.host.config.setNotifications(undefined);
@@ -1066,6 +1080,8 @@ export class Admin {
             this.host.config.setNotifications({ to: body.to.trim(), level: body.level === 'Warning' ? 'Warning' : 'Error' });
             this.log(`Email notifications go to ${body.to.trim()} (admin console)`);
           }
+          const now = this.host.config.notifications();
+          if (before?.to !== now?.to || before?.level !== now?.level) this.serverEvent(req, 'server-setting-changed', { setting: 'email notifications', before: describe(before), after: describe(now) });
           send(200, this.notificationStatus());
         } catch (e) {
           send(400, { error: adminErrorText(e, this.host) });
@@ -1085,13 +1101,17 @@ export class Admin {
         if (!this.takePasskeyChallenge(response?.challenge ?? '')) { send(400, { error: 'The registration has expired; start again' }); return true; }
         const env = webauthnEnv(req, this.host.publicUrl);
         try {
-          send(200, registerAdminPasskey(this.host.dir, response, { rpId: env.rpId, origin: env.origin, challenge: response.challenge }, typeof body.label === 'string' ? body.label : undefined));
+          const made = registerAdminPasskey(this.host.dir, response, { rpId: env.rpId, origin: env.origin, challenge: response.challenge }, typeof body.label === 'string' ? body.label : undefined);
+          this.serverEvent(req, 'admin-passkey-changed', { change: 'added', label: typeof body.label === 'string' ? body.label : undefined });
+          send(200, made);
         } catch (e) {
           send(400, { error: e instanceof AdminPasskeyError ? e.message : 'The passkey could not be registered' });
         }
       } else if (/^\/tabularius\/admin\/v1\/passkeys\/[^/]+$/.test(path) && req.method === 'DELETE') {
         const id = decodeURIComponent(path.split('/')[5]);
-        send(200, { removed: removeAdminPasskey(this.host.dir, id) });
+        const removed = removeAdminPasskey(this.host.dir, id);
+        if (removed) this.serverEvent(req, 'admin-passkey-changed', { change: 'removed' });
+        send(200, { removed });
       } else if (path === '/tabularius/admin/v1/metrics' && req.method === 'GET' && this.metrics) {
         res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4; charset=utf-8', 'cache-control': 'no-store', ...NOSNIFF }).end(this.metrics.render());
       } else if (path === '/tabularius/admin/v1/backups' && req.method === 'GET') {
@@ -1106,7 +1126,9 @@ export class Admin {
           if (backupRunning()) throw new BackupFolderError('a backup is running; wait for it or stop it, then change the folder', 409);
           const asked = body.folder.trim();
           const folder = asked ? checkBackupFolder(asked, this.host.dir) : '';
+          const before = this.host.config.backupDir();
           this.host.config.setBackupDir(folder || undefined);
+          if (before !== (folder || undefined)) this.serverEvent(req, 'server-setting-changed', { setting: 'backup folder', before: before ?? 'the default folder', after: folder || 'the default folder' });
           const live = !this.progressive && !this.offsite;
           if (live) this.backupDirInUse = folder || defaultBackupDir(this.host.dir);
           if (live && this.backups) this.backups.dest = this.backupDirInUse!;
@@ -1970,19 +1992,26 @@ export class Admin {
         // Sign out one session (by id) or every session for one account on a file.
         const body = await readJson(req) as { id?: unknown; database?: unknown; account?: unknown };
         if (body.id !== undefined) {
-          send(200, { ended: this.api.endById(String(body.id)) ? 1 : 0 });
+          const was = this.api.list().find((x) => x.id === String(body.id));
+          const ended = this.api.endById(String(body.id)) ? 1 : 0;
+          if (was) this.sessionsEnded(req, was.db, 'session', ended, was.account);
+          send(200, { ended });
         } else if (body.database !== undefined && body.account !== undefined) {
           const wanted = String(body.database);
           const name = this.host.names().find((n) => n.toLowerCase() === wanted.toLowerCase());
           if (!name) send(404, { error: `"${wanted}" is not hosted` });
-          else send(200, { ended: this.api.endByAccount(name, String(body.account)) });
+          else {
+            const ended = this.api.endByAccount(name, String(body.account));
+            this.sessionsEnded(req, name, 'account', ended, String(body.account));
+            send(200, { ended });
+          }
         } else {
           send(400, { error: 'give an id, or a database and account' });
         }
       } else if (path === '/tabularius/admin/v1/restore' && req.method === 'GET') {
         send(200, this.restorePoints());
       } else if (path === '/tabularius/admin/v1/restore' && req.method === 'POST') {
-        send(200, await this.restore(await readJson(req) as Record<string, unknown>));
+        send(200, await this.restore(await readJson(req) as Record<string, unknown>, this.actorOf(req)));
       } else if (path.startsWith('/tabularius/admin/v1/logs') && req.method === 'GET' && this.logs) {
         await this.handleLogs(res, path, url, send);
       } else if (path === '/tabularius/admin/v1/plugins' || path.startsWith('/tabularius/admin/v1/plugins/')) {
@@ -2058,7 +2087,12 @@ export class Admin {
       } else {
         const disconnect = /^\/tabularius\/admin\/v1\/clients\/([0-9a-f]+)\/disconnect$/.exec(path);
         const message = /^\/tabularius\/admin\/v1\/clients\/([0-9a-f]+)\/message$/.exec(path);
-        if (disconnect && req.method === 'POST') send(this.api.endById(disconnect[1]) ? 200 : 404, {});
+        if (disconnect && req.method === 'POST') {
+          const was = this.api.list().find((x) => x.id === disconnect[1]);
+          const ended = this.api.endById(disconnect[1]);
+          if (ended && was) this.sessionsEnded(req, was.db, 'session', 1, was.account);
+          send(ended ? 200 : 404, {});
+        }
         else if (message && req.method === 'POST') {
           // Message one connected client; 404 if it is no longer connected.
           const raw = (await readJson(req)).text;
@@ -2133,11 +2167,23 @@ export class Admin {
       } else if (req.method === 'DELETE') {
         setPluginSecret(this.host.dir, id, name, undefined);
       } else return send(405, { error: 'method not allowed' });
+      this.serverEvent(req, 'plugin-secret-changed', { plugin: id, field: name, change: req.method === 'PUT' ? 'set' : 'cleared' });
       // The value is never logged.
       this.log(`plug-in ${id}: secret ${name} ${req.method === 'PUT' ? 'set' : 'cleared'} from the console`);
       return send(200, this.plugins());
     } catch (e) {
       return send(400, { error: adminErrorText(e, this.host) });
+    }
+  }
+
+  /** Name, kind and host identify a connection; no setting values or secrets enter its event. */
+  private connectionEvent(req: IncomingMessage, change: string, id: string, more: ServerEventDetail = {}): void {
+    const c = this.connections!;
+    try {
+      const x = c.get(id);
+      this.serverEvent(req, 'connection-changed', { change, name: x.name, type: x.type, host: c.hostOfConfig(x), ...more });
+    } catch (e) {
+      this.log(`security log: could not record a change to connection ${id}: ${(e as Error).message}`);
     }
   }
 
@@ -2159,12 +2205,17 @@ export class Admin {
         if (req.method === 'GET') return send(200, all());
         if (req.method !== 'POST') return send(405, { error: 'method not allowed' });
         const made = c.create(await input());
+        this.connectionEvent(req, 'added', made.id);
         return send(201, c.get(made.id));
       }
       const id = m[1];
       if (m[2] === 'approve' || m[2] === 'test') {
         if (req.method !== 'POST') return send(405, { error: 'method not allowed' });
-        if (m[2] === 'approve') return send(200, c.get(c.approve(id).id));
+        if (m[2] === 'approve') {
+          const approved = c.approve(id);
+          this.connectionEvent(req, 'approved', approved.id);
+          return send(200, c.get(approved.id));
+        }
         return send(200, { ...(await c.test(id)), connection: c.get(id) });
       }
       if (m[3]) {
@@ -2172,13 +2223,29 @@ export class Admin {
           const value = (await readJson(req) as Record<string, unknown>).value;
           if (typeof value !== 'string' || !value) return send(400, { error: 'give the secret as {"value": "..."}' });
           c.setSecret(id, m[3], value);
-        } else if (req.method === 'DELETE') c.setSecret(id, m[3], undefined);
-        else return send(405, { error: 'method not allowed' });
+          this.connectionEvent(req, 'secret set', id, { field: m[3] });
+        } else if (req.method === 'DELETE') {
+          c.setSecret(id, m[3], undefined);
+          this.connectionEvent(req, 'secret cleared', id, { field: m[3] });
+        } else return send(405, { error: 'method not allowed' });
         return send(200, c.get(id));
       }
       if (req.method === 'GET') return send(200, c.get(id));
-      if (req.method === 'PATCH') return send(200, c.get(c.update(id, await input()).id));
-      if (req.method === 'DELETE') return send(c.remove(id) ? 200 : 404, {});
+      if (req.method === 'PATCH') {
+        const patch = await input();
+        const old = c.get(id);
+        const done = c.update(id, patch);
+        const now = c.get(done.id);
+        const fields = (['name', 'config', 'files', 'note', 'status'] as const).filter((k) => JSON.stringify(old[k]) !== JSON.stringify(now[k]));
+        if (fields.length) this.connectionEvent(req, 'changed', done.id, { fields: fields.map((k) => k === 'config' ? 'settings' : k === 'status' ? 'on or off' : k).join(', ') });
+        return send(200, now);
+      }
+      if (req.method === 'DELETE') {
+        const old = (() => { try { return c.get(id); } catch { return undefined; } })();
+        const gone = c.remove(id);
+        if (gone && old) this.serverEvent(req, 'connection-changed', { change: 'removed', name: old.name, type: old.type, host: c.hostOfConfig(old) });
+        return send(gone ? 200 : 404, {});
+      }
       return send(405, { error: 'method not allowed' });
     } catch (e) {
       if (e instanceof ApiError) throw e;
@@ -2274,6 +2341,40 @@ export class Admin {
     send(405, { error: 'method not allowed' });
   }
 
+  private requestActors = new WeakMap<IncomingMessage, AdminActor>();
+
+  /** The proven way in, in check's precedence order; these routes have no personal accounts. */
+  private actorOf(req: IncomingMessage): AdminActor {
+    const proved = this.requestActors.get(req);
+    if (proved) return proved;
+    const channel = isLocalAdmin(this.host.dir, req.headers['x-tabularius-local']) ? 'local command'
+      : !this.passwordHash() ? 'this computer, no admin password set'
+      : this.consoleSession(req) ? 'admin console' : 'Admin API';
+    return { channel, address: clientAddress(req) || 'unknown' };
+  }
+
+  /** Server-wide writes go to the Admin log. The same recorder can accept actors from other admin interfaces. */
+  private serverEvent(req: IncomingMessage, kind: ServerSecurityEventKind, detail: ServerEventDetail): void {
+    recordServerSecurityEvent(this.host, this.log, this.actorOf(req), kind, detail);
+  }
+
+  /** Nothing is recorded when no session ended or the file is not hosted here. Logging never undoes the change. */
+  private sessionsEnded(req: IncomingMessage, database: string, scope: 'session' | 'account', count: number, account: string): void {
+    if (count <= 0) return;
+    try {
+      const actor = this.actorOf(req);
+      this.host.get(database)?.recordSessionsEnded({ scope, count, account, by: actor.channel, from: actor.address });
+    } catch (e) { this.log(`security log: could not record that sessions were ended in ${database}: ${(e as Error).message}`); }
+  }
+
+  /** The restore has already happened; each file's event is attempted even if another file's logging fails. */
+  private fileRestored(names: string[], what: { mode: 'copy' | 'replace'; asOf: string; source: string; into: string }, actor?: AdminActor): void {
+    for (const name of names) {
+      try { this.host.get(name)?.recordFileRestored({ ...what, ...(actor ? { by: actor.channel, from: actor.address } : {}) }); }
+      catch (e) { this.log(`security log: could not record the restore in ${name}: ${(e as Error).message}`); }
+    }
+  }
+
   private restoring = false;
 
   /** For each hosted file, the span of time it can be put back to. */
@@ -2295,7 +2396,7 @@ export class Admin {
    * the live file alone; "replace" closes the file (its users are disconnected),
    * restores it in place and opens it again, and has to be asked for.
    */
-  async restore(body: Record<string, unknown>): Promise<{ database: string; time: string; mode: string }> {
+  async restore(body: Record<string, unknown>, actor?: AdminActor): Promise<{ database: string; time: string; mode: string }> {
     for (const key of ['database', 'name']) {
       if (body[key] !== undefined && typeof body[key] !== 'string') throw new RestoreError(400, `${key} must be a string`);
     }
@@ -2366,6 +2467,8 @@ export class Admin {
         try { await restorePointTo(point, target, undefined, file.path); } catch (e) { throw refused(e, 500); }
         this.host.add(target, 'trusted', 'restore', 'admin console');
         await this.host.openFileEverywhere(copy);
+        // Both files say that an old copy, including its accounts and privileges, was hosted.
+        this.fileRestored([file.name, copy], { mode: 'copy', asOf: new Date(point.time).toISOString(), source: file.name, into: copy }, actor);
         return { database: copy, time: new Date(point.time).toISOString(), mode };
       }
       const live = this.host.get(file.name);
@@ -2390,6 +2493,7 @@ export class Admin {
         rmSync(securitySnapshot, { force: true });
         await this.host.openFileEverywhere(file.name);
       }
+      this.fileRestored([file.name], { mode: 'replace', asOf: new Date(point.time).toISOString(), source: file.name, into: file.name }, actor);
       // Point-in-time logs from here on must follow the restored file, not the copy they followed before.
       if (this.progressive) {
         const r = await backupFolder(this.host.dir, dest, this.backups?.keep ?? this.backupKeep);

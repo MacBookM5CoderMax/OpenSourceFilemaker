@@ -23,6 +23,7 @@ import { renameCheckedFile as rename, renameCheckedSync as renameSync } from '..
 //   GET /tabularius/admin/v1/logs/<name>/download          the file as it is
 
 import { redactDiagnosticText } from '../../scripts/src/redaction.ts';
+import { SERVER_SECURITY_EVENT_KINDS } from './server-security.ts';
 import { mkdir, stat } from 'node:fs/promises';
 import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { appendFile, appendFileSync } from '../../store/src/fs-boundary.ts';
@@ -97,7 +98,12 @@ export class ServerLogs {
   write(log: LogName, type: LogType, source: string, message: string): void {
     if (this.closed) return;
     source = redactDiagnosticText(source);
+    // A security kind is a fixed label, not a credential assignment (notably plugin-secret-changed).
+    // Redact the entire sentence as usual, keeping only this canonical prefix outside the redactor.
+    const securityPrefix = SERVER_SECURITY_EVENT_KINDS.map((kind) => `[security notice] ${kind}: `).find((prefix) => message.startsWith(prefix));
+    if (securityPrefix) message = message.slice(securityPrefix.length);
     message = redactDiagnosticText(message);
+    if (securityPrefix) message = securityPrefix + message;
     try { this.onEntry?.(type, source, message); } catch { /* a listener never stops logging */ }
     const line = `${logTime()}\t${type}\t${clean(source)}\t${clean(message)}\n`;
     const lines = this.pending.get(log) ?? [];

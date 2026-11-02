@@ -1013,6 +1013,12 @@ export class Connections {
     }
   }
 
+  /** The host a connection sends to, for an audit entry that never includes setting or secret values. */
+  hostOfConfig(c: Connection): string | undefined {
+    try { return this.type(c.type).host(c); }
+    catch { return undefined; }
+  }
+
   private shown(c: Connection) {
     const secrets = this.secretFields(c).map((f) => ({ name: f.name, label: f.label, required: f.required === true, set: this.vault.has(this.ref(c, f.name)) }));
     return { ...c, secrets, ready: secrets.every((s) => s.set || !s.required) };

@@ -941,6 +941,25 @@ rule on, only an account that may view the whole table can.
 | `pii-field-marked` | An administrator marked a field as personal data, as not personal data, or back to what the server works out. The entry names the table and field. |
 | `ai-data-masked` | Personal data was kept from an AI model in one exchange. The entry shows the way in and how many values of each kind were swapped for stand-ins, never the values; it also says when a tool was refused. |
 
+**Restore, ending sessions and changes that belong to no file.**
+
+A restore and ending sessions belong to a file, so they are in that file's security log. Server-wide settings, connections, plug-in secrets, the admin console's passkeys and backup, check and message schedules belong to no file; they are written to the server's **Admin** log (`Logs/Admin.log`, also in the console's Logs page) as one line each that starts with `[security notice]`, the kind, a sentence and the way in. The routes have no personal accounts, so an entry says how the change came (`admin console`, `Admin API`, `local command`, or `this computer, no admin password set`) and the address the server saw (behind a proxy that is the proxy's address unless forwarded addresses are trusted), not who the person was. These security entries never include a secret, password or full email address: a connection is named by its name, kind and host, a secret by its field name, an email address by its domain. The Admin log is plain text, rotated at the log size limit with one `-old` generation; unlike a file's security log it is not chained, so keep a copy if you need the record for longer. It cannot protect against someone who can edit the folder.
+
+This closes a gap in the record, not a way into the server: these changes already require administrator access. A stolen administrator credential can still make them; the added entries let an honest administrator read back what happened. The compatibility Admin API (`/fmi/admin/api/v2`) is outside this change; its separate mutation routes do not yet write these entries. <!-- known-difference-ok: Scope of the new Tabularius audit events, verified by route inspection. -->
+
+| Kind | Recorded when |
+| --- | --- |
+| `file-restored` | A file was put back from a backup. With **replace**, the live file's own log says it was put back over itself as it was at a moment; with **copy**, the live file's log and the new copy's log both say that the file as it was at that moment was hosted under a new name. A restored file brings back the accounts, passwords and privileges of that time: review them. This is a notice. |
+| `sessions-ended` | An administrator ended one session, or all of one account's sessions, on a file (the console's **Disconnect** and **Sign out everywhere**). The entry names the account and how many sessions ended. Nothing is written when no session ended. This is informational. |
+
+| Kind (Admin log; all notices) | Recorded when |
+| --- | --- |
+| `server-setting-changed` | A server-wide setting was changed to a different value: block new users, the Data API or web client session timeout, stop keeping record data on devices, the backup folder, or email notifications (the entry names the domain of the address only). Saving the same value writes nothing. |
+| `admin-passkey-changed` | A passkey for signing in to the admin console was added or removed. |
+| `connection-changed` | A connection (an outside service with a secret) was added, changed, approved or removed, or one of its secrets was set or cleared. The entry names the connection, its kind and its host, which settings changed, and the secret's field name; never a value. |
+| `plugin-secret-changed` | A plug-in's secret was set or cleared; the entry names the plug-in and the secret, never its value. |
+| `server-schedule-changed` | A backup, check or message schedule was added, changed or removed; the entry lists what changed and, for a backup with an explicit destination, where it goes. Auditing script and sync schedules in their file's security log is separate work. |
+
 ## Putting a record back
 
 In the admin console's **Audit log**, **History** on any record change lists

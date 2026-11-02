@@ -4243,6 +4243,22 @@ export class Store {
     this.securityChange(() => this.logSecurity(`automation-${change}`, { account: by?.channel ? by.channel.slice(0, 80) : null, ...(by?.from ? { from: by.from.slice(0, 80) } : {}), detail: clean }));
   }
 
+  /**
+   * An administrator put this file back from a backup (`replace`), or hosted a copy of it as it was (`copy`).
+   * The restored file brings back older accounts, passwords and privileges. `by` is the way in, `from` the address.
+   */
+  recordFileRestored(opts: { mode: 'copy' | 'replace'; asOf: string; source: string; into: string; by?: string; from?: string }): void {
+    const cut = (v: string): string => v.slice(0, 200);
+    this.securityChange(() => this.logSecurity('file-restored', { account: opts.by ? cut(opts.by) : null, ...(opts.from ? { from: cut(opts.from) } : {}),
+      detail: { mode: opts.mode, asOf: cut(opts.asOf), source: cut(opts.source), into: cut(opts.into) } }));
+  }
+
+  /** An administrator ended one session, or all of an account's sessions, on this file. `account` is whose they were. */
+  recordSessionsEnded(opts: { scope: 'session' | 'account'; count: number; account: string; by?: string; from?: string }): void {
+    this.securityChange(() => this.logSecurity('sessions-ended', { account: opts.by ? opts.by.slice(0, 200) : null, target: opts.account.slice(0, 200), ...(opts.from ? { from: opts.from.slice(0, 200) } : {}),
+      detail: { scope: opts.scope, count: opts.count } }));
+  }
+
   /** An administrator approved this file, which the host had held: kept in its security log, with why it was held. */
   recordFileApproved(opts: { account?: string; reason?: string } = {}): void {
     this.securityChange(() => this.logSecurity('file-approved', { account: opts.account ?? null, detail: { reason: opts.reason ?? '' } }));
