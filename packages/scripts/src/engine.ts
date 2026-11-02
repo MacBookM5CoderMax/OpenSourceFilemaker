@@ -7757,8 +7757,9 @@ export class ScriptEngine {
       // (as in FileMaker), and a value a spreadsheet would take for a formula gets an apostrophe; the group separator between a
       // repeating field's values is the one control character written as it is.
       const cell = (parts: string[], type?: string) => {
-        const raw = parts.join(GROUP_SEPARATOR);
-        const guarded = formulaGuard(raw, type).length > raw.length ? "'" : '';
+        const lead = parts[0] ?? '';
+        // Later repetitions cannot start a spreadsheet formula: the cell starts with the first repetition or a group separator.
+        const guarded = formulaGuard(lead, type).length > lead.length ? "'" : '';
         const one = guarded + parts.map((v) => visibleControls(v).replace(/\r\n|[\r\n]/g, '\v')).join(GROUP_SEPARATOR);
         const quoted = `"${one.replace(/"/g, '""')}"`;
         // Tab-separated text is written bare; only a value that starts with a quote is quoted, so reading it back
