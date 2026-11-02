@@ -612,7 +612,22 @@ function flag(args: string[], name: string): string | undefined {
   return v;
 }
 
+/** An option left at the end of the line, or followed by another option, has no value: say so instead of running without it. */
+function requireValues(args: string[], names: readonly string[], cmd = ''): void {
+  for (const name of names) {
+    const i = args.indexOf(name);
+    if (i >= 0 && (args[i + 1] === undefined || args[i + 1].startsWith('--'))) throw new Error(`${cmd ? `${cmd}: ` : ''}${name} needs a value after it`);
+  }
+}
+
+/** What is left after a command has taken its options and words: a leftover option is a typo, and must not run the command without it. */
+function refuseStrayOptions(cmd: string, args: string[], known: string): void {
+  const stray = args.find((a) => a.startsWith('-'));
+  if (stray !== undefined) throw new Error(`${cmd}: ${stray} is not an option it knows${known ? `; it takes ${known}` : ' and takes none'}`);
+}
+
 function wholeFlag(args: string[], name: string, options: { min?: number; max?: number } = {}): number | undefined {
+  requireValues(args, [name]);
   const value = flag(args, name);
   if (value === undefined) return undefined;
   try { return wholeNumber(name, { ...options, env: { [name]: value } }); }
@@ -754,13 +769,17 @@ function openDatabase(folder: string, database: string): Store {
 /** `schema` and `records` on a hosted database. A field with no stored column (an unstored calculation or a summary) is left out; the server works those out when it serves the database. */
 function hostedRead(cmd: 'schema' | 'records', store: Store, args: string[]): number {
   if (cmd === 'schema') {
-    if (bool(args, '--json')) console.log(JSON.stringify(store.schema, null, 2));
+    const json = bool(args, '--json');
+    refuseStrayOptions('schema', args, '--json');
+    if (json) console.log(JSON.stringify(store.schema, null, 2));
     else printSchema(store.schema);
     return 0;
   }
   const limit = wholeFlag(args, '--limit') ?? Infinity;
+  requireValues(args, ['--format'], 'records');
   const format = flag(args, '--format') ?? 'jsonl';
   if (format !== 'jsonl' && format !== 'csv') throw new Error('records: --format is jsonl or csv');
+  refuseStrayOptions('records', args, '--limit N and --format jsonl|csv');
   const name = args.shift();
   if (!name) throw new Error(`records: which table? ${tableList(store.schema.tables)}`);
   const table = store.schema.tables.find((t) => t.name === name);
@@ -1916,6 +1935,7 @@ function main(argv: string[]): number {
     case 'backup': {
       const dest = configuredBackupDir(path, flag(args, '--to'));
       const keep = wholeFlag(args, '--keep') ?? 0;
+      refuseStrayOptions('backup', args, '--to DIR and --keep N');
       backupFolder(path, dest, keep).then((r) => {
         console.log(`backed up ${r.files.length} files to ${r.dir}${backupKey() ? ', encrypted' : ''}`);
         for (const old of r.removed) console.log(`removed old backup ${old}`);
@@ -1928,6 +1948,7 @@ function main(argv: string[]): number {
     case 'verify-backup': {
       const dest = configuredBackupDir(path, flag(args, '--from'));
       const sign = bool(args, '--sign');
+      refuseStrayOptions('verify-backup', args, '--from DIR and --sign');
       const names = backupSets(dest);
       if (args[0] && !existsSync(args[0]) && !existsSync(join(dest, args[0]))) {
         throw new Error(`verify-backup: no backup set "${args[0]}" in ${dest}; sets there: ${names.map((set) => basename(set)).join(', ') || 'none'}`);
@@ -2457,31 +2478,38 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'report': {
+      // Read once, before the loop: bool() takes the option out of args, so a second file would be printed as text.
+      // With --json one file prints as an object and several as one list, so the output is a single JSON document.
+      const json = bool(args, '--json');
+      refuseStrayOptions('report', args, '--json');
       const host = new Host(path);
       try {
-        const names = args[0] && !args[0].startsWith('--') ? [args[0]] : host.names();
-        for (const name of names) {
+        const names = args[0] ? [args[0]] : host.names();
+        const reports = names.map((name) => {
           const store = host.get(name);
           if (!store) throw new Error(`report: no database "${name}" in ${path}; hosted: ${host.names().join(', ')}`);
-          const report = conversionReport(store, host.names());
-          console.log(bool(args, '--json') ? JSON.stringify(report, null, 2) : report.summary + '\n');
-        }
+          return conversionReport(store, host.names());
+        });
+        if (json) console.log(JSON.stringify(reports.length === 1 ? reports[0] : reports, null, 2));
+        else for (const report of reports) console.log(report.summary + '\n');
       } finally {
         host.close();
       }
       return 0;
     }
     case 'compact': {
+      const json = bool(args, '--json');
+      refuseStrayOptions('compact', args, '--json');
       const host = new Host(path);
       try {
-        const names = args[0] && !args[0].startsWith('--') ? [args[0]] : host.names();
+        const names = args[0] ? [args[0]] : host.names();
         if (!names.length) throw new Error(`compact: no hosted files in ${path}`);
         const reports = names.map((name) => {
           const store = host.get(name);
           if (!store) throw new Error(`compact: no database "${name}" in ${path}; hosted: ${host.names().join(', ')}`);
           return { name, report: compactStore(store.path) };
         });
-        if (bool(args, '--json')) console.log(JSON.stringify(reports.length === 1 ? reports[0] : reports, null, 2));
+        if (json) console.log(JSON.stringify(reports.length === 1 ? reports[0] : reports, null, 2));
         else for (const { name, report: r } of reports) console.log(`${name}: ${r.beforeBytes} -> ${r.afterBytes} bytes; WAL ${r.walBeforeBytes} -> ${r.walAfterBytes}; ${r.durationMs} ms (${r.writerWaitMs} ms waiting for a writer); free pages ${r.freePagesBefore} -> ${r.freePagesAfter}`);
       } finally { void host.close(); }
       return 0;
@@ -2967,6 +2995,9 @@ function main(argv: string[]): number {
       if (!database) throw new Error('audit: give a database');
       const store = openDatabase(path, database);
       try {
+        requireValues(args, ['--table', '--record', '--account', '--since', '--limit'], 'audit');
+        const stray = args.find((a) => a.startsWith('--') && !['--table', '--record', '--account', '--since', '--limit'].includes(a));
+        if (stray !== undefined) throw new Error(`audit: ${stray} is not an option it knows; it takes --table T, --record N, --account A, --since ISO and --limit N`);
         const n = flag(args, '--record');
         const limit = wholeFlag(args, '--limit', { min: 1, max: 10_000 });
         const since = flag(args, '--since');
@@ -3121,6 +3152,7 @@ function main(argv: string[]): number {
     const store = openDatabase(folder, database);
     try {
       if (cmd === 'info') {
+        refuseStrayOptions('info', args, '');
         console.log(JSON.stringify({ tabularius: SERVER_VERSION, openhbam: SERVER_VERSION, file: basename(store.path), fileMode: store.fileMode, aiPolicy: store.aiPolicy, sqlRequiresFmxdbc: store.sqlRequiresFmxdbc, dateOrder: store.dateOrder, ...counts(store.schema) }, null, 2));
         return 0;
       }
@@ -3151,6 +3183,7 @@ function main(argv: string[]): number {
   const db = FmpDatabase.open(path, process.env.TABULARIUS_SOURCE_PASSPHRASE ?? promptedPassphrase);
   switch (cmd) {
     case 'info': {
+      refuseStrayOptions('info', args, '');
       console.log(JSON.stringify({ tabularius: SERVER_VERSION, openhbam: SERVER_VERSION, file: basename(path), ...db.file.header, blocks: db.file.blockCount, ...counts(db.schema) }, null, 2));
       return 0;
     }
@@ -3177,13 +3210,18 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'schema': {
-      if (bool(args, '--json')) console.log(JSON.stringify(db.schema, null, 2));
+      const json = bool(args, '--json');
+      refuseStrayOptions('schema', args, '--json');
+      if (json) console.log(JSON.stringify(db.schema, null, 2));
       else printSchema(db.schema);
       return 0;
     }
     case 'records': {
       const limit = wholeFlag(args, '--limit') ?? Infinity;
+      requireValues(args, ['--format'], 'records');
       const format = flag(args, '--format') ?? 'jsonl';
+      if (format !== 'jsonl' && format !== 'csv') throw new Error('records: --format is jsonl or csv');
+      refuseStrayOptions('records', args, '--limit N and --format jsonl|csv');
       const table = args.shift();
       if (!table) throw new Error(`records: which table? ${tableList(db.schema.tables)}`);
       const fields = db.table(table).fields;
