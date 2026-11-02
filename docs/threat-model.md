@@ -50,6 +50,8 @@ Known gap: the admin password file (`.openhbam-admin`) is refused when a link, p
 
 **Modules that use it**
 
+- `packages/cli/src/corpus-scan.ts`
+- `packages/cli/src/diagnostics.ts`
 - `packages/cli/src/main.ts`
 - `packages/cli/src/output-files.ts`
 - `packages/cli/src/service.ts`

@@ -4,8 +4,8 @@ import { encryptionKeyFromEnv, positiveWholeNumber } from '../../server/src/sett
 import { checkSqlExportPath } from '../../store/src/portable-path.ts';
 import { listenForStop } from './stop-request.ts';
 import { auditJsonLine } from '../../store/src/audit-output.ts';
-import { writeFileSync as writeChecked } from '../../store/src/fs-boundary.ts';
-import { plainFolders, writeKitFiles } from './output-files.ts';
+import { openSync as openChecked, writeFileSync as writeChecked, writeSync as writeSyncChecked } from '../../store/src/fs-boundary.ts';
+import { nearestExisting, plainFolders, refusePlantedLinks, writeKitFiles } from './output-files.ts';
 // tabularius: inspect and convert FileMaker .fmp12 files.
 
 import '../../store/src/legacy-env.ts';
@@ -15,7 +15,7 @@ import { availableParallelism, homedir, tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { createServer as createNetServer } from 'node:net';
-import { accessSync, closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, renameSync, rmSync, readFileSync, statSync, writeSync } from 'node:fs';
+import { accessSync, closeSync, constants, existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { readSecret } from './prompt.ts';
 import { askServer } from './ask-server.ts';
@@ -1652,6 +1652,8 @@ function main(argv: string[]): number {
       if (!from && !fmsDir) throw new Error('migrate-fms: give the FileMaker Server folder (--fms-dir) and/or its Admin API (--from URL)');
       if (fmsDir && !existsSync(fmsDir)) throw new Error(`migrate-fms: ${fmsDir} doesn't exist`);
       const user = flag(args, '--user') ?? 'admin';
+      // The saved settings hold security settings: not into a folder a link planted by someone else points out of, and refused before a password is asked for.
+      if (save) refusePlantedLinks(nearestExisting(dirname(resolve(save))));
       const read: Promise<FmsExport> = !from ? Promise.resolve({})
         : existsSync(from) ? Promise.resolve(JSON.parse(readFileSync(from, 'utf8')) as FmsExport)
         : (process.env.TABULARIUS_FMS_PASSWORD !== undefined ? Promise.resolve(process.env.TABULARIUS_FMS_PASSWORD) : readSecret(`FileMaker Server password for ${user}`))
@@ -2366,9 +2368,12 @@ function main(argv: string[]): number {
       try {
         const privileges = account ? store.privileges(account) : undefined;
         const filesFolder = `${basename(out).replace(/\.sql$/i, '')}.files`;
-        fd = openSync(out, 'wx', 0o600);
+        // The script is the whole file's data: it does not go into a folder a link planted by someone else points out of, and it is
+        // made through the filesystem boundary (exclusively, owner only), as its container files are.
+        refusePlantedLinks(nearestExisting(dirname(out)));
+        fd = openChecked(out, 'wx', 0o600);
         const report = exportSql(store, {
-          write: (text) => { writeSync(fd!, text); },
+          write: (text) => { writeSyncChecked(fd!, text); },
           file: (rel, data) => {
             const target = join(dirname(out), rel);
             plainFolders(dirname(out), rel);
@@ -2647,6 +2652,7 @@ function main(argv: string[]): number {
         const packed = packPlugin(dir, keyFile ? readFileSync(keyFile, 'utf8') : undefined);
         const out = outFile ?? packed.name;
         // A package is meant to be handed on (it is signed, not secret): readable by others, but written only by this user.
+        refusePlantedLinks(nearestExisting(dirname(resolve(out))));
         writeChecked(out, packed.bytes, { mode: 0o644 });
         console.log(`${out}: ${packed.fingerprint ? `signed by ${packed.fingerprint}` : 'not signed'}`);
         return 0;
