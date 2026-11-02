@@ -8,6 +8,6 @@ Password for the configured LDAP search account.
 | Accepted values | LDAP distinguished name, template, attribute, or password as named by the variable |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/hosting-and-connecting.md](../../../hosting-and-connecting.md) |
-| Code | [packages/cli/src/main.ts:1513](../../../../packages/cli/src/main.ts#L1513) |
+| Code | [packages/cli/src/main.ts:1517](../../../../packages/cli/src/main.ts#L1517) |
 
 [All environment variables](../../../environment-variables.md)
