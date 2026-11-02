@@ -4,6 +4,9 @@ import { readBackupInfo } from './backup-info.ts';
 import { STORE_EXT } from './host.ts';
 import { ENCRYPTED_EXT } from './encrypt.ts';
 
+/** The name a copy has while it is being made: the file's name, then `.adding`, then `.enc` once it is sealed. */
+const scratchCopy = (name: string): boolean => name.endsWith(STORE_EXT + '.adding') || name.endsWith(STORE_EXT + '.adding' + ENCRYPTED_EXT);
+
 /** The manifest is the inventory; directory contents only locate its copies. */
 export function backupInventory(setDir: string, allowLegacy = false): { copies: string[]; problems: Record<string, string> } {
   const info = readBackupInfo<{ finished?: Record<string, string>; sha256?: Record<string, string> }>(setDir, allowLegacy);
@@ -29,6 +32,8 @@ export function backupInventory(setDir: string, allowLegacy = false): { copies: 
   }
   const problems: Record<string, string> = Object.create(null);
   for (const name of readdirSync(setDir)) {
+    // A copy being made is under a name no restore reads (see addToSet); it is not yet part of the set, nor a problem with it.
+    if (scratchCopy(name)) continue;
     if (name === 'backup.json' || name === 'backup.json.lock.db' || name === 'backup.json.lock.db-wal' || name === 'backup.json.lock.db-shm' ||
         name === 'progressive' || name === 'Files' || name === 'RC_Data_FMS' || present.includes(name)) continue;
     problems[name] = 'not listed in the backup set';

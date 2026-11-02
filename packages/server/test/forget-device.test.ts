@@ -214,7 +214,13 @@ test('turning the device setting on or off is logged', async t => {
   await setting(true);
   await setting(true);
   await setting(false);
-  assert.equal(lines.length, 2, lines.join('\n'));
-  assert.match(lines[0], /record data on devices.*on/i);
-  assert.match(lines[1], /record data on devices.*off/i);
+  // Each real change is also a security notice, written to this log when the server has no Admin log; a repeat writes neither.
+  const notices = lines.filter((l) => l.startsWith('[security notice] server-setting-changed'));
+  const plain = lines.filter((l) => !l.startsWith('[security notice]'));
+  assert.equal(notices.length, 2, lines.join('\n'));
+  assert.equal(plain.length, 2, lines.join('\n'));
+  assert.match(plain[0], /record data on devices.*on/i);
+  assert.match(plain[1], /record data on devices.*off/i);
+  assert.match(notices[0], /record data on devices.*false to true/i);
+  assert.match(notices[1], /record data on devices.*true to false/i);
 });
