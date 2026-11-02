@@ -19,6 +19,7 @@ const setup = () => {
   return { dir, file };
 };
 
+
 for (const command of ['encrypt', 'decrypt']) test(`AR-cli-plugins-tooling-01 ${command}`, async () => {
   const { dir, file } = setup();
   if (command === 'decrypt') encryptFileSync(file, file + ENCRYPTED_EXT, key);

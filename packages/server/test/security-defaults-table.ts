@@ -9,6 +9,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LOCKOUT, PASSWORD_POLICY } from '../../store/src/index.ts';
+import { checkPrimaryAddress } from '../src/standby.ts';
 
 export interface Ctx {
   base: string;
@@ -437,7 +438,10 @@ export const ROWS: Row[] = [
     changedBy: '`tabularius standby --allow-plain-http` accepts http:// to another computer; `TABULARIUS_ALLOW_PLAIN_HTTP` (which the Docker image sets for the server\'s own listener) does not',
     risk: 'Over plain http the replication token and a copy of every hosted file, password hashes and one-time secrets included, cross the network where anyone on the path can read them',
     how: 'probed', expect: 'refused',
-    observe: async (c) => (grep(c.source('packages/cli/src/main.ts'), /(checkPrimaryAddress)\(primary, bool\(args, '--allow-plain-http'\)\)/) ? 'refused' : 'sent'),
+    observe: async () => {
+      try { checkPrimaryAddress('http://192.0.2.10'); return 'sent'; }
+      catch (error) { return error instanceof Error && error.message.includes('--allow-plain-http') ? 'refused' : 'sent'; }
+    },
   },
   {
     id: 'update-check', section: 'What can reach outside', setting: 'Telemetry and update checks',

@@ -266,3 +266,5 @@ upgraded. A standby now also refuses to replace a file that was changed in its o
 start, or reports it while following, and points to `--overwrite`); before it copied the file again over the change and logged
 one line. A standby folder whose file was edited by hand, or served after a takeover, needs `--overwrite` once. The notes now also record, while a copy or a change is being applied, the states the file may be in, so that what a crash of the standby leaves is told from a change made here; notes left by an older version in the middle of that work (a size of -1 and nothing more) cannot say, so the file is taken as the standby's own once and copied again; a line in the log says so, and that anything written to the file since is lost. See
 [standby servers](standby-guarantees.md).
+
+- A standby following a primary at `http://` on another computer is refused unless `tabularius standby` is given `--allow-plain-http`. `TABULARIUS_ALLOW_PLAIN_HTTP` does not lift this refusal; it still applies to the server's own listener, including the Docker image that sets it.
