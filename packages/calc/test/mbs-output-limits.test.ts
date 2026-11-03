@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { jsonStringArray, jsonStringSize } from '../src/text-budget.ts';
 
-// Keep expansion regressions away from the test runner's heap; pass large inputs as fields, not parsed literals.
+// Keep expansion regressions away from the test runner's heap; pass large inputs as fields, not parsed literals. The limit is a hang guard, not a speed check: the 8 MB cases take about 15 seconds when a CI runner is busy.
 function isolated(body: string): void {
   const run = spawnSync(process.execPath, ['--max-old-space-size=256', '--input-type=module', '-e', `
     import assert from 'node:assert/strict';
@@ -14,7 +14,7 @@ function isolated(body: string): void {
       return evaluateText('MBS ( "' + name + '"' + args.map((_, i) => ' ; p' + i).join('') + ' )', ctx);
     };
     ${body}
-  `], { timeout: 15_000, encoding: 'utf8', maxBuffer: 32_000 });
+  `], { timeout: 60_000, encoding: 'utf8', maxBuffer: 32_000 });
   assert.equal(run.error, undefined, String(run.error));
   assert.equal(run.status, 0, run.stderr);
 }
