@@ -163,7 +163,7 @@ export const SHARED_JS = `
   const avatar = (name) => { let n = 0; for (const c of String(name || '')) n = (n * 31 + c.charCodeAt(0)) % 997; return h('span', { class: 'avatar', style: '--c:var(--s' + ([1, 7, 3, 2, 5, 4][n % 6]) + ')', 'aria-hidden': 'true' }, initials(name)); };
   const pill = (stage) => h('span', { class: 'pill', 'data-s': String(stage || '') }, stage || '–');
   const meter = (share, color) => h('div', { class: 'meter', role: 'presentation', style: color ? '--c:' + color : '' }, h('i', { style: 'width:' + Math.max(0, Math.min(1, share || 0)) * 100 + '%' }));
-  const empty = (name, title, text) => h('div', { class: 'empty' }, h('span', { class: 'chip' }, icon(name, 20)), h('b', {}, title), h('span', {}, text || ''));
+  const empty = (name, title, text) => h('div', { class: 'empty', role: 'status' }, h('span', { class: 'chip' }, icon(name, 20)), h('b', {}, title), h('span', {}, text || ''));
   const greeting = () => { const hr = new Date().getHours(); return hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening'; };
   const today = () => DAYS[new Date().getDay()] + ', ' + MON[new Date().getMonth()] + ' ' + new Date().getDate();
   // A hover label that follows the pointer, used by the column charts.

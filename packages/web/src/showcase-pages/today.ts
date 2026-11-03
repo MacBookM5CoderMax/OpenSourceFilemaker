@@ -87,7 +87,7 @@ export function todayPage(names?: Partial<ShowcaseNames>): string {
       const go = () => open(N.activities, x).catch((e) => fail($('tasks'), e));
       row.addEventListener('click', go); row.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') go(); });
       return row;
-    }), empty('check', 'Nothing due', 'No open tasks in the next 7 days.'));
+    }), empty('check', 'Nothing due', 'No open tasks in 7 days.'));
   }
   async function deals() {
     const t = new Date(), range = iso(t) + '...' + iso(addDays(t, 30));
@@ -101,7 +101,7 @@ export function todayPage(names?: Partial<ShowcaseNames>): string {
       const go = () => open(N.deal, x).catch((e) => fail($('deals'), e));
       row.addEventListener('click', go); row.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') go(); });
       return row;
-    }), empty('target', 'No deals closing soon', 'No open deals are expected to close in the next 30 days.'));
+    }), empty('target', 'No deals closing soon', 'None expected to close in 30 days.'));
   }
   async function quota() {
     const q = (extra) => tabularius.summarize(Object.assign({ title: 'Won this quarter', kind: 'number', layout: N.deals, query: [Object.assign({ Stage: '==Won', Closed: 'this quarter' }, mineDeal())] }, extra));
