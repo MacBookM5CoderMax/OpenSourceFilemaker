@@ -88,7 +88,8 @@ test('a plug-in that loops, throws, eats memory or returns far too much is conta
   mkdirSync(where, { recursive: true });
   const names = ['Bad_Loop', 'Bad_Throw', 'Bad_Memory', 'Bad_Huge', 'Good_Echo'];
   writeFileSync(join(where, 'plugin.json'), JSON.stringify({ id: 'org.example.misbehaving', name: 'Misbehaving', version: '1.0.0', api: '^1.0', publisher: 'Example', main: 'main.js',
-    permissions: { memoryMb: 16 }, functions: names.map((name) => ({ name, min: 1, max: 1 })) }));
+    // A time limit longer than the default 250 ms, so a slow runner reaches the memory limit before the clock stops Bad_Memory.
+    permissions: { memoryMb: 16, timeoutMs: 1000 }, functions: names.map((name) => ({ name, min: 1, max: 1 })) }));
   writeFileSync(join(where, 'main.js'), `const functions = {
   Bad_Loop() { while (true) {} },
   Bad_Throw() { throw new Error('boom'); },
@@ -100,7 +101,7 @@ test('a plug-in that loops, throws, eats memory or returns far too much is conta
   const s = await serveWith(t, dir, Object.fromEntries(names.map((n) => [n.replace('_', ''), `${n} ( Name )`])));
   const store = s.store as unknown as { plugin: never };
   const why = (fn: string) => { try { evaluate(`${fn} ( "a" )`, { plugin: store.plugin } as never); return 'no error'; } catch (e) { return (e as Error).message; } };
-  assert.equal(why('Bad_Loop'), 'org.example.misbehaving/Bad_Loop took longer than 250 ms');
+  assert.equal(why('Bad_Loop'), 'org.example.misbehaving/Bad_Loop took longer than 1000 ms');
   assert.equal(why('Bad_Throw'), 'org.example.misbehaving/Bad_Throw: boom');
   assert.match(why('Bad_Memory'), /^org\.example\.misbehaving\/Bad_Memory used more than 16 MB of memory or stopped$/);
   assert.match(why('Bad_Huge'), /^org\.example\.misbehaving\/Bad_Huge used more than 16 MB of memory or stopped$/);
