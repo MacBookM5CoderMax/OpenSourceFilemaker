@@ -18,12 +18,16 @@ export interface FaultLog {
 // the file's own name and hides the folders above it: a path under the home folder becomes [home]/<name>, any other with
 // two or more folders becomes [path]/<name>. This covers the frames of a stack too, so a frame keeps its function, file
 // name and line:column. Forms: /a/b, //a/b, file:///a/b, C:\a\b and C:/a/b, and \\host\share\a; a folder name may hold
-// spaces when each later word starts with a capital or digit (Program Files, My Data) or the path is quoted. A URL is
-// not a path.
-const SEG = String.raw`[\w.@+~%-]+(?: [A-Z0-9][\w.@+~%-]*)*`;
-const POSIX_PATH = new RegExp(String.raw`(?<![\w:/.\\-])(?:file:\/\/)?\/{1,2}${SEG}(?:\/${SEG})+`, 'g');
-const WINDOWS_PATH = new RegExp(String.raw`(?<![\w\\])[A-Za-z]:[\\/]${SEG}(?:[\\/]${SEG})*`, 'g');
-const UNC_PATH = new RegExp(String.raw`(?<![\w\\])\\\\${SEG}(?:\\${SEG})+`, 'g');
+// spaces: a folder in the middle of a path may hold any words (sam smith, my docs), because the separator after it ends
+// the name; the last name, which the text may run on after, takes only words that start with a capital or digit
+// (Program Files, My Data), or the path is quoted. A URL is not a path.
+const WORD = String.raw`[\w.@+~%-]+`;
+const MID = String.raw`${WORD}(?: ${WORD})*`;
+const SEG = String.raw`${WORD}(?: [A-Z0-9][\w.@+~%-]*)*`;
+// The first name after the root keeps the capital rule, so "the /tmp folder and a/b" is not taken for one path.
+const POSIX_PATH = new RegExp(String.raw`(?<![\w:/.\\-])(?:file:\/\/)?\/{1,2}${SEG}(?:\/${MID}(?=\/))*\/${SEG}`, 'g');
+const WINDOWS_PATH = new RegExp(String.raw`(?<![\w\\])[A-Za-z]:[\\/]${SEG}(?:[\\/]${MID}(?=[\\/]))*(?:[\\/]${SEG})?`, 'g');
+const UNC_PATH = new RegExp(String.raw`(?<![\w\\])\\\\${SEG}(?:\\${MID}(?=\\))*\\${SEG}`, 'g');
 // A quoted path may hold any spaces; the quote marks stay.
 const QUOTED_PATH = /(["'`])((?:[A-Za-z]:[\\/]|\\\\|\/)[^"'`\n]*?[\\/][^"'`\n\\/]+)\1/g;
 
@@ -36,7 +40,7 @@ export function redactPaths(text: string): string {
   if (home.length > 1) {
     const escaped = home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     // A boundary after the folder name, so /home/ab is not taken for /home/abc.
-    const under = new RegExp(String.raw`(?:file:\/\/)?${escaped}(?![\w.@+~%-])((?:[\\/]${SEG})*)`, 'g');
+    const under = new RegExp(String.raw`(?:file:\/\/)?${escaped}(?![\w.@+~%-])((?:[\\/]${MID}(?=[\\/]))*(?:[\\/]${SEG})?)`, 'g');
     out = out.replace(under, (_all, rest: string) => rest ? `[home]/${lastName(rest)}` : '[home]');
   }
   out = out.replace(QUOTED_PATH, (_all, quote: string, path: string) => `${quote}[path]${path.includes('\\') ? '\\' : '/'}${lastName(path)}${quote}`);

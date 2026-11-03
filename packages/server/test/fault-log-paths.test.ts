@@ -70,3 +70,19 @@ test('Windows long paths (\\\\?\\ and \\\\.\\ prefixes) lose their folders too',
   assert.equal(redactPaths('open \\\\.\\C:\\Users\\sam\\x.db failed'), 'open [path]\\x.db failed');
   assert.equal(redactPaths('open \\\\?\\UNC\\host\\share\\dir\\x.db failed'), 'open [path]\\x.db failed');
 });
+
+test('a folder in the middle of an unquoted path may hold lowercase words after a space', () => {
+  assert.equal(redactPaths('open C:\\Users\\sam smith\\x.db failed'), 'open [path]\\x.db failed');
+  assert.equal(redactPaths('open /srv/ann lee/my docs/x.db failed'), 'open [path]/x.db failed');
+  assert.equal(redactPaths('open \\\\host\\my share\\dir\\x.db failed'), 'open [path]\\x.db failed');
+  assert.equal(redactPaths(`failed ${homedir()}/my docs/x.db`), 'failed [home]/x.db');
+  // Prose around a path is kept: a folder name ends at its separator, the last name at the first lowercase word.
+  assert.equal(redactPaths('at /a/b and /c/d now'), 'at [path]/b and [path]/d now');
+});
+
+test('long runs of words with spaces are redacted in linear time', () => {
+  const started = Date.now();
+  for (const head of ['/', 'C:\\', '\\\\']) redactPaths(head + 'a b '.repeat(100_000));
+  redactPaths('/a b'.repeat(100_000));
+  assert.ok(Date.now() - started < 2000, `took ${Date.now() - started} ms`);
+});
