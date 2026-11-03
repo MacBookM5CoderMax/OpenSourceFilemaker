@@ -55,12 +55,12 @@ test('report --json prints one JSON document for any number of files; backup, ve
   try {
     for (const name of ['One', 'Two']) createStore(join(dir, `${name}.openhbam.sqlite`));
     const run = (...args: string[]) => runCli(main, args);
-    const [both, one, text, named] = await Promise.all([
-      run('report', dir, '--json'),
-      run('report', dir, 'Two', '--json'),
-      run('report', dir),
-      run('report', dir, '--json', 'One'),
-    ]);
+    // One at a time: several processes opening the same two stores at once can find one briefly locked on Windows,
+    // and the host then lists only the other, so "any number of files" would print one object.
+    const both = await run('report', dir, '--json');
+    const one = await run('report', dir, 'Two', '--json');
+    const text = await run('report', dir);
+    const named = await run('report', dir, '--json', 'One');
     for (const r of [both, one, text, named]) assert.equal(r.status, 0, r.stderr);
     const list = JSON.parse(both.stdout) as Array<{ database: string }>;
     assert.deepEqual(list.map((r) => r.database), ['One', 'Two']);
