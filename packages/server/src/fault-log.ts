@@ -39,6 +39,8 @@ export function redactPaths(text: string): string {
     out = out.replace(under, (_all, rest: string) => rest ? `[home]/${lastName(rest)}` : '[home]');
   }
   out = out.replace(QUOTED_PATH, (_all, quote: string, path: string) => `${quote}[path]${path.includes('\\') ? '\\' : '/'}${lastName(path)}${quote}`);
+  // The long-path prefixes \\?\ and \\.\ before a drive or UNC name are dropped first, so the rest reads as an ordinary path.
+  out = out.replace(/\\\\[?.]\\UNC\\/gi, '\\\\').replace(/\\\\[?.]\\(?=[A-Za-z]:[\\/])/g, '');
   out = out.replace(UNC_PATH, (path) => `[path]\\${lastName(path)}`);
   out = out.replace(WINDOWS_PATH, (path) => `[path]\\${lastName(path)}`);
   return out.replace(POSIX_PATH, (path) => `[path]/${lastName(path)}`);

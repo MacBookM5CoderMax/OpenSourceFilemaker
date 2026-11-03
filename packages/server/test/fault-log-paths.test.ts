@@ -64,3 +64,9 @@ test('a credential in the message is still hidden alongside the path', () => {
   assert.doesNotMatch(text, new RegExp(secret));
   assert.doesNotMatch(text, /\/srv\/app/);
 });
+
+test('Windows long paths (\\\\?\\ and \\\\.\\ prefixes) lose their folders too', () => {
+  assert.equal(redactPaths('open \\\\?\\C:\\Users\\sam\\x.db failed'), 'open [path]\\x.db failed');
+  assert.equal(redactPaths('open \\\\.\\C:\\Users\\sam\\x.db failed'), 'open [path]\\x.db failed');
+  assert.equal(redactPaths('open \\\\?\\UNC\\host\\share\\dir\\x.db failed'), 'open [path]\\x.db failed');
+});
