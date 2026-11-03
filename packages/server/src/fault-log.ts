@@ -31,7 +31,8 @@ const lastName = (path: string) => path.slice(Math.max(path.lastIndexOf('/'), pa
 
 export function redactPaths(text: string): string {
   const home = homedir();
-  let out = text;
+  // The long-path prefixes \\?\ and \\.\ before a drive or UNC name are dropped first (before the home folder is looked for), so the rest reads as an ordinary path.
+  let out = text.replace(/\\\\[?.]\\UNC\\/gi, '\\\\').replace(/\\\\[?.]\\(?=[A-Za-z]:[\\/])/g, '');
   if (home.length > 1) {
     const escaped = home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     // A boundary after the folder name, so /home/ab is not taken for /home/abc.
@@ -39,8 +40,6 @@ export function redactPaths(text: string): string {
     out = out.replace(under, (_all, rest: string) => rest ? `[home]/${lastName(rest)}` : '[home]');
   }
   out = out.replace(QUOTED_PATH, (_all, quote: string, path: string) => `${quote}[path]${path.includes('\\') ? '\\' : '/'}${lastName(path)}${quote}`);
-  // The long-path prefixes \\?\ and \\.\ before a drive or UNC name are dropped first, so the rest reads as an ordinary path.
-  out = out.replace(/\\\\[?.]\\UNC\\/gi, '\\\\').replace(/\\\\[?.]\\(?=[A-Za-z]:[\\/])/g, '');
   out = out.replace(UNC_PATH, (path) => `[path]\\${lastName(path)}`);
   out = out.replace(WINDOWS_PATH, (path) => `[path]\\${lastName(path)}`);
   return out.replace(POSIX_PATH, (path) => `[path]/${lastName(path)}`);
