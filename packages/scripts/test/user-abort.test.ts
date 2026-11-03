@@ -21,15 +21,20 @@ after(() => {
   rmSync(dir, { recursive: true });
 });
 
-/** Runs the script; the person asks to stop it after each of `ms`. */
+/**
+ * Runs the script; the person asks to stop it after each of `ms`, counted from the moment the script has been started
+ * (its first steps run before runScript hands back its promise). Counting from before the start let a slow runner
+ * deliver the ask before "Allow User Abort [ Off ]" had run, so an ask meant for the guarded part halted the script.
+ */
 const run = (source: string, ...ms: number[]) => {
   const userStop = new EventTarget();
-  for (const t of ms) setTimeout(() => userStop.dispatchEvent(new Event('stop')), t);
-  return runScript(store, {
+  const running = runScript(store, {
     id: 9999, name: 'test',
     steps: parseScriptText(source.trim().split('\n').map((l) => l.trim()).join('\n'), store.schema)
       .map((s) => ({ stepId: s.stepId!, name: scriptStepName(s.stepId!), enabled: true, params: s.params })),
   } as Script, { layout: 'Notes', userStop });
+  for (const t of ms) setTimeout(() => userStop.dispatchEvent(new Event('stop')), t);
+  return running;
 };
 
 /** Fails if a prompt stop does not finish within its original wall-clock budget. */
