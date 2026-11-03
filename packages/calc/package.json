@@ -1,8 +1,10 @@
 {
   "name": "@tabularius/calc",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Evaluates FileMaker calculation formulas",
   "license": "MIT",
   "type": "module",
-  "exports": { ".": "./src/index.ts" }
+  "exports": {
+    ".": "./src/index.ts"
+  }
 }

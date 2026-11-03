@@ -2,6 +2,38 @@
 
 What changed in each version of Tabularius, newest first. Each area lists its newest changes; work on reading FileMaker files is counted, not listed.
 
+## 0.2.0
+
+The full notes, with what to check before upgrading, are in the release notes for v0.2.0 (`.github/release-notes/v0.2.0.md`) and in `docs/upgrading.md`.
+
+### Showcase
+
+- A CRM showcase: `tabularius demo --starter crm-showcase`, with `--full` for the sign-ins, a read-only SQL port and an AI token, and `--ai` for the demo's assistant. Classic layouts, five modern HTML pages, scripts, an automation and privilege sets that show a rep only their own deals. `docs/showcase-crm.md` walks through it.
+
+### Security and accounts
+
+- Credential files, the hosted-file record, command-line export folders and write-back files, plug-in packages, backup sets and logs, the outbox, inbound-hook call logs and standby copies are read and written only when they are what they should be: no planted link, hard link or pipe, the right owner and a private mode.
+- Restores, ended sessions, server-wide settings, admin passkeys, schedules, inbound hooks, webhooks and backup destination changes are recorded in the security log or the Admin log, with the way in and address.
+- A standby refuses an unsafe primary address, never follows a redirect, and needs `--allow-plain-http` for a plain `http://` primary on another computer; `TABULARIUS_ALLOW_PLAIN_HTTP` no longer lifts that refusal.
+- Agent write proposals respect the caller's privileges and the ceiling of the token they came from.
+- The OAuth approval cookie keeps its `__Host-` name and `Secure` attribute behind a trusted HTTPS proxy.
+- Invalid numeric server and store settings stop `tabularius serve` and name the setting.
+
+### Calculations, SQL and data
+
+- SQL: fractional seconds from `EXTRACT(SECOND ...)`, parameters in `OFFSET` and `FETCH FIRST`, exact 64-bit integers, date arithmetic checked against years 0001 to 9999, `INTERSECT`, `EXCEPT` and `DISTINCT`.
+- Calculations keep exact digits for `Ceiling`, `Floor`, `Factorial`, `Combination`, exact square roots and large exponent literals; `Proper` keeps combining marks; years below 1000 are written with four digits.
+- Number fields keep non-decimal text instead of changing it; Excel round trips keep negative and long durations; field indexes sort by their own index language.
+
+### Web client and admin console
+
+- Names on form controls in Design mode and the admin console, a darker light palette, and plain sentences for a lost connection or a reply that is not JSON.
+
+### Cluster and server
+
+- Cluster messages are checked at both ends, and a worker that cannot open a file reports it to the leader for the admin status and console.
+- Backups make a full copy when a symlink makes the previous set unsafe, and ignore symlinked sets and logs.
+
 ## 0.1.0
 
 ### Web client

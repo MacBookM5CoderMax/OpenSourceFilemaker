@@ -1,6 +1,6 @@
 {
   "name": "tabularius",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Work with a solution hosted by Tabularius from Claude Code: find and edit records, run scripts, read the schema and change the design, safely and within the account's privileges.",
   "license": "MIT",
   "keywords": [

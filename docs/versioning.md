@@ -1,13 +1,13 @@
 # Versions: what a number means, what stays put, what is tested
 
-Tabularius is at version 0.1.0 (the first public release, tag `v0.1.0`). This page says how versions are numbered, which things a new version leaves alone, which it may change, what is tested where, and how release notes are made. A test (`packages/server/test/version.test.ts`) holds the numbers below to the program.
+Tabularius is at version 0.2.0 (the first public release was 0.1.0, tag `v0.1.0`). This page says how versions are numbered, which things a new version leaves alone, which it may change, what is tested where, and how release notes are made. A test (`packages/server/test/version.test.ts`) holds the numbers below to the program.
 
 ## Where the version is shown
 
 `tabularius --version` (or `-v`, or `tabularius version`) prints three lines:
 
 ```
-tabularius 0.1.0
+tabularius 0.2.0
 commit a1b2c3d
 Node 22.20 or newer is needed; this is Node 22.20.0
 ```
@@ -52,7 +52,7 @@ What is tested, from the workflows in `.github/workflows/`:
 | --- | --- |
 | Linux | The whole unit and integration suite, the service install check, and the release build for x64 and arm64 |
 | macOS | The whole unit and integration suite, the service install check, and the release build |
-| Windows | The service install check and the release build only |
+| Windows | The whole unit and integration suite (twelve shards, with a few files skipped by name in `scripts/windows-skip.json`), the service install check and the release build. Windows has not been used for a long install-and-run on a real desktop |
 
 Anything else is untested: other Linux or BSD systems, Windows for the suite or the browsers, and Node versions other than 22 (the workflows install Node 22). The [install guide](../ADMIN.md#install) says what each install path does.
 
