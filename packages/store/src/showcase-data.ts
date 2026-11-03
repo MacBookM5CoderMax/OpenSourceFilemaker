@@ -73,6 +73,9 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
   const nowMs = now.getTime();
   const dayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const DAY = 86_400_000;
+  const quarterStart = Date.UTC(now.getUTCFullYear(), Math.floor(now.getUTCMonth() / 3) * 3, 1);
+  const quarterDays = Math.floor((dayStart - quarterStart) / DAY);
+  const quarterStartDate = new Date(quarterStart).toISOString().slice(0, 10);
   /** 'YYYY-MM-DD' for a day `ago` days before now's day (negative: after). */
   const dateAgo = (ago: number) => new Date(dayStart - ago * DAY).toISOString().slice(0, 10);
   /** 'YYYY-MM-DDTHH:MM:SS' on that day at a working hour, never later than now. */
@@ -154,7 +157,10 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
     const accountId = i < accounts.length ? i + 1 : g.pick(mine);
     const account = accounts[accountId - 1];
     const stage = stagePlan[i];
-    const amount = Math.min(90_000, Math.max(1_200, Math.round(Math.exp(Math.log(1200) + g.next() * (Math.log(90_000) - Math.log(1200))) / 50) * 50));
+    const wonNth = stage === 'Won' ? wonSeen[i % reps.length]++ : -1;
+    const variedAmount = Math.min(90_000, Math.max(1_200, Math.round(Math.exp(Math.log(1200) + g.next() * (Math.log(90_000) - Math.log(1200))) / 50) * 50));
+    // Three current-quarter wins of 12,000–22,000 keep rounded quotas within 20,000–200,000 and the attainment band.
+    const amount = wonNth >= 0 && wonNth < 3 ? 12_000 + g.int(0, 200) * 50 : variedAmount;
     const item = g.pick(DEAL_ITEM);
     const row: Row = {
       'Account ID': accountId, 'Owner ID': account['Owner ID'], Title: `${item}, ${String(account.Name).replace(/ (Co|Ltd|Group|Partners|Systems|Supply|Labs|Works|Holdings|Industries)\.?$/, '')}`,
@@ -164,9 +170,11 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
     if (stage === 'Won' || stage === 'Lost') {
       let closedAgo: number;
       if (stage === 'Won') {
-        // A rep's first three won deals closed in the last 90 days (one in each third), the rest earlier, so no rep is at zero.
-        const r = i % reps.length, nth = wonSeen[r]++;
-        closedAgo = nth < 3 ? 1 + nth * 30 + g.int(0, 29) : g.int(91, 270);
+        // Three wins sit in this UTC calendar quarter, spread over its elapsed days; older wins predate it.
+        // On the first day all three close today, since no earlier day belongs to the quarter.
+        closedAgo = wonNth < 3
+          ? g.int(Math.floor(wonNth * quarterDays / 3), Math.floor((wonNth + 1) * quarterDays / 3))
+          : g.int(quarterDays + 1, 270);
       } else closedAgo = g.int(1, 270);
       openedAgo = closedAgo + g.int(14, 90);
       row.Closed = dateAgo(closedAgo);
@@ -190,11 +198,15 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
   deals.find((d) => d.Source === 'Referral')!.Source = 'Refferal';
   deals.find((d) => d['Lost Reason'] === 'Competitor')!['Lost Reason'] = 'Competitior';
 
-  // Each rep's quota is what they won in the last 90 days divided by an attainment between 70% and 115%, rounded to 5,000.
-  const ATTAIN = [0.9, 1.05, 0.8, 1.15, 0.7, 0.95];
+  // Today compares the calendar quarter's wins with quota and elapsed time. Fixed targets from 38% to 62%
+  // yield a 35%–70% band after rounding; early in a quarter the invented wins lead elapsed time.
+  const ATTAIN = [0.43, 0.57, 0.48, 0.62, 0.38, 0.53];
   reps.forEach((rep, r) => {
-    const won = deals.filter((d) => d.Stage === 'Won' && d['Owner ID'] === r + 1 && dateAgo(90) <= String(d.Closed)).reduce((a, d) => a + Number(d.Amount), 0);
-    rep['Quarterly Quota'] = Math.max(20_000, Math.round(won / ATTAIN[r] / 5000) * 5000);
+    const won = deals.filter((d) => d.Stage === 'Won' && d['Owner ID'] === r + 1 && quarterStartDate <= String(d.Closed)).reduce((a, d) => a + Number(d.Amount), 0);
+    const rounded = Math.round(won / ATTAIN[r] / 5000) * 5000;
+    const minQuota = Math.max(20_000, Math.ceil(won / 0.70 / 5000) * 5000);
+    const maxQuota = Math.min(200_000, Math.floor(won / 0.35 / 5000) * 5000);
+    rep['Quarterly Quota'] = Math.min(maxQuota, Math.max(minQuota, rounded));
   });
 
   // Products and deal lines: 150 lines, at least one per deal, totals near the deal's amount.
