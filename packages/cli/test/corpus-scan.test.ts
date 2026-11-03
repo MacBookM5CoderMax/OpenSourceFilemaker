@@ -136,7 +136,8 @@ test('a child run removes converted copies after timeout, crash and success', as
         const entry = join(dir, 'child.mjs');
         const started = join(dir, 'started');
         writeFileSync(entry, `import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tabularius-corpus-')); fs.writeFileSync(path.join(folder, 'converted.sqlite'), 'synthetic records'); fs.writeFileSync(${JSON.stringify(started)}, 'yes'); ${finish}`);
-        const scan = await scanInChild(entry, join(dir, 'nothing.fmp12'), true, 250);
+        // A Windows runner can take over 250 ms just to start the child, which then ends as a timeout before it has written anything.
+        const scan = await scanInChild(entry, join(dir, 'nothing.fmp12'), true, process.platform === 'win32' ? 8000 : 250);
         assert.equal(scan.status, expected);
         assert.equal(existsSync(started), true, 'stub child created a converted copy');
         assert.deepEqual(readdirSync(scratch), []);

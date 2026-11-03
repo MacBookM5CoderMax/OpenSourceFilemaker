@@ -4,8 +4,13 @@ import { readBackupInfo } from './backup-info.ts';
 import { STORE_EXT } from './host.ts';
 import { ENCRYPTED_EXT } from './encrypt.ts';
 
-/** The name a copy has while it is being made: the file's name, then `.adding`, then `.enc` once it is sealed. */
-const scratchCopy = (name: string): boolean => name.endsWith(STORE_EXT + '.adding') || name.endsWith(STORE_EXT + '.adding' + ENCRYPTED_EXT);
+/**
+ * The name a copy has while it is being made: the file's name, then `.adding`, then `.enc` once it is sealed. While SQLite
+ * writes the copy it may keep a `-journal`, `-wal` or `-shm` file beside it, which goes with it.
+ */
+const SCRATCH_SIDE = ['-journal', '-wal', '-shm'];
+const scratchCopy = (name: string): boolean => name.endsWith(STORE_EXT + '.adding') || name.endsWith(STORE_EXT + '.adding' + ENCRYPTED_EXT)
+  || SCRATCH_SIDE.some((side) => name.endsWith(STORE_EXT + '.adding' + side));
 
 /** The manifest is the inventory; directory contents only locate its copies. */
 export function backupInventory(setDir: string, allowLegacy = false): { copies: string[]; problems: Record<string, string> } {

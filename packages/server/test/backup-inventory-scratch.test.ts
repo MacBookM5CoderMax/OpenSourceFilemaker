@@ -22,6 +22,8 @@ test('a copy made under its scratch name is not a problem for the set, plain or 
   const dir = setFolder(t);
   writeFileSync(join(dir, 'Other.openhbam.sqlite.adding'), 'partly written');
   writeFileSync(join(dir, 'Third.openhbam.sqlite.adding.enc'), 'partly sealed');
+  // SQLite's own files beside a copy it is writing (seen on Windows, where the journal is there while the copy is made).
+  for (const side of ['-journal', '-wal', '-shm']) writeFileSync(join(dir, `Other.openhbam.sqlite.adding${side}`), 'sqlite side file');
   assert.deepEqual(Object.keys(backupInventory(dir).problems), []);
   assert.deepEqual(checkedBackupCopies(dir), [FILE]);
   assert.deepEqual(checkedBackupCopies(dir, FILE), [FILE]);
@@ -34,5 +36,7 @@ test('a file nobody listed, or one that only ends like a scratch name, still sto
   assert.throws(() => checkedBackupCopies(dir, FILE), /notes\.txt: not listed in the backup set/);
   rmSync(join(dir, 'notes.txt'));
   writeFileSync(join(dir, 'x.adding'), 'not a database scratch name');
+  writeFileSync(join(dir, 'x.adding-journal'), 'not a database scratch name either');
   assert.match(String(backupInventory(dir).problems['x.adding']), /not listed in the backup set/);
+  assert.match(String(backupInventory(dir).problems['x.adding-journal']), /not listed in the backup set/);
 });
