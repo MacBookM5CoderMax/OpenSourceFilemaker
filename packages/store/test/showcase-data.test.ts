@@ -20,14 +20,14 @@ test('the same seed and the same day give identical output; another seed differs
 
 test('the counts match the shared design', () => {
   const counts = Object.fromEntries(sample.map((g) => [g.table, g.rows.length]));
-  assert.deepEqual(counts, { Reps: 6, Accounts: 40, Contacts: 120, Products: 12, Deals: 70, 'Deal Lines': 150, Activities: 350, 'Email Log': 60 });
+  assert.deepEqual(counts, { Reps: 6, Accounts: 40, Contacts: 120, Products: 12, Deals: 142, 'Deal Lines': 254, Activities: 350, 'Email Log': 60 });
   assert.equal(new Set(rows('Reps').map((r) => r.Region)).size, 4);
   const deals = rows('Deals');
   const open = deals.filter((d) => ['Lead', 'Qualified', 'Qualifed', 'Qualified ', 'Proposal', 'Negotiation'].includes(String(d.Stage)));
   assert.equal(open.length, 28);
-  assert.equal(deals.filter((d) => d.Stage === 'Won').length, 25);
+  assert.equal(deals.filter((d) => d.Stage === 'Won').length, 85);
   const lost = deals.filter((d) => d.Stage === 'Lost');
-  assert.equal(lost.length, 17);
+  assert.equal(lost.length, 29);
   assert.ok(lost.every((d) => d['Lost Reason']));
   for (const d of deals) { assert.ok(Number(d.Amount) >= 1200 && Number(d.Amount) <= 90000); }
 });
@@ -36,7 +36,7 @@ test('dates are relative to now and sit in the right windows', () => {
   const day = (s: unknown) => Math.round((Date.parse(`${NOW.toISOString().slice(0, 10)}T00:00:00Z`) - Date.parse(`${String(s).slice(0, 10)}T00:00:00Z`)) / 86_400_000);
   for (const d of rows('Deals')) {
     assert.match(String(d.Opened), /^\d{4}-\d{2}-\d{2}$/);
-    assert.ok(day(d.Opened) >= 0 && day(d.Opened) <= 365);
+    assert.ok(day(d.Opened) >= 0 && day(d.Opened) <= 500);
     assert.match(String(d['Stage Changed']), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
     assert.ok(String(d['Stage Changed']) <= NOW.toISOString().slice(0, 19));
     if (d.Closed) assert.ok(day(d.Closed) >= 0 && day(d.Closed) < day(d.Opened));
@@ -51,7 +51,7 @@ test('dates are relative to now and sit in the right windows', () => {
   // A different "today" moves the dates and nothing else about the shape.
   const later = showcaseSample(new Date('2027-03-15T08:00:00Z'));
   assert.notEqual(JSON.stringify(later), JSON.stringify(sample));
-  assert.ok(later.find((g) => g.table === 'Deals')!.rows.every((d) => String(d.Opened) > '2026-03-14'));
+  assert.ok(later.find((g) => g.table === 'Deals')!.rows.every((d) => String(d.Opened) > '2025-10-01'));
 });
 
 test('contact details are invented: .example emails, 555-01xx phones, no @ elsewhere', () => {
@@ -87,10 +87,10 @@ test('every key points at a parent that exists', () => {
 test('deal lines roughly add up to the deal amount', () => {
   const totals = new Map<number, number>();
   for (const l of rows('Deal Lines')) totals.set(Number(l['Deal ID']), (totals.get(Number(l['Deal ID'])) ?? 0) + Number(l.Quantity) * Number(l['Unit Price']) * (1 - Number(l['Discount Percent']) / 100));
-  assert.equal(totals.size, 70);
+  assert.equal(totals.size, 142);
   let near = 0;
   rows('Deals').forEach((d, i) => { const r = (totals.get(i + 1) ?? 0) / Number(d.Amount); if (r > 0.7 && r < 1.3) near++; });
-  assert.ok(near >= 56, `${near} of 70 deals within 30% of their lines`);
+  assert.ok(near >= 114, `${near} of 142 deals within 30% of their lines`);
 });
 
 test('there is deliberate mess: near-duplicate accounts and off-list values', () => {
@@ -138,7 +138,7 @@ test('the sample loads into a throwaway store in under 5 seconds', () => {
     const started = Date.now();
     for (const g of sample) for (const r of g.rows) s.create(g.table, r, { account: 'test', dateOrder: 'ISO' });
     assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`);
-    assert.equal(s.countIds('Deals'), 70);
+    assert.equal(s.countIds('Deals'), 142);
     assert.equal(s.countIds('Activities'), 350);
     // The supplied Opened wins over the auto-entered creation date (read back in the Data API's MM/DD/YYYY form).
     const [mm, dd, yyyy] = String(s.get('Deals', 1).fieldData.Opened).split('/');
@@ -161,8 +161,8 @@ test('the crm-showcase starter loads the sample and keeps every row', () => {
     assert.ok(Date.now() - started < (process.platform === 'win32' ? 30_000 : 5000));
     assert.equal(result.sampleRecords, sample.reduce((n, g) => n + g.rows.length, 0));
     assert.equal(s.countIds('Accounts'), 40);
-    assert.equal(s.countIds('Deals'), 70);
-    assert.equal(s.countIds('Deal Lines'), 150);
+    assert.equal(s.countIds('Deals'), 142);
+    assert.equal(s.countIds('Deal Lines'), 254);
   } finally {
     s.close();
     rmSync(dir, { recursive: true, force: true });

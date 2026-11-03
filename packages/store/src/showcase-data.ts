@@ -133,7 +133,7 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
   }
   const contactsOf = (accountId: number) => contactAccount.map((a, i) => (a === accountId ? i + 1 : 0)).filter(Boolean);
 
-  // Deals: 28 open, 25 won, 17 lost.
+  // Original deals: 28 open, 25 won, 17 lost. Historical closed deals are appended after the original draws.
   const ordered = [
     ...Array<string>(8).fill('Lead'), ...Array<string>(8).fill('Qualified'), ...Array<string>(7).fill('Proposal'), ...Array<string>(5).fill('Negotiation'),
     ...Array<string>(25).fill('Won'), ...Array<string>(17).fill('Lost'),
@@ -209,19 +209,16 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
   // Pick one loss per rep, maximizing distinct lead sources across the six losses.
   // All dates below reuse existing values, so the generator draw sequence stays unchanged.
   const lostByRep = reps.map((_, r) => deals.filter((d) => d.Stage === 'Lost' && d['Owner ID'] === r + 1));
-  const sourceOf = (d: Row) => d.Source === 'Refferal' ? 'Referral' : String(d.Source);
   let selected: Row[] = [];
   let bestSources = -1;
-  let fewestTypos = Infinity;
   const choose = (r: number, picked: Row[], sources: Set<string>) => {
     if (r === reps.length) {
-      const typos = picked.filter((d) => d.Source === 'Refferal').length;
-      if (sources.size > bestSources || (sources.size === bestSources && typos < fewestTypos)) {
-        bestSources = sources.size; fewestTypos = typos; selected = [...picked];
-      }
+      if (sources.size > bestSources) { bestSources = sources.size; selected = [...picked]; }
       return;
     }
-    for (const deal of lostByRep[r]) choose(r + 1, [...picked, deal], new Set([...sources, sourceOf(deal)]));
+    for (const deal of lostByRep[r].filter((d) => SHOWCASE_LISTS.source.includes(String(d.Source) as typeof SHOWCASE_LISTS.source[number]))) {
+      choose(r + 1, [...picked, deal], new Set([...sources, String(deal.Source)]));
+    }
   };
   choose(0, [], new Set());
   const inQuarter = new Set(selected);
@@ -242,6 +239,34 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
     deal['Stage Changed'] = new Date(Math.max(closedDay, Math.min(Date.parse(stamp + 'Z'), nowMs))).toISOString().slice(0, 19);
   }
 
+  // Place six valid-source quarter losses in months with wins. Keep their opening dates and other fields.
+  const wonByMonth = new Map<string, number>();
+  for (const deal of deals.filter((d) => d.Stage === 'Won' && String(d.Closed) >= quarterStartDate)) {
+    const month = String(deal.Closed).slice(0, 7);
+    wonByMonth.set(month, (wonByMonth.get(month) ?? 0) + 1);
+  }
+  const months = [...wonByMonth.keys()].sort();
+  const lossByMonth = new Map(months.map((month) => [month, 1]));
+  for (let remaining = selected.length - months.length; remaining > 0; remaining--) {
+    const month = months.filter((m) => lossByMonth.get(m)! < wonByMonth.get(m)!)
+      .sort((a, b) => wonByMonth.get(b)! / (lossByMonth.get(b)! + 1) - wonByMonth.get(a)! / (lossByMonth.get(a)! + 1) || a.localeCompare(b))[0];
+    lossByMonth.set(month, lossByMonth.get(month)! + 1);
+  }
+  const targets = months.flatMap((month) => Array<string>(lossByMonth.get(month)!).fill(month));
+  // Earlier-opened losses can always serve the earliest month. Assign the least flexible rows first.
+  const unplaced = [...selected].sort((a, b) => String(b.Opened).localeCompare(String(a.Opened)));
+  for (const month of [...targets].reverse()) {
+    const end = Math.min(dayStart, Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0));
+    const index = unplaced.findIndex((deal) => Date.parse(String(deal.Opened)) < end);
+    const deal = unplaced.splice(index, 1)[0];
+    const first = Math.max(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1), Date.parse(String(deal.Opened)) + DAY);
+    const closedDay = end - Math.min(2, Math.floor((end - first) / DAY)) * DAY;
+    const closed = new Date(closedDay).toISOString().slice(0, 10);
+    deal.Closed = closed;
+    deal['Expected Close'] = closed;
+    deal['Stage Changed'] = new Date(Math.min(closedDay + 12 * 3_600_000, nowMs)).toISOString().slice(0, 19);
+  }
+
   // Today compares the calendar quarter's wins with quota and elapsed time. Fixed targets from 38% to 62%
   // yield a 35%–70% band after rounding; early in a quarter the invented wins lead elapsed time.
   const ATTAIN = [0.43, 0.57, 0.48, 0.62, 0.38, 0.53];
@@ -253,7 +278,7 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
     rep['Quarterly Quota'] = Math.min(maxQuota, Math.max(minQuota, rounded));
   });
 
-  // Products and deal lines: 150 lines, at least one per deal, totals near the deal's amount.
+  // Products and the original 150 deal lines; added closed deals get their lines after the original stream.
   const products: Row[] = PRODUCT.map(([sku, name, price], i) => ({ SKU: sku, Name: name, 'Unit Price': price, Active: i === 5 ? 'No' : 'Yes' }));
   const lineCount = Array<number>(70).fill(1);
   for (let extra = 80; extra > 0;) { const i = g.int(0, 69); if (lineCount[i] < 4) { lineCount[i]++; extra--; } }
@@ -313,6 +338,48 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
       'Account ID': contactAccount[contactId - 1], 'Contact ID': contactId, Direction: g.pick(['Inbound', 'Outbound']),
       Subject: g.pick(EMAIL_SUBJECT), Body: `${g.pick(EMAIL_OPEN)} ${g.pick(EMAIL_CLOSE)}`, Sent: stampAgo(g.int(0, 180)),
     });
+  }
+
+  // Historical closed deals use a separate stream after every original draw. Each of the twelve months before
+  // this quarter gets five wins and one loss, while existing older wins contribute to the monthly target.
+  const history = generator(seed ^ 0x5a17c9e3);
+  const previousMonth = Math.floor(now.getUTCMonth() / 3) * 3 - 1;
+  for (let offset = 11; offset >= 0; offset--) {
+    const month = previousMonth - offset;
+    const first = Date.UTC(now.getUTCFullYear(), month, 1);
+    const days = Math.round((Date.UTC(now.getUTCFullYear(), month + 1, 1) - first) / DAY);
+    const key = new Date(first).toISOString().slice(0, 7);
+    const existing = deals.filter((d) => d.Stage === 'Won' && String(d.Closed).startsWith(key)).reduce((sum, d) => sum + Number(d.Amount), 0);
+    const target = 128_000 + history.int(0, 160) * 50 - existing;
+    const amounts = Array.from({ length: 5 }, () => Math.round(target / 5 / 50) * 50);
+    for (let n = 0; n < 4; n++) amounts[n] += history.int(-75, 75) * 50;
+    amounts[4] = target - amounts.slice(0, 4).reduce((sum, amount) => sum + amount, 0);
+    for (let n = 0; n < 6; n++) {
+      const rep = (offset + n) % reps.length;
+      const mine = accounts.map((_, i) => i + 1).filter((id) => Number(accounts[id - 1]['Owner ID']) === rep + 1);
+      const accountId = history.pick(mine);
+      const closedDay = first + Math.min(days - 1, 3 + n * 5 + history.int(0, 2)) * DAY;
+      const closed = new Date(closedDay).toISOString().slice(0, 10);
+      const opened = new Date(closedDay - history.int(14, 90) * DAY).toISOString().slice(0, 10);
+      const stage = n === 5 ? 'Lost' : 'Won';
+      const amount = stage === 'Won' ? amounts[n] : 8_000 + history.int(0, 920) * 50;
+      const row: Row = {
+        'Account ID': accountId, 'Owner ID': rep + 1,
+        Title: `${history.pick(DEAL_ITEM)}, ${String(accounts[accountId - 1].Name).replace(/ (Co|Ltd|Group|Partners|Systems|Supply|Labs|Works|Holdings|Industries)\.?$/, '')}`,
+        Stage: stage, Amount: amount, Source: history.pick(SHOWCASE_LISTS.source),
+        Opened: opened, Closed: closed, 'Expected Close': closed,
+        'Stage Changed': `${closed}T12:00:00`,
+        ...(stage === 'Lost' ? { 'Lost Reason': history.pick(SHOWCASE_LISTS.lostReason) } : {}),
+      };
+      deals.push(row);
+      // One or two quote lines, balanced to the new deal amount; old lines and their random draws stay intact.
+      const count = history.int(1, 2);
+      for (let line = 0; line < count; line++) {
+        const product = history.pick(products.map((_, i) => i).filter((i) => Number(products[i]['Unit Price']) <= amount / count));
+        const price = Number(products[product]['Unit Price']);
+        lines.push({ 'Deal ID': deals.length, 'Product ID': product + 1, Quantity: Math.max(1, Math.round(amount / count / price)), 'Unit Price': price, 'Discount Percent': 0 });
+      }
+    }
   }
 
   return [

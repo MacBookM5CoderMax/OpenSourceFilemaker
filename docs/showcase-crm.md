@@ -2,6 +2,8 @@
 
 The CRM showcase is a sales app, built and filled with invented data, that shows what Tabularius does with one file: classic layouts, modern HTML layouts, a script engine, record-level privileges, charts, an automation, and a built-in MCP server for AI apps. Everything in it is made up: names, companies, emails (they end in `.example`) and numbers. Nothing comes from a real file or person. The dates are counted from the day you start it, so the pipeline always looks current.
 
+The sample has 142 deals: 28 open, 85 won and 29 lost. Of the closed deals, 60 wins and 12 losses fill the twelve months before the current quarter. The six quarter losses follow months that have wins, so the dashboard's shorter period choices have a loss whenever they have a win. A source can still show 100% in a quarter when its wins outnumber the six available quarter losses and no loss has that valid source.
+
 ## Start it
 
 <!-- docs-example: illustrative -->
