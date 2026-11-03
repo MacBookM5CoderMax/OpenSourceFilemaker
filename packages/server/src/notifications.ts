@@ -8,6 +8,7 @@
 // leader (cluster.ts), which mails them in its digest, marked with the worker they came from.
 
 import { hostname } from 'node:os';
+import { domainToASCII } from 'node:url';
 import type { Host } from './host.ts';
 import type { LogType } from './server-logs.ts';
 
@@ -29,10 +30,25 @@ export interface NotifySettings {
 /** One plain address: what an administrator may type here. */
 export const NOTIFY_ADDRESS = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/;
 
-/** What the server log may say of the address: its domain, never the person's part. The same goes for a mail error that repeats the address. */
+const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * What the server log may say of the address: its domain, never the person's part. A mail error that repeats the
+ * address is cleaned the same way: the address as typed, with the domain in its punycode form, and the local part
+ * alone (a server may answer "ops.person... User unknown"; a part under four characters is left, as it would
+ * also match ordinary words).
+ */
 const inLog = (text: string, to: string): string => {
-  const named = `an address at ${to.split('@').pop()!.toLowerCase()}`;
-  return text.replace(new RegExp(to.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), named);
+  const at = to.lastIndexOf('@');
+  const local = to.slice(0, at);
+  const domain = to.slice(at + 1);
+  const named = `an address at ${domain.toLowerCase()}`;
+  const forms = new Set([to, `${local}@${domainToASCII(domain) || domain}`]);
+  // The replacement is a function, so a $ in an address is not read as a replacement pattern.
+  let out = text;
+  for (const form of forms) out = out.replace(new RegExp(literal(form), 'gi'), () => named);
+  if (local.length >= 4) out = out.replace(new RegExp(String.raw`(?<![\w.+-])${literal(local)}(?![\w+-])`, 'gi'), () => 'the recipient');
+  return out;
 };
 
 export class Notifier {

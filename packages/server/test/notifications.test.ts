@@ -227,3 +227,23 @@ test('a failed send logs the address\'s domain only, whether the mail function t
   }
   assert.equal(lines[0], 'A notification could not send to an address at alerts.example.test: 550 mailbox <an address at alerts.example.test> unavailable');
 });
+
+test('the log line also hides an address a mail server repeats in another form: punycode, the local part alone, or characters that look like a replacement pattern', async () => {
+  const cases: [string, string, RegExp[]][] = [
+    [['ops.person', 'bücher.test'].join('@'), '550 5.1.1 <ops.person@xn--bcher-kva.test> unknown; ops.person... User unknown', [/ops\.person/i]],
+    [['ops', 'x$&.test'].join('@'), 'could not reach ops@x$&.test', [/ops@/]],
+    [['night.shift', 'x$`.test'].join('@'), 'could not reach night.shift@x$`.test', [/night\.shift/]],
+  ];
+  for (const [address, reason, hidden] of cases) {
+    const lines: string[] = [];
+    const fakeHost = {
+      config: { notifications: () => ({ to: address, level: 'Error' as const }) },
+      logs: { write: (_t: string, _l: string, _s: string, message: string) => { lines.push(message); } },
+      mail: async () => { throw new Error(reason); },
+    } as unknown as Host;
+    await new Notifier(fakeHost, { every: 1_000_000 }).test();
+    assert.equal(lines.length, 1);
+    for (const re of hidden) assert.ok(!re.test(lines[0]), `${re} is not in: ${lines[0]}`);
+    assert.match(lines[0], /an address at /);
+  }
+});
