@@ -125,6 +125,7 @@ Escape. The sections below are the `main` panels in `packages/server/admin/index
 | Security health | Isolated panel axe scan. |
 | Security events | Isolated panel axe scan. |
 | Audit log | Isolated panel axe scan; settings disclosure is listed below. |
+| Take a portable copy | Isolated panel axe scan. |
 | View as a privilege set | Isolated panel axe scan. |
 | What a set or account can do | Isolated panel axe scan. |
 | Test this account | Isolated panel axe scan. |
@@ -216,6 +217,25 @@ native prompts are inventoried from the page code, not individually driven by ax
   has a focus ring and an accessible description of its keys; painted fields
   stay out of the editing Tab path. `packages/web/e2e/layout-keyboard.e2e.ts`
   checks traversal, resizing and announcements with browser key events.
+- **Relationship lines (2.1.1, 4.1.2).** In the Design graph each relationship line is a focusable
+  button named by its two table occurrences and then its comparisons
+  ("Relationship between Invoices and Customers: CustomerID = ID"). Enter or Space selects it as a
+  click does, `aria-pressed` follows the selection, and a focused line is drawn in the accent
+  colour at the selected line's width, so the focus is visible. `packages/web/test/graph-occurrence.test.ts`
+  checks the name and the keys.
+- **The chosen row of a list (4.1.2).** The lists in Design and Security that mark their chosen
+  row with the "selected" class (the catalog lists, custom menus, the ordered layout and script
+  lists, tables, themes, styles, accounts and privilege sets: eight builders) also give that
+  row's button `aria-current="true"`, so a screen reader hears which one is open.
+  `packages/web/test/selected-list-current.test.ts` reads the source and fails if a list is added
+  with the class and no `aria-current`.
+- **Empty, failed and fatal states (4.1.3).** When a page replaces "Loading…" with "Log in to a file
+  first", "This file has no layouts the web client can show yet", a failure or "Couldn't start", the
+  sentence is a live region: `role="status"` for a request to log in or an empty file and
+  `role="alert"` for a failure. This covers the web client and the stand-alone Design, Security,
+  Dashboards, Automations, Clean Up Data, Data Viewer and Script Debugger pages. A paragraph added
+  after the page has loaded is not spoken unless it is a live region.
+  `packages/web/test/page-state-announced.test.ts` reads the source and fails if one is not.
 - **Menus.** Menu items could only be used with a mouse. Menus now follow the WAI-ARIA
   menu-button and menu keys:
   - Enter, Space or Down on a title opens its menu;
