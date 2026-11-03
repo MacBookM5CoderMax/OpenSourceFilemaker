@@ -16,7 +16,7 @@ test('a generated 20 MiB CSV imports within a 128 MiB V8 heap', () => {
       chmodSync(path, 0o755);
     }
     const child = spawnSync(process.execPath, ['--no-warnings', '--max-old-space-size=128', fileURLToPath(new URL('./support/import-memory-child.ts', import.meta.url))], {
-      env: { ...process.env, PATH: dir, TABULARIUS_TEST_CHILD_MARKER: marker }, encoding: 'utf8', timeout: 55_000,
+      env: { ...process.env, PATH: dir, TABULARIUS_TEST_CHILD_MARKER: marker }, encoding: 'utf8', timeout: process.platform === 'win32' ? 170_000 : 55_000, // a busy Windows runner took more than 55 s; a hang still fails
     });
     assert.equal(existsSync(marker), false, 'a forbidden child command ran');
     assert.equal(child.error, undefined, child.error?.message);
