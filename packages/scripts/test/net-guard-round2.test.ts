@@ -14,6 +14,8 @@ const framingCases: Record<string, string>[] = [
   { 'content-length': '1' },
   { 'transfer-encoding': 'chunked', 'content-length': '999' },
   { connection: 'keep-alive, x-private', 'x-private': 'secret', host: 'other.invalid', 'proxy-authorization': 'secret' },
+  // Each hop-by-hop name the transport drops on its own, without a Connection header naming it.
+  { 'proxy-connection': 'keep-alive', 'keep-alive': 'timeout=5', te: 'trailers', trailer: 'x-after', upgrade: 'websocket', 'proxy-authenticate': 'Basic' },
 ];
 for (const supplied of framingCases) test(`the guard owns outbound framing and authority: ${Object.keys(supplied).join(', ')}`, async t => {
   const body = 'é🙂';
@@ -37,6 +39,7 @@ for (const supplied of framingCases) test(`the guard owns outbound framing and a
   assert.match(headers, new RegExp(`content-length: ${Buffer.byteLength(body)}\\r?$`, 'im'));
   assert.match(headers, new RegExp(`host: 127\\.0\\.0\\.1:${port}\\r?$`, 'im'));
   assert.doesNotMatch(headers, /transfer-encoding:|x-private:|proxy-authorization:|keep-alive/i);
+  assert.doesNotMatch(headers, /^(?:proxy-connection|proxy-authenticate|te|trailer|upgrade):/im);
   assert.equal(wire.subarray(wire.indexOf('\r\n\r\n') + 4).toString(), body);
 });
 
