@@ -78,6 +78,12 @@ test('a folder in the middle of an unquoted path may hold lowercase words after 
   assert.equal(redactPaths(`failed ${homedir()}/my docs/x.db`), 'failed [home]/x.db');
   // Prose around a path is kept: a folder name ends at its separator, the last name at the first lowercase word.
   assert.equal(redactPaths('at /a/b and /c/d now'), 'at [path]/b and [path]/d now');
+  // A folder with spaces is read only when the path ends in a file name with an extension, so running text between two paths stays.
+  assert.equal(redactPaths('copied /a/b and/or /c/d'), 'copied [path]/b and/or [path]/d');
+  assert.equal(redactPaths('cp /a/b c/d'), 'cp [path]/b c/d');
+  assert.equal(redactPaths('see /x/y in a/b form'), 'see [path]/y in a/b form');
+  assert.equal(redactPaths('moved /a/b to the c/d e/f'), 'moved [path]/b to the c/d e/f');
+  assert.equal(redactPaths(`kept ${homedir()}/a/b c/d`), 'kept [home]/b c/d');
 });
 
 test('long runs of words with spaces are redacted in linear time', () => {

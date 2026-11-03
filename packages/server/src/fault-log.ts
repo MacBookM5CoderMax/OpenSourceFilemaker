@@ -25,9 +25,15 @@ const WORD = String.raw`[\w.@+~%-]+`;
 const MID = String.raw`${WORD}(?: ${WORD})*`;
 const SEG = String.raw`${WORD}(?: [A-Z0-9][\w.@+~%-]*)*`;
 // The first name after the root keeps the capital rule, so "the /tmp folder and a/b" is not taken for one path.
-const POSIX_PATH = new RegExp(String.raw`(?<![\w:/.\\-])(?:file:\/\/)?\/{1,2}${SEG}(?:\/${MID}(?=\/))*\/${SEG}`, 'g');
-const WINDOWS_PATH = new RegExp(String.raw`(?<![\w\\])[A-Za-z]:[\\/]${SEG}(?:[\\/]${MID}(?=[\\/]))*(?:[\\/]${SEG})?`, 'g');
-const UNC_PATH = new RegExp(String.raw`(?<![\w\\])\\\\${SEG}(?:\\${MID}(?=\\))*\\${SEG}`, 'g');
+const POSIX_PATH = new RegExp(String.raw`(?<![\w:/.\\-])(?:file:\/\/)?\/{1,2}${SEG}(?:\/${SEG})+`, 'g');
+const WINDOWS_PATH = new RegExp(String.raw`(?<![\w\\])[A-Za-z]:[\\/]${SEG}(?:[\\/]${SEG})*`, 'g');
+const UNC_PATH = new RegExp(String.raw`(?<![\w\\])\\\\${SEG}(?:\\${SEG})+`, 'g');
+// A middle folder holding lowercase words after a space is read only when the path ends in a file name with an extension,
+// so the words between two paths in running text ("cp /a/b c/d", "/a/b and/or /c/d") are not taken for a folder.
+const FILE = String.raw`[\w@+~%-]+(?:\.[\w@+~%-]+)+`;
+const POSIX_SPACED = new RegExp(String.raw`(?<![\w:/.\\-])(?:file:\/\/)?\/{1,2}${SEG}(?:\/${MID}(?=\/))*\/${FILE}`, 'g');
+const WINDOWS_SPACED = new RegExp(String.raw`(?<![\w\\])[A-Za-z]:[\\/]${SEG}(?:[\\/]${MID}(?=[\\/]))*[\\/]${FILE}`, 'g');
+const UNC_SPACED = new RegExp(String.raw`(?<![\w\\])\\\\${SEG}(?:\\${MID}(?=\\))*\\${FILE}`, 'g');
 // A quoted path may hold any spaces; the quote marks stay.
 const QUOTED_PATH = /(["'`])((?:[A-Za-z]:[\\/]|\\\\|\/)[^"'`\n]*?[\\/][^"'`\n\\/]+)\1/g;
 
@@ -40,10 +46,11 @@ export function redactPaths(text: string): string {
   if (home.length > 1) {
     const escaped = home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     // A boundary after the folder name, so /home/ab is not taken for /home/abc.
-    const under = new RegExp(String.raw`(?:file:\/\/)?${escaped}(?![\w.@+~%-])((?:[\\/]${MID}(?=[\\/]))*(?:[\\/]${SEG})?)`, 'g');
+    const under = new RegExp(String.raw`(?:file:\/\/)?${escaped}(?![\w.@+~%-])((?:[\\/]${MID}(?=[\\/]))*[\\/]${FILE}|(?:[\\/]${SEG})*)`, 'g');
     out = out.replace(under, (_all, rest: string) => rest ? `[home]/${lastName(rest)}` : '[home]');
   }
   out = out.replace(QUOTED_PATH, (_all, quote: string, path: string) => `${quote}[path]${path.includes('\\') ? '\\' : '/'}${lastName(path)}${quote}`);
+  out = out.replace(UNC_SPACED, (path) => `[path]\\${lastName(path)}`).replace(WINDOWS_SPACED, (path) => `[path]\\${lastName(path)}`).replace(POSIX_SPACED, (path) => `[path]/${lastName(path)}`);
   out = out.replace(UNC_PATH, (path) => `[path]\\${lastName(path)}`);
   out = out.replace(WINDOWS_PATH, (path) => `[path]\\${lastName(path)}`);
   return out.replace(POSIX_PATH, (path) => `[path]/${lastName(path)}`);
