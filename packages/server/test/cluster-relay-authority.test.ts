@@ -55,8 +55,10 @@ async function relay(t: import('node:test').TestContext) {
   syncBuiltinESMExports();
   let cluster: Awaited<ReturnType<typeof serveCluster>> | undefined;
   t.after(async () => {
+    // The leader's receiver holds locks.sqlite in the cluster's run folder, which close() removes: let go of it first
+    // (Windows will not delete an open file).
+    for (const link of links) link.close();
     try { await cluster?.close(); } finally {
-      for (const link of links) link.close();
       fork.mock.restore();
       syncBuiltinESMExports();
       rmSync(dir, { recursive: true, force: true });

@@ -52,7 +52,8 @@ test('web client form controls are named', () => {
   assert.deepEqual(scan(sample, 'sample.ts').bad, ['sample.ts:2 unnamed (input)', 'sample.ts:4 templated (select)']);
   const bad: string[] = [], seen: string[] = [];
   for (const file of files(root)) {
-    const result = scan(readFileSync(file, 'utf8'), relative(root, file));
+    // Forward slashes on every system, so the keys above match on Windows too.
+    const result = scan(readFileSync(file, 'utf8'), relative(root, file).replaceAll('\\', '/'));
     bad.push(...result.bad); seen.push(...result.seen);
   }
   assert.ok(seen.length > 200, `expected >200 controls, saw ${seen.length}`);

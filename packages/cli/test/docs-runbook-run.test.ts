@@ -64,9 +64,11 @@ test('run the recoverable runbook commands against a generated hosted file', { t
   let activeBackupSet = '';
   const execute = async (line: string, expected: number, includes: string[] = []): Promise<string> => {
     const port = await freePort();
-    let command = line.replaceAll('<folder>', folder).replaceAll('<scratch-folder>', scratch)
-      .replaceAll('<other-disk-folder>', otherDisk).replaceAll('<backups-folder>', backups)
-      .replaceAll('<new-folder>', newFolder).replaceAll('<backup-set>', (activeBackupSet || backupSet).replaceAll(' ', '\\ '))
+    // args() reads a backslash as an escape, as a shell does, so paths go in with forward slashes (Windows takes both).
+    const slashes = (path: string) => path.replaceAll('\\', '/');
+    let command = line.replaceAll('<folder>', slashes(folder)).replaceAll('<scratch-folder>', slashes(scratch))
+      .replaceAll('<other-disk-folder>', slashes(otherDisk)).replaceAll('<backups-folder>', slashes(backups))
+      .replaceAll('<new-folder>', slashes(newFolder)).replaceAll('<backup-set>', (activeBackupSet || backupSet).replaceAll(' ', '\\ '))
       .replaceAll('<database>', 'Invoices').replaceAll('<table>', 'Customers')
       .replaceAll('<account>', 'Admin');
     if (command.startsWith('mkdir ')) { mkdirSync(args(command)[1], { recursive: true }); return ''; }
@@ -98,7 +100,7 @@ test('run the recoverable runbook commands against a generated hosted file', { t
   const backupLines = block('tabularius backup <folder>', ['tabularius doctor <folder>']);
   for (const line of backupLines) {
     const out = await run(line, 0, line.startsWith('tabularius backup') ? ['backed up 1 files'] : ['All good']);
-    const match = /Backups\/([^\s]+)/.exec(out);
+    const match = /Backups[\\/]([^\s]+)/.exec(out);
     if (match) backupSet = match[1];
   }
   assert.ok(backupSet, 'the runbook changed: update this table');
