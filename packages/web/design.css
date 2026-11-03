@@ -343,6 +343,7 @@ g.d-field.key .d-field-name { font-weight: 600; }
 .d-report { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s3) var(--s4); box-shadow: var(--shadow); }
 .d-report summary { font-weight: 600; }
 .d-report ul { margin: var(--s2) 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: var(--s1); font-size: var(--t-sm); }
+.d-report > .d-error { margin: var(--s2) 0 0; font-size: var(--t-sm); color: var(--bad); }
 .d-handover { margin-top: var(--s3); padding: var(--s3); max-height: 480px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--sunken); font-size: var(--t-sm); }
 .d-report code { white-space: pre-wrap; overflow-wrap: anywhere; font: var(--t-xs) var(--mono); padding: 1px 5px; border-radius: 4px; background: var(--sunken); border: 1px solid var(--line); }
 .d-main .ai-text h3 { margin: 0 0 var(--s1); font-size: var(--t-lg); font-weight: 650; }

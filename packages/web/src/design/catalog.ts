@@ -1088,13 +1088,18 @@ function tryFunction(studio: Studio, name: string, parameters: () => string[], f
 function usedIn(studio: Studio, name: string, kind: string): HTMLElement {
   const list = h('ul', {});
   const box = h('details', { class: 'd-report' }, h('summary', {}, 'Used in'), list);
+  // A failure is a paragraph after the list, not a list item: an li with a role would no longer be a list item.
+  let failure: HTMLElement | undefined;
   box.addEventListener('toggle', async () => {
     if (!box.open || list.childElementCount) return;
+    failure?.remove();
+    failure = undefined;
     try {
       const uses = await studio.client.used(name, kind);
       list.replaceChildren(...(uses.length ? uses.map((u) => h('li', {}, h('strong', {}, u.where), h('br'), h('code', {}, u.text))) : [h('li', { class: 'd-muted' }, 'Not used anywhere.')]));
     } catch (e) {
-      list.replaceChildren(h('li', {}, errorText(e)));
+      failure = h('p', { class: 'd-error', role: 'alert' }, errorText(e));
+      box.append(failure);
     }
   });
   return box;
