@@ -349,7 +349,7 @@ part of it.
 
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
-| ORDER BY, MAX, MIN and comparisons use stored text instead of seconds | times of 100 hours or more and negative times can order wrongly in SQL queries | translate SQL with knowledge of the column type | [docs/sql-grammar-conformance.md › What still differs (the KNOWN list)](sql-grammar-conformance.md) — “…SQL limit; the other product's behavior is unverified.” |
+| Comparisons of a time column by seconds work only in the forms listed above; the others use stored text | times of 100 hours or more and negative times can order wrongly in the other forms | translate SQL with knowledge of the column type | [docs/sql-grammar-conformance.md › What still differs (the KNOWN list)](sql-grammar-conformance.md) — “…SQL limit; the other product's behavior is unverified.” |
 
 ## Standby servers
 

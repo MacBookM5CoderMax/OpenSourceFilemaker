@@ -218,6 +218,17 @@ export function timeSeconds(s: string): number | undefined {
 /** SQL functions used by the shared find compiler and time sorts. */
 export function registerFindFunctions(db: DatabaseSync): void {
   db.function('fm_time_seconds', { deterministic: true }, (v) => v == null || v === '' ? null : timeSeconds(String(v)) ?? v);
+  // Return the stored text of the largest or smallest valid time; ignore empty and NULL values.
+  for (const [name, sign] of [['fm_time_max', 1], ['fm_time_min', -1]] as const) {
+    db.aggregate(name, { start: null as { text: string; seconds: number } | null, deterministic: true,
+      step: (best: { text: string; seconds: number } | null, v: unknown) => {
+        if (v == null || v === '') return best;
+        const seconds = timeSeconds(String(v));
+        if (seconds === undefined) return best;
+        return !best || (seconds - best.seconds) * sign > 0 ? { text: String(v), seconds } : best;
+      },
+      result: (best: { text: string; seconds: number } | null) => best ? best.text : null } as never);
+  }
   db.function('fm_find_key', { deterministic: true }, (v) => v == null ? null : fold(String(v), false));
   db.function('fm_find_invalid', { deterministic: true }, (v, type) => {
     if (v == null || v === '') return 0;

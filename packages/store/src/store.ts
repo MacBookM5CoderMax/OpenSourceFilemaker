@@ -37,6 +37,7 @@ import { asBoolean, asNumberOrEmpty, asText, CalcError, compare, decimalSum, edi
 import { foldCase, recordSortKey, recordSortLanguage, SORT_LANGUAGE_IDS, sortFunction, sortKey, sortLanguage, sortLocale } from '../../calc/src/collation.ts';
 import { valueListOrder } from './value-list-sort.ts';
 import { languageOrderBy } from './sql-language-order.ts';
+import { timeComparisons } from './sql-time-order.ts';
 import { authorityOf, ownPrivilegeEntry, countObjectUse, ensurePrivilegeTables, isFullAccess, privilegeSets, relaxUnverified, validateDefinition, Privileges, PrivilegeError, NO_ACCESS, maskValue, type FieldMask, type PrivilegeDefinition, type Rule } from './privileges.ts';
 import { accessReport, explainAccess, diffPrivilegeSet, testAccount, type AccessReport, type AccessExplanation, type SetChange, type AccountTest } from './access-report.ts';
 import { accessDenialContext, denialAuditDetail, denialAuditSuppressed, type AccessDenial, type DenialAudit, type AccessOperation, type RuleOutcome } from './access-denial.ts';
@@ -11368,11 +11369,12 @@ export class Store {
       defineFold(this.readOnlySql);
       for (const id of SORT_LANGUAGE_IDS) this.readOnlySql.function(sortFunction(id), { deterministic: true }, (v) => (typeof v === 'string' ? keptSortKey(v, id) : v));
       if (this.fileMode === 'native') this.readOnlySql.function('fm_decimal_key', { deterministic: true }, (v) => decimalKey(v as string | number | null));
+      registerFindFunctions(this.readOnlySql);
       registerODataValueFunctions(this.readOnlySql);
       for (const [name, fn] of this.queryFunctions) this.readOnlySql.function(name, { varargs: true, useBigIntArguments: true }, exactIntegerArguments(name, fn));
     }
     if (this.fileMode === 'native') this.refreshDecimalSqlViews();
-    sqlText = languageOrderBy(sqlText, this.schema.tables);
+    sqlText = languageOrderBy(timeComparisons(sqlText, this.schema.tables), this.schema.tables);
     const statement = this.readOnlySql.prepare(sqlText);
     // The name screen above reads the text; SQLite also takes a quoted string as a table name
     // (SELECT secret FROM '_fm_totp'), so the compiled query is checked too: it may open no

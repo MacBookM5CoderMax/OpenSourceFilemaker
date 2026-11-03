@@ -85,10 +85,10 @@ export function languageOrderBy(sql: string, tables: readonly Table[]): string {
     if (!m || (m[1] && unquote(m[1]).toLowerCase() !== qualifier)) return part;
     if (!m[1] && projectedAliases.has(unquote(m[2]).toLowerCase())) return part;
     const field = table.fields.find((f) => f.name.toLowerCase() === unquote(m[2]).toLowerCase());
-    if (!field || field.type !== 'text') return part;
+    if (!field || (field.type !== 'text' && field.type !== 'time')) return part;
     const name = `${m[1] ? `${m[1]}.` : ''}${m[2]}`;
     // Keep the whitespace after the last term, so a following LIMIT is not joined to it.
-    return ` ${sortFunction(sortLanguage(field.options?.indexLanguage))}(${name})${m[3] ? ` ${m[3]}` : ''}${/\s*$/.exec(part)![0]}`;
+    return ` ${field.type === 'time' ? 'fm_time_seconds' : sortFunction(sortLanguage(field.options?.indexLanguage))}(${name})${m[3] ? ` ${m[3]}` : ''}${/\s*$/.exec(part)![0]}`;
   });
   return sql.slice(0, start) + changed.join(',') + sql.slice(end);
 }
