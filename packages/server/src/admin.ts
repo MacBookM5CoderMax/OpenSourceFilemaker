@@ -1077,7 +1077,8 @@ export class Admin {
             if (typeof body.to !== 'string') throw new RangeError('to is an email address, or empty to turn notifications off');
             if (body.level !== undefined && body.level !== 'Error' && body.level !== 'Warning') throw new RangeError('level is Error or Warning');
             this.host.config.setNotifications({ to: body.to.trim(), level: body.level === 'Warning' ? 'Warning' : 'Error' });
-            this.log(`Email notifications go to ${body.to.trim()} (admin console)`);
+            // The server log is read by more people than the console; like the security entry it names the domain, never the address.
+            this.log(`Email notifications go to an address at ${body.to.trim().split('@').pop()?.toLowerCase() ?? '?'} (admin console)`);
           }
           const now = this.host.config.notifications();
           if (before?.to !== now?.to || before?.level !== now?.level) this.serverEvent(req, 'server-setting-changed', { setting: 'email notifications', before: describe(before), after: describe(now) });
