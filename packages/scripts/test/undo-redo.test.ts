@@ -75,3 +75,50 @@ test('Window steps leave the uncommitted edits alone', async () => {
     assert.equal(r.result, 'w1', step);
   }
 });
+
+test('Redo makes an edit again after Undo took back the only uncommitted edit', async () => {
+  const r = await run([
+    'Set Field [ Notes::A ; "r1" ]', 'Undo/Redo [ Undo ]', 'Set Variable [ $undone ; Notes::A ]',
+    'Undo/Redo [ Redo ]', 'Set Variable [ $redone ; Notes::A ]',
+    'Undo/Redo [ Toggle ]', 'Set Variable [ $toggled ; Notes::A ]',
+    'Undo/Redo [ Toggle ]',
+    'Exit Script [ Text Result: $undone & "|" & $redone & "|" & $toggled & "|" & Notes::A ]',
+  ].join('\n'));
+  assert.equal(r.error, 0);
+  assert.equal(r.result, 'a0|r1|a0|r1');
+});
+
+test('What was undone cannot be redone after a commit, a revert or a move to another record', async () => {
+  store.create('Notes', { A: 'a9', B: 'b9' });
+  const first = store.findIds('Notes')[0];
+  const before = store.get('Notes', first).fieldData.A;
+  for (const [name, leave] of [['commit', 'Commit Records/Requests [ With dialog: Off ]'], ['revert', 'Revert Record/Request [ With dialog: Off ]'], ['move', 'Go to Record/Request/Page [ Next ]']] as const) {
+    const r = await run(['Go to Record/Request/Page [ First ]', 'Set Variable [ $before ; Notes::A ]', 'Set Field [ Notes::A ; "z" ]', 'Undo/Redo [ Undo ]', leave,
+      'Go to Record/Request/Page [ First ]', 'Undo/Redo [ Redo ]', 'Exit Script [ Text Result: If ( Notes::A = $before ; "same" ; "changed" ) & "," & Get ( RecordNumber ) ]'].join('\n'));
+    assert.equal(r.error, 0, name);
+    assert.equal(r.result, 'same,1', name);
+  }
+  assert.equal(store.get('Notes', first).fieldData.A, before);
+});
+
+test('What was undone cannot be redone after the record is deleted', async () => {
+  store.create('Notes', { A: 'gone', B: 'gone' });
+  const r = await run([
+    'Go to Record/Request/Page [ Last ]', 'Set Field [ Notes::A ; "z" ]', 'Undo/Redo [ Undo ]',
+    'Delete Record/Request [ With dialog: Off ]', 'Undo/Redo [ Redo ]',
+    'Exit Script [ Text Result: If ( Notes::A = "z" ; "redone" ; "kept" ) & "," & Get ( RecordOpenState ) ]',
+  ].join('\n'));
+  assert.equal(r.error, 0);
+  assert.equal(r.result, 'kept,0');
+});
+
+test('What was undone cannot be redone after a transaction is reverted', async () => {
+  const r = await run([
+    'Go to Record/Request/Page [ First ]', 'Set Variable [ $before ; Notes::A ]',
+    'Open Transaction', 'Set Field [ Notes::A ; "tx" ]', 'Undo/Redo [ Undo ]', 'Revert Transaction', 'Commit Transaction',
+    'Undo/Redo [ Redo ]',
+    'Exit Script [ Text Result: If ( Notes::A = $before ; "same" ; "changed" ) ]',
+  ].join('\n'));
+  assert.equal(r.error, 0);
+  assert.equal(r.result, 'same');
+});

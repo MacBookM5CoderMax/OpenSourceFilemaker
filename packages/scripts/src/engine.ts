@@ -3538,6 +3538,7 @@ export class ScriptEngine {
     if (slot?.open === tx.state) slot.open = undefined;
     for (const w of this.windows) {
       w.pending = new Map();
+      this.forgetUndo(w);
       w.pendingPrivileges = undefined;
       w.uncommittedNew = false;
       this.unlockEdits(w);
@@ -3603,7 +3604,7 @@ export class ScriptEngine {
   private commit(win: Window, skipValidation = false): void {
     this.leaveField(win);
     // A new record is checked at its first commit even with nothing to write: a required field left empty fails.
-    if (!win.pending.size && !win.uncommittedNew) return this.unlockEdits(win);
+    if (!win.pending.size && !win.uncommittedNew) { this.forgetUndo(win); return this.unlockEdits(win); }
     const id = this.currentId(win);
     const info = win.layout;
     const data = Object.fromEntries(win.pending);
@@ -3613,6 +3614,7 @@ export class ScriptEngine {
     if (id !== undefined && info) this.via(info).update(info, id, data, undefined, { account: this.opts.account, privileges, editKey: win.pending, ...(win.uncommittedNew ? { firstCommit: true } : {}), ...this.txWrite, ...(skipValidation ? { skipEntryValidation: true } : {}) });
     if (id !== undefined && info) this.touched(info);
     win.pending = new Map();
+    this.forgetUndo(win);
     win.pendingPrivileges = undefined;
     win.uncommittedNew = false;
     this.unlockEdits(win);
@@ -6364,9 +6366,14 @@ export class ScriptEngine {
     else win.pending.set(key, value);
   }
 
+  /** The record was committed, reverted, deleted or its transaction ended: what could be undone or redone is gone. */
+  private forgetUndo(win: Window): void {
+    win.undo = win.redo = [];
+    win.undid = false;
+  }
+
   /** Keeps what an edit replaces, for Undo/Redo. Edits made before the record was last committed or reverted don't count. */
   private noteUndo(win: Window, key: string): void {
-    if (!win.pending.size) win.undo = [];
     (win.undo ??= []).push({ key, value: win.pending.get(key) });
     win.redo = [];
     win.undid = false;
@@ -6379,7 +6386,6 @@ export class ScriptEngine {
    * undo or redo it does nothing, as FileMaker's menu item would be dimmed (inferred).
    */
   private undoRedo(win: Window, which: 'undo' | 'redo' | 'toggle'): void {
-    if (!win.pending.size) win.undo = win.redo = [];
     const undo = which === 'undo' || (which === 'toggle' && !win.undid);
     const from = undo ? win.undo : win.redo;
     const step = from?.pop();
@@ -8720,6 +8726,7 @@ export class ScriptEngine {
     const id = fs.ids[fs.index];
     if (id === undefined) throw new ScriptError(ERROR.recordMissing, 'No record to delete');
     win.pending = new Map();
+    this.forgetUndo(win);
     win.pendingPrivileges = undefined;
     this.unlockEdits(win);
     this.via(info).delete(info, id, this.write);
@@ -8771,6 +8778,7 @@ export class ScriptEngine {
 
   private revert(win: Window): void {
     win.pending = new Map();
+    this.forgetUndo(win);
     win.pendingPrivileges = undefined;
     this.unlockEdits(win);
     if (win.uncommittedNew) {
