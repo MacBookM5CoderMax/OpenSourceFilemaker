@@ -204,3 +204,26 @@ test('stopping the server waits for the last digest to go out', async () => {
     rmSync(d, { recursive: true, force: true });
   }
 });
+
+test('a failed send logs the address\'s domain only, whether the mail function throws or refuses, while the console still hears the whole reason', async () => {
+  const address = ['Ops.Person', 'Alerts.Example.test'].join('@');
+  const lines: string[] = [];
+  const fakeHost = {
+    config: { notifications: () => ({ to: address, level: 'Error' as const }) },
+    logs: { write: (_type: string, _level: string, _source: string, message: string) => { lines.push(message); } },
+    mail: async () => { throw new Error(`550 mailbox <${address.toLowerCase()}> unavailable`); },
+  } as unknown as Host;
+  const n = new Notifier(fakeHost, { every: 1_000_000 });
+  const thrown = await n.test();
+  assert.equal(thrown.sent, false);
+  assert.ok(thrown.message.includes(address), 'the administrator who set the address is told the whole reason');
+  (fakeHost as unknown as { mail: unknown }).mail = async () => `refused for ${address}`;
+  const refused = await new Notifier(fakeHost, { every: 1_000_000 }).test();
+  assert.ok(refused.message.includes(address));
+  assert.equal(lines.length, 2);
+  for (const line of lines) {
+    assert.ok(!/ops\.person/i.test(line), `no local part in: ${line}`);
+    assert.match(line, /an address at alerts\.example\.test/);
+  }
+  assert.equal(lines[0], 'A notification could not send to an address at alerts.example.test: 550 mailbox <an address at alerts.example.test> unavailable');
+});

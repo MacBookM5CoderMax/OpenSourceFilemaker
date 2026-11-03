@@ -29,6 +29,12 @@ export interface NotifySettings {
 /** One plain address: what an administrator may type here. */
 export const NOTIFY_ADDRESS = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/;
 
+/** What the server log may say of the address: its domain, never the person's part. The same goes for a mail error that repeats the address. */
+const inLog = (text: string, to: string): string => {
+  const named = `an address at ${to.split('@').pop()!.toLowerCase()}`;
+  return text.replace(new RegExp(to.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), named);
+};
+
 export class Notifier {
   private readonly host: Host;
   private readonly every: number;
@@ -104,12 +110,13 @@ export class Notifier {
     try {
       const held = await this.host.mail!({ to: [to], cc: [], bcc: [], subject, text, fromName: 'tabularius', attachments: [], files: [] });
       if (typeof held === 'string') {
-        this.host.logs?.write('Event', 'Warning', NOTIFY_SOURCE, `A notification was not sent: ${held}`);
+        this.host.logs?.write('Event', 'Warning', NOTIFY_SOURCE, `A notification was not sent: ${inLog(held, to)}`);
         return held;
       }
     } catch (e) {
       const why = `could not send to ${to}: ${(e as Error).message}`;
-      this.host.logs?.write('Event', 'Warning', NOTIFY_SOURCE, `A notification ${why}`);
+      // The reply goes to the administrator who set the address; the log is read by more people.
+      this.host.logs?.write('Event', 'Warning', NOTIFY_SOURCE, `A notification ${inLog(why, to)}`);
       return why;
     }
     return undefined;
