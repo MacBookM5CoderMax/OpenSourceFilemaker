@@ -39,7 +39,7 @@ test('dates are relative to now and sit in the right windows', () => {
     assert.ok(day(d.Opened) >= 0 && day(d.Opened) <= 365);
     assert.match(String(d['Stage Changed']), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
     assert.ok(String(d['Stage Changed']) <= NOW.toISOString().slice(0, 19));
-    if (d.Closed) assert.ok(day(d.Closed) >= 1 && day(d.Closed) < day(d.Opened));
+    if (d.Closed) assert.ok(day(d.Closed) >= 0 && day(d.Closed) < day(d.Opened));
     else { assert.ok(day(d['Expected Close']) <= -3 && day(d['Expected Close']) >= -90); }
   }
   const stale = rows('Deals').filter((d) => !d.Closed && day(d['Stage Changed']) > 14);

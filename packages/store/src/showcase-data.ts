@@ -149,6 +149,7 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
   const lostReasons = g.shuffle([...Array<string>(5).fill('Price'), ...Array<string>(3).fill('Timing'), ...Array<string>(4).fill('Competitor'), ...Array<string>(3).fill('No decision'), ...Array<string>(2).fill('Fit')]);
   let lostN = 0;
   const wonSeen = reps.map(() => 0);
+  let olderWonSeen = 0;
   const deals: Row[] = [];
   const dealAccount: number[] = [];
   const dealOpenedAgo: number[] = [];
@@ -160,7 +161,8 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
     const wonNth = stage === 'Won' ? wonSeen[i % reps.length]++ : -1;
     const variedAmount = Math.min(90_000, Math.max(1_200, Math.round(Math.exp(Math.log(1200) + g.next() * (Math.log(90_000) - Math.log(1200))) / 50) * 50));
     // Three current-quarter wins of 12,000–22,000 keep rounded quotas within 20,000–200,000 and the attainment band.
-    const amount = wonNth >= 0 && wonNth < 3 ? 12_000 + g.int(0, 200) * 50 : variedAmount;
+    const amount = wonNth >= 0 && wonNth < 3 ? 12_000 + g.int(0, 200) * 50
+      : wonNth >= 3 ? 8_000 + (variedAmount % 161) * 50 : variedAmount;
     const item = g.pick(DEAL_ITEM);
     const row: Row = {
       'Account ID': accountId, 'Owner ID': account['Owner ID'], Title: `${item}, ${String(account.Name).replace(/ (Co|Ltd|Group|Partners|Systems|Supply|Labs|Works|Holdings|Industries)\.?$/, '')}`,
@@ -172,9 +174,15 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
       if (stage === 'Won') {
         // Three wins sit in this UTC calendar quarter, spread over its elapsed days; older wins predate it.
         // On the first day all three close today, since no earlier day belongs to the quarter.
-        closedAgo = wonNth < 3
-          ? g.int(Math.floor(wonNth * quarterDays / 3), Math.floor((wonNth + 1) * quarterDays / 3))
-          : g.int(quarterDays + 1, 270);
+        if (wonNth < 3) closedAgo = g.int(Math.floor(wonNth * quarterDays / 3), Math.floor((wonNth + 1) * quarterDays / 3));
+        else {
+          // Keep the original draw, placing each older win in a different month before this quarter.
+          const draw = g.int(quarterDays + 1, 270);
+          const month = Math.floor(now.getUTCMonth() / 3) * 3 - 1 - olderWonSeen++;
+          const first = Date.UTC(now.getUTCFullYear(), month, 1);
+          const days = Math.round((Date.UTC(now.getUTCFullYear(), month + 1, 1) - first) / DAY);
+          closedAgo = Math.round((dayStart - first) / DAY) - draw % days;
+        }
       } else closedAgo = g.int(1, 270);
       openedAgo = closedAgo + g.int(14, 90);
       row.Closed = dateAgo(closedAgo);
@@ -197,6 +205,42 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
   typoDeals[1].Stage = 'Qualified ';
   deals.find((d) => d.Source === 'Referral')!.Source = 'Refferal';
   deals.find((d) => d['Lost Reason'] === 'Competitor')!['Lost Reason'] = 'Competitior';
+
+  // Pick one loss per rep, maximizing distinct lead sources across the six losses.
+  // All dates below reuse existing values, so the generator draw sequence stays unchanged.
+  const lostByRep = reps.map((_, r) => deals.filter((d) => d.Stage === 'Lost' && d['Owner ID'] === r + 1));
+  const sourceOf = (d: Row) => d.Source === 'Refferal' ? 'Referral' : String(d.Source);
+  let selected: Row[] = [];
+  let bestSources = -1;
+  let fewestTypos = Infinity;
+  const choose = (r: number, picked: Row[], sources: Set<string>) => {
+    if (r === reps.length) {
+      const typos = picked.filter((d) => d.Source === 'Refferal').length;
+      if (sources.size > bestSources || (sources.size === bestSources && typos < fewestTypos)) {
+        bestSources = sources.size; fewestTypos = typos; selected = [...picked];
+      }
+      return;
+    }
+    for (const deal of lostByRep[r]) choose(r + 1, [...picked, deal], new Set([...sources, sourceOf(deal)]));
+  };
+  choose(0, [], new Set());
+  const inQuarter = new Set(selected);
+  for (const deal of deals.filter((d) => d.Stage === 'Lost')) {
+    const oldClosed = Date.parse(String(deal.Closed));
+    const openedGap = Math.round((oldClosed - Date.parse(String(deal.Opened))) / DAY);
+    const expectedGap = Math.round((oldClosed - Date.parse(String(deal['Expected Close']))) / DAY);
+    const oldAgo = Math.round((dayStart - oldClosed) / DAY);
+    const closedAgo = inQuarter.has(deal) ? oldAgo % (quarterDays + 1)
+      : quarterDays + 1 + oldAgo % (270 - quarterDays);
+    const closedDay = dayStart - closedAgo * DAY;
+    deal.Closed = dateAgo(closedAgo);
+    deal.Opened = new Date(closedDay - openedGap * DAY).toISOString().slice(0, 10);
+    deal['Expected Close'] = new Date(closedDay - expectedGap * DAY).toISOString().slice(0, 10);
+    const oldStamp = String(deal['Stage Changed']);
+    const time = oldStamp.slice(11);
+    const stamp = new Date(closedDay).toISOString().slice(0, 10) + 'T' + time;
+    deal['Stage Changed'] = new Date(Math.max(closedDay, Math.min(Date.parse(stamp + 'Z'), nowMs))).toISOString().slice(0, 19);
+  }
 
   // Today compares the calendar quarter's wins with quota and elapsed time. Fixed targets from 38% to 62%
   // yield a 35%–70% band after rounding; early in a quarter the invented wins lead elapsed time.
