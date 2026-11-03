@@ -8,7 +8,7 @@ The full notes, with what to check before upgrading, are in the release notes fo
 
 ### Showcase
 
-- A CRM showcase: `tabularius demo --starter crm-showcase`, with `--full` for the sign-ins, a read-only SQL port and an AI token, and `--ai` for the demo's assistant. Classic layouts, five modern HTML pages, scripts, an automation and privilege sets that show a rep only their own deals. `docs/showcase-crm.md` walks through it.
+- A CRM showcase: `tabularius demo --starter crm-showcase`, with `--full` for the sign-ins, a read-only SQL port and an AI token, and `--ai` for the demo's assistant. Classic layouts, five modern HTML pages that share one design (headline tiles, a quota ring, a funnel, a leaderboard and a dark mode, and an Account timeline with an account picker), scripts, an automation and privilege sets that show a rep only their own deals. `docs/showcase-crm.md` walks through it.
 
 ### Security and accounts
 
@@ -28,6 +28,8 @@ The full notes, with what to check before upgrading, are in the release notes fo
 ### Web client and admin console
 
 - Names on form controls in Design mode and the admin console, a darker light palette, and plain sentences for a lost connection or a reply that is not JSON.
+- Empty, error and failed-start messages are announced to screen readers, relationship lines in Design mode can be reached from the keyboard, and Show All Records, Show Omitted Only and Perform Quick Find keep the found set's sort.
+- The fault log hides folders in a path, including Windows long paths.
 
 ### Command line and migration
 
