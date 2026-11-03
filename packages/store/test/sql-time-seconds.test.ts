@@ -79,3 +79,18 @@ test('text that looks like a time, and a name shared with a text column, keep th
   // A time in a string literal of another column, and a comment, are left alone.
   assert.deepEqual(column("SELECT Label FROM T WHERE Label = 'Tm > 5' OR Label = 'none' -- Tm < ?"), ['none']);
 });
+
+test('find-only functions are unavailable through user SQL', () => {
+  for (const query of [
+    "SELECT fm_find_text('abc','a*',0,0,0) FROM T",
+    "SELECT fm_find_word_range('abc','a',1,'z',1,'en') FROM T",
+    "SELECT fm_find_invalid('abc','date') FROM T",
+  ]) {
+    assert.throws(() => column(query), /no such function: fm_find_/i, query);
+  }
+});
+
+test('a derived text alias matching a time field name is compared as time', () => {
+  assert.deepEqual(column("SELECT Label FROM T WHERE Label > '5'"), ['9:00:00', '99:00:00', 'none']);
+  assert.deepEqual(column("SELECT * FROM (SELECT Label AS Tm FROM T) WHERE Tm > '5'"), ['none']);
+});

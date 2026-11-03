@@ -215,8 +215,8 @@ export function timeSeconds(s: string): number | undefined {
   return (match[1] ? -1 : 1) * seconds;
 }
 
-/** SQL functions used by the shared find compiler and time sorts. */
-export function registerFindFunctions(db: DatabaseSync): void {
+/** SQL functions for comparing and aggregating stored times by seconds. */
+export function registerTimeFunctions(db: DatabaseSync): void {
   db.function('fm_time_seconds', { deterministic: true }, (v) => v == null || v === '' ? null : timeSeconds(String(v)) ?? v);
   // Return the stored text of the largest or smallest valid time; ignore empty and NULL values.
   for (const [name, sign] of [['fm_time_max', 1], ['fm_time_min', -1]] as const) {
@@ -229,6 +229,11 @@ export function registerFindFunctions(db: DatabaseSync): void {
       },
       result: (best: { text: string; seconds: number } | null) => best ? best.text : null } as never);
   }
+}
+
+/** SQL functions used by the shared find compiler and time sorts. */
+export function registerFindFunctions(db: DatabaseSync): void {
+  registerTimeFunctions(db);
   db.function('fm_find_key', { deterministic: true }, (v) => v == null ? null : fold(String(v), false));
   db.function('fm_find_invalid', { deterministic: true }, (v, type) => {
     if (v == null || v === '') return 0;

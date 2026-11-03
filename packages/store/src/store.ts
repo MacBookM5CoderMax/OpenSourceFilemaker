@@ -27,7 +27,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { closeSync, constants as fsConstants, copyFileSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, readdirSync, readSync, renameSync, rmSync, statSync } from 'node:fs';
 import { checkedFile, cleanupPath, openSync, readFileSync, writeFileSync, writeSync } from './fs-boundary.ts';
 import { externalFieldNames, parseDate, parseTime, parseTimestamp, type DateStyle, type Field, type FieldType, type LayoutDesign, type LayoutDesigns, type LayoutObject, type Schema, type Table } from '../../fmp12/src/index.ts';
-import { findWhere, findScope, registerFindFunctions, timeSeconds, beginFindBudget, findBudgetScope, FindError, type RelatedCriteria, type FieldInfo, type FindRequest, type SqlValue, type WordIndex } from './find.ts';
+import { findWhere, findScope, registerFindFunctions, registerTimeFunctions, timeSeconds, beginFindBudget, findBudgetScope, FindError, type RelatedCriteria, type FieldInfo, type FindRequest, type SqlValue, type WordIndex } from './find.ts';
 import { defineFold, WordIndexes, wordIndexName } from './words.ts';
 import { q, dataSourceFile, SQL_TYPES, DESIGN_LOG, writeDesign, addExternalSizeColumn } from './import.ts';
 import { decimalKey, decimalNumberText, nativeValue } from './native-types.ts';
@@ -11369,7 +11369,7 @@ export class Store {
       defineFold(this.readOnlySql);
       for (const id of SORT_LANGUAGE_IDS) this.readOnlySql.function(sortFunction(id), { deterministic: true }, (v) => (typeof v === 'string' ? keptSortKey(v, id) : v));
       if (this.fileMode === 'native') this.readOnlySql.function('fm_decimal_key', { deterministic: true }, (v) => decimalKey(v as string | number | null));
-      registerFindFunctions(this.readOnlySql);
+      registerTimeFunctions(this.readOnlySql);
       registerODataValueFunctions(this.readOnlySql);
       for (const [name, fn] of this.queryFunctions) this.readOnlySql.function(name, { varargs: true, useBigIntArguments: true }, exactIntegerArguments(name, fn));
     }
