@@ -31,7 +31,10 @@ server makes such a connection and what proves it is guarded.
 - **Follows redirects by hand,** at most five, each hop checked again. A hop to
   another origin carries none of the request's headers except Accept, Accept-Language,
   Accept-Encoding, User-Agent and Range, so no credential follows it. A POST
-  turned into a GET sends no body.
+  turned into a GET sends no body. A 307 or 308 keeps the method and the body,
+  as `curl -L` does, so a redirect of that kind to another origin sends the
+  request body there too (only the credentials are left out): a script that posts
+  something private should call the final address, not one that redirects.
 - **Caps time and size.** A request has the caller's total time and response size
   limits (size counted after gzip, x-gzip, deflate or Brotli decompression).
   The deadline also cancels a stalled streaming upload before admission.

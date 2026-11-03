@@ -171,6 +171,19 @@ for (const status of [301, 302, 303, 307, 308]) test(`${status} strips credentia
   for (const key of ['authorization', 'cookie', 'proxy-authorization', 'x-token']) assert.equal(seen?.[key], undefined);
 });
 
+// docs/outbound-requests.md says a 307 or 308 keeps the body across origins and drops only the credentials.
+for (const status of [307, 308]) test(`${status} keeps the method and body on a cross-origin redirect, with the credentials left out`, async (t) => {
+  let seen: { method?: string; body: string; authorization?: string } | undefined;
+  const target = await local(t, (req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => { seen = { method: req.method, body, authorization: req.headers.authorization }; res.end('ok'); });
+  });
+  const first = await local(t, (_req, res) => { res.writeHead(status, { location: target.base }); res.end(); });
+  assert.equal(await (await guardedFetch(first.base, { method: 'POST', body: 'payload', headers: { authorization: 'Bearer secret' } }, PRIVATE)).text(), 'ok');
+  assert.deepEqual(seen, { method: 'POST', body: 'payload', authorization: undefined });
+});
+
 for (const [encoding, compress] of [['gzip', gzipSync], ['deflate', deflateSync], ['br', brotliCompressSync]] as const) test(`${encoding} size cap counts decoded bytes and leaves account capacity clean after corrupt or oversized bodies`, async (t) => {
   const compressed = compress(Buffer.alloc(64 * 1024, 65));
   assert.ok(compressed.length < 1024);
