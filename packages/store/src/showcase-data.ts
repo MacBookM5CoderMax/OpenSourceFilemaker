@@ -84,9 +84,8 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
   // Reps
   const reps: Row[] = REP_NAME.map(([first, last, region], i) => ({
     Name: `${first} ${last}`, Email: `${first}.${last}@showcase.example`.toLowerCase(), Region: region,
-    'Quarterly Quota': g.int(12, 30) * 5000, Login: i === 0 && opts.repLogin ? opts.repLogin : i === 1 && opts.agentLogin ? opts.agentLogin : first.toLowerCase(),
+    'Quarterly Quota': 0, Login: i === 0 && opts.repLogin ? opts.repLogin : i === 1 && opts.agentLogin ? opts.agentLogin : first.toLowerCase(),
   }));
-  const repsByRegion = (region: string) => reps.map((r, i) => ({ r, id: i + 1 })).filter((x) => x.r.Region === region);
 
   // Accounts
   const names: string[] = [];
@@ -102,8 +101,8 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
   // Three near-duplicate pairs, messy through their text alone.
   names.push('Quayside Freight Co', 'Quayside Freight Co.', 'Larkspur Works Ltd', 'Larkspur Works Ltd.', 'Redfern Supply Co', 'Redfern Supply Company');
   const accounts: Row[] = names.map((name, i) => {
-    const region = g.pick(SHOWCASE_LISTS.region);
-    const owner = g.pick(repsByRegion(region).length ? repsByRegion(region) : reps.map((r, k) => ({ r, id: k + 1 })));
+    const owner = { r: reps[i % reps.length], id: (i % reps.length) + 1 };
+    const region = String(owner.r.Region);
     return {
       Name: name, Industry: g.pick(SHOWCASE_LISTS.industry), Region: region, Employees: Math.round(Math.exp(g.next() * Math.log(400) + Math.log(5))),
       Website: `${slug(name)}.example`, 'Owner ID': owner.id,
@@ -132,19 +131,27 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
   const contactsOf = (accountId: number) => contactAccount.map((a, i) => (a === accountId ? i + 1 : 0)).filter(Boolean);
 
   // Deals: 28 open, 25 won, 17 lost.
-  const stagePlan = g.shuffle([
+  const ordered = [
     ...Array<string>(8).fill('Lead'), ...Array<string>(8).fill('Qualified'), ...Array<string>(7).fill('Proposal'), ...Array<string>(5).fill('Negotiation'),
     ...Array<string>(25).fill('Won'), ...Array<string>(17).fill('Lost'),
-  ]);
+  ];
+  // Deal i belongs to rep i % 6; deal the stages out round robin, so every rep gets the same mix, then shuffle each rep's own deals.
+  const stagePlan: string[] = Array<string>(70).fill('');
+  for (let r = 0; r < reps.length; r++) {
+    const slots = g.shuffle(Array.from({ length: 70 }, (_, i) => i).filter((i) => i % reps.length === r));
+    ordered.filter((_, k) => k % reps.length === r).forEach((st, n) => { stagePlan[slots[n]] = st; });
+  }
   const openIdx = stagePlan.map((s, i) => (s === 'Won' || s === 'Lost' ? -1 : i)).filter((i) => i >= 0);
   const stale = new Set(g.shuffle(openIdx).slice(0, 5));
   const lostReasons = g.shuffle([...Array<string>(5).fill('Price'), ...Array<string>(3).fill('Timing'), ...Array<string>(4).fill('Competitor'), ...Array<string>(3).fill('No decision'), ...Array<string>(2).fill('Fit')]);
   let lostN = 0;
+  const wonSeen = reps.map(() => 0);
   const deals: Row[] = [];
   const dealAccount: number[] = [];
   const dealOpenedAgo: number[] = [];
   for (let i = 0; i < 70; i++) {
-    const accountId = i < accounts.length ? i + 1 : g.int(1, accounts.length);
+    const mine = accounts.map((_, k) => k + 1).filter((k) => (k - 1) % reps.length === i % reps.length);
+    const accountId = i < accounts.length ? i + 1 : g.pick(mine);
     const account = accounts[accountId - 1];
     const stage = stagePlan[i];
     const amount = Math.min(90_000, Math.max(1_200, Math.round(Math.exp(Math.log(1200) + g.next() * (Math.log(90_000) - Math.log(1200))) / 50) * 50));
@@ -155,7 +162,12 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
     };
     let openedAgo: number;
     if (stage === 'Won' || stage === 'Lost') {
-      const closedAgo = g.int(1, 270);
+      let closedAgo: number;
+      if (stage === 'Won') {
+        // A rep's first three won deals closed in the last 90 days (one in each third), the rest earlier, so no rep is at zero.
+        const r = i % reps.length, nth = wonSeen[r]++;
+        closedAgo = nth < 3 ? 1 + nth * 30 + g.int(0, 29) : g.int(91, 270);
+      } else closedAgo = g.int(1, 270);
       openedAgo = closedAgo + g.int(14, 90);
       row.Closed = dateAgo(closedAgo);
       row['Expected Close'] = dateAgo(closedAgo + g.int(0, 7));
@@ -177,6 +189,13 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
   typoDeals[1].Stage = 'Qualified ';
   deals.find((d) => d.Source === 'Referral')!.Source = 'Refferal';
   deals.find((d) => d['Lost Reason'] === 'Competitor')!['Lost Reason'] = 'Competitior';
+
+  // Each rep's quota is what they won in the last 90 days divided by an attainment between 70% and 115%, rounded to 5,000.
+  const ATTAIN = [0.9, 1.05, 0.8, 1.15, 0.7, 0.95];
+  reps.forEach((rep, r) => {
+    const won = deals.filter((d) => d.Stage === 'Won' && d['Owner ID'] === r + 1 && dateAgo(90) <= String(d.Closed)).reduce((a, d) => a + Number(d.Amount), 0);
+    rep['Quarterly Quota'] = Math.max(20_000, Math.round(won / ATTAIN[r] / 5000) * 5000);
+  });
 
   // Products and deal lines: 150 lines, at least one per deal, totals near the deal's amount.
   const products: Row[] = PRODUCT.map(([sku, name, price], i) => ({ SKU: sku, Name: name, 'Unit Price': price, Active: i === 5 ? 'No' : 'Yes' }));
@@ -202,6 +221,7 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
 
   // Activities: 350 over the last 6 months; tasks are the ones with a due date.
   const activities: Row[] = [];
+  let taskN = 0;
   for (let i = 0; i < 350; i++) {
     const accountId = g.int(1, accounts.length);
     const ago = g.int(0, 180);
@@ -214,7 +234,9 @@ export function showcaseSample(now: Date, seed = 20261101, opts: { repLogin?: st
     };
     if (type === 'Task') {
       // Overdue ones are still open, a few are due this week, the rest were done.
-      const roll = g.next();
+      // The first six tasks are overdue and the next six are due this week, whatever the seed rolls, so the Today lists are never empty.
+      let roll = g.next(); const nth = taskN++;
+      if (nth < 12) roll = nth < 6 ? 0.3 : 0.1;
       if (roll < 0.2) { row.Due = dateAgo(-g.int(0, 7)); row.Done = 'No'; }
       else if (roll < 0.4) { row.Due = dateAgo(g.int(1, Math.max(1, Math.min(ago, 30)))); row.Done = 'No'; }
       else { row.Due = dateAgo(Math.max(0, ago - g.int(0, 5))); row.Done = 'Yes'; row.Outcome = 'Done'; }
