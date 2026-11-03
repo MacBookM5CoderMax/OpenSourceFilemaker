@@ -84,6 +84,11 @@ test('a folder in the middle of an unquoted path may hold lowercase words after 
   assert.equal(redactPaths('see /x/y in a/b form'), 'see [path]/y in a/b form');
   assert.equal(redactPaths('moved /a/b to the c/d e/f'), 'moved [path]/b to the c/d e/f');
   assert.equal(redactPaths(`kept ${homedir()}/a/b c/d`), 'kept [home]/b c/d');
+  // A folder with a dot in its name does not end the path early, and each path gets one marker.
+  assert.equal(redactPaths('open C:\\a\\b.c\\d'), 'open [path]\\d');
+  assert.equal(redactPaths('open \\\\h\\s\\b.c\\d'), 'open [path]\\d');
+  assert.equal(redactPaths('open /usr/lib/node.js/x'), 'open [path]/x');
+  assert.equal(redactPaths(`open ${homedir()}/lib.d/x/y`), 'open [home]/y');
 });
 
 test('long runs of words with spaces are redacted in linear time', () => {

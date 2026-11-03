@@ -30,7 +30,8 @@ const WINDOWS_PATH = new RegExp(String.raw`(?<![\w\\])[A-Za-z]:[\\/]${SEG}(?:[\\
 const UNC_PATH = new RegExp(String.raw`(?<![\w\\])\\\\${SEG}(?:\\${SEG})+`, 'g');
 // A middle folder holding lowercase words after a space is read only when the path ends in a file name with an extension,
 // so the words between two paths in running text ("cp /a/b c/d", "/a/b and/or /c/d") are not taken for a folder.
-const FILE = String.raw`[\w@+~%-]+(?:\.[\w@+~%-]+)+`;
+// It ends at a name boundary, so a folder with a dot in its name (node.js/) is not taken for the file.
+const FILE = String.raw`[\w@+~%-]+(?:\.[\w@+~%-]+)+(?![\w.@+~%-]|[\\/])`;
 const POSIX_SPACED = new RegExp(String.raw`(?<![\w:/.\\-])(?:file:\/\/)?\/{1,2}${SEG}(?:\/${MID}(?=\/))*\/${FILE}`, 'g');
 const WINDOWS_SPACED = new RegExp(String.raw`(?<![\w\\])[A-Za-z]:[\\/]${SEG}(?:[\\/]${MID}(?=[\\/]))*[\\/]${FILE}`, 'g');
 const UNC_SPACED = new RegExp(String.raw`(?<![\w\\])\\\\${SEG}(?:\\${MID}(?=\\))*\\${FILE}`, 'g');
