@@ -247,3 +247,21 @@ test('the log line also hides an address a mail server repeats in another form: 
     assert.match(lines[0], /an address at /);
   }
 });
+
+test('the log line keeps its wording and the domain when the local part is also a word in them', async () => {
+  const cases: [string, string, string][] = [
+    ['alerts@alerts.example.test', '550 <alerts@alerts.example.test> unknown; alerts... User unknown', 'A notification could not send to an address at alerts.example.test: 550 <an address at alerts.example.test> unknown; the recipient... User unknown'],
+    ['send@x.test', '550 mailbox send@x.test unavailable', 'A notification could not send to an address at x.test: 550 mailbox an address at x.test unavailable'],
+    ['address@x.test', 'no mailbox address@x.test', 'A notification could not send to an address at x.test: no mailbox an address at x.test'],
+  ];
+  for (const [address, reason, expected] of cases) {
+    const lines: string[] = [];
+    const fakeHost = {
+      config: { notifications: () => ({ to: address, level: 'Error' as const }) },
+      logs: { write: (_t: string, _l: string, _s: string, message: string) => { lines.push(message); } },
+      mail: async () => { throw new Error(reason); },
+    } as unknown as Host;
+    await new Notifier(fakeHost, { every: 1_000_000 }).test();
+    assert.deepEqual(lines, [expected]);
+  }
+});

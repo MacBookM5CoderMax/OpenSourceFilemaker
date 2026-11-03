@@ -32,23 +32,24 @@ export const NOTIFY_ADDRESS = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/;
 
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** The address as the log may name it: its domain only. */
+const named = (to: string) => `an address at ${to.slice(to.lastIndexOf('@') + 1).toLowerCase()}`;
+
 /**
- * What the server log may say of the address: its domain, never the person's part. A mail error that repeats the
- * address is cleaned the same way: the address as typed, with the domain in its punycode form, and the local part
- * alone (a server may answer "ops.person... User unknown"; a part under four characters is left, as it would
- * also match ordinary words).
+ * A mail server's answer, cleaned for the log: wherever it repeats the address it says "an address at <domain>". The
+ * address is found as typed, with the domain in its punycode form, and as the local part alone (a server may answer
+ * "ops.person... User unknown"; a part under four characters is left, as it would also match ordinary words, and
+ * becomes "the recipient"). One pass, so text put in place of a match is never read again.
  */
 const inLog = (text: string, to: string): string => {
   const at = to.lastIndexOf('@');
   const local = to.slice(0, at);
-  const domain = to.slice(at + 1);
-  const named = `an address at ${domain.toLowerCase()}`;
-  const forms = new Set([to, `${local}@${domainToASCII(domain) || domain}`]);
-  // The replacement is a function, so a $ in an address is not read as a replacement pattern.
-  let out = text;
-  for (const form of forms) out = out.replace(new RegExp(literal(form), 'gi'), () => named);
-  if (local.length >= 4) out = out.replace(new RegExp(String.raw`(?<![\w.+-])${literal(local)}(?![\w+-])`, 'gi'), () => 'the recipient');
-  return out;
+  const full = [...new Set([to, `${local}@${domainToASCII(to.slice(at + 1)) || to.slice(at + 1)}`])].sort((x, y) => y.length - x.length);
+  const parts = full.map(literal);
+  if (local.length >= 4) parts.push(String.raw`(?<![\w+-])${literal(local)}(?![\w+-])`);
+  const lower = new Set(full.map((f) => f.toLowerCase()));
+  // The replacer is a function, so a $ in an address is not read as a replacement pattern.
+  return text.replace(new RegExp(parts.join('|'), 'gi'), (found) => lower.has(found.toLowerCase()) ? named(to) : 'the recipient');
 };
 
 export class Notifier {
@@ -132,7 +133,7 @@ export class Notifier {
     } catch (e) {
       const why = `could not send to ${to}: ${(e as Error).message}`;
       // The reply goes to the administrator who set the address; the log is read by more people.
-      this.host.logs?.write('Event', 'Warning', NOTIFY_SOURCE, `A notification ${inLog(why, to)}`);
+      this.host.logs?.write('Event', 'Warning', NOTIFY_SOURCE, `A notification could not send to ${named(to)}: ${inLog((e as Error).message, to)}`);
       return why;
     }
     return undefined;
