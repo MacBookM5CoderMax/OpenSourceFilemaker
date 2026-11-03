@@ -481,8 +481,8 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
     }
     admin.replication = replication;
     if (opts.progressive) {
-      const progressiveStarting = scheduleProgressive(host, { ...opts.progressive, dest: configuredBackupDir, keep: opts.backups?.keep, log, shipper }).then((p) => {
-        if (closed) p.stop();
+      const progressiveStarting = scheduleProgressive(host, { ...opts.progressive, dest: configuredBackupDir, keep: opts.backups?.keep, log, shipper }).then(async (p) => {
+        if (closed) { p.stop(); await p.settled(); } // closing began first: still wait for a copy that stop() started
         else admin.progressive = p;
       }, (e) => log(`point-in-time backups could not start: ${(e as Error).message}`));
       // The files are closed after this (disposers run last in, first out), so a copy still being made is waited for first.

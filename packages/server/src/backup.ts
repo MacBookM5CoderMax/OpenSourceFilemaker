@@ -984,7 +984,7 @@ export async function scheduleProgressive(host: Host, opts: { every: number; des
       if (!inSet.has(file)) {
         // Hosted since this started (dropped into the folder): copy it into the set first, keeping its changes until then.
         if (!adding.has(store.name)) {
-          const copy: Promise<void> = addToSet(store.name).finally(() => copying.delete(copy));
+          const copy: Promise<void> = addToSet(store.name).catch((e) => log(`point-in-time backup of ${store.name} could not be cleaned up: ${(e as Error).message}`)).finally(() => copying.delete(copy));
           copying.add(copy);
         }
         return false;
