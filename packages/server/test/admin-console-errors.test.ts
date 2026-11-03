@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { IncomingMessage } from 'node:http';
 import { createStore, Store } from '../../store/src/index.ts';
 import { serve, Host, Schedules } from '../src/index.ts';
 import { AdminApi } from '../src/adminapi.ts';
@@ -131,7 +132,8 @@ test('#32 the Admin API refuses block-new-users with a client error while the se
   t.mock.method(process, 'emitWarning', () => {});
   const control = new AdminApi(new Admin(host, new DataApi(host)), host, new DataApi(host));
   writeFileSync(join(dir, '.openhbam-settings.json'), '{"keep":"abc"}');
-  await assert.rejects(async () => control['blockNewUsers']({ blockNewUsers: true }), (e: Error & { status?: number }) => e.status === 409 && /keep must be a number/.test(e.message) && !e.message.includes(dir));
+  const req = { headers: {}, socket: { remoteAddress: '127.0.0.1' } } as IncomingMessage;
+  await assert.rejects(async () => control['blockNewUsers']({ blockNewUsers: true }, req), (e: Error & { status?: number }) => e.status === 409 && /keep must be a number/.test(e.message) && !e.message.includes(dir));
   assert.equal(readFileSync(join(dir, '.openhbam-settings.json'), 'utf8'), '{"keep":"abc"}');
 });
 

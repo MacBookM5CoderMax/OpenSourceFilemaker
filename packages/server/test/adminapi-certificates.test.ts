@@ -7,10 +7,21 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { request } from 'node:https';
 import { connect } from 'node:tls';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import type { Server } from 'node:http';
-import { serve, setAdminPassword } from '../src/index.ts';
+import { serve, setAdminPassword, type Host } from '../src/index.ts';
 import { certificateManaged, ImportedCertificates, parseSubject } from '../src/cert-import.ts';
+
+// Keep openssl available, but fail if a child tries a service, installer or network command.
+const originalPath = process.env.PATH;
+const originalMarker = process.env.TABULARIUS_TEST_COMMAND_MARKER;
+const stubDir = mkdtempSync(join(tmpdir(), 'tabularius-cert-command-stubs-'));
+const marker = join(stubDir, 'forbidden-command');
+process.env.TABULARIUS_TEST_COMMAND_MARKER = marker;
+for (const command of ['launchctl', 'systemctl', 'sc', 'git', 'gh', 'npm', 'curl', 'sudo']) {
+  writeFileSync(join(stubDir, command), '#!/bin/sh\nprintf forbidden >> "$TABULARIUS_TEST_COMMAND_MARKER"\nexit 99\n', { mode: 0o700 });
+}
+process.env.PATH = `${stubDir}${delimiter}${originalPath ?? ''}`;
 
 const openssl = spawnSync('openssl', ['version']).status === 0;
 const skip = openssl ? false : 'openssl is not installed';
@@ -18,6 +29,7 @@ let dir: string;
 let ca: string;
 let server: Server;
 let port: number;
+let host: Host;
 
 const run = (args: string[], cwd = ca) => {
   const r = spawnSync('openssl', args, { cwd, encoding: 'utf8' });
@@ -42,11 +54,19 @@ before(async () => {
   const s = await serve({ dir, port: 0, log: () => {}, tlsCert: join(dir, 'tls', 'cert.pem'), tlsKey: join(dir, 'tls', 'key.pem') });
   server = s.server;
   port = Number(new URL(s.url).port);
+  host = s.host;
 });
 after(async () => {
   await new Promise<void>((r) => (server ? server.close(() => r()) : r()));
   if (dir) rmSync(dir, { recursive: true, force: true });
   if (ca) rmSync(ca, { recursive: true, force: true });
+  const forbidden = existsSync(marker);
+  if (originalPath === undefined) delete process.env.PATH;
+  else process.env.PATH = originalPath;
+  if (originalMarker === undefined) delete process.env.TABULARIUS_TEST_COMMAND_MARKER;
+  else process.env.TABULARIUS_TEST_COMMAND_MARKER = originalMarker;
+  rmSync(stubDir, { recursive: true, force: true });
+  assert.equal(forbidden, false, 'no service, install, upgrade, git or network command ran');
 });
 
 type Reply = { status: number; body: { response: Record<string, any>; messages: { code: string; text: string }[] } };
@@ -221,6 +241,16 @@ test('create a request, import the authority\'s certificate (in use at once), th
   assert.ok(!existsSync(join(dir, '.openhbam-tls', 'imported')));
   assert.equal(code(await call('DELETE', '/server/certificate/delete', undefined, auth)), '1700');
   assert.equal(code(await call('PATCH', '/server/certificate/import', {}, auth)), '958');
+
+  // The two imports and the delete are in the Admin log with the way in; the refused calls and the request are not.
+  await host.logs!.flush();
+  const lines = readFileSync(join(dir, 'Logs', 'Admin.log'), 'utf8').split('\n').filter((l) => l.includes('[security '));
+  assert.equal(lines.length, 3, lines.join('\n'));
+  assert.match(lines[0], /\[security notice\] server-setting-changed: The server setting "TLS certificate" was changed to imported for .*CN=files\.example\.com.*, valid until .* \(via Admin API\)/);
+  assert.match(lines[1], /"TLS certificate" was changed to imported for/);
+  assert.match(lines[2], /"TLS certificate" was changed from imported to deleted \(via Admin API\)/);
+  for (const line of lines) assert.match(line, /\t(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)\t/);
+  assert.ok(!/key-pass|PRIVATE KEY/.test(lines.join('\n')), 'no password or key is written');
 });
 
 test('not where the certificate comes from the command line', { skip }, async () => {

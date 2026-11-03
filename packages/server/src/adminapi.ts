@@ -42,6 +42,7 @@ import { CertificateError, type ImportedCertificates } from './cert-import.ts';
 import { ScheduleError, type Schedule, type ScheduleInput, type Schedules } from './schedules.ts';
 import { clientAddress } from './client-address.ts';
 import type { AutomationActor } from './automation-audit.ts';
+import { recordServerSecurityEvent, type ServerEventDetail, type ServerSecurityEventKind } from './server-security.ts';
 import { said } from './said.ts';
 import { logFaultFor } from './fault-log.ts';
 import { sameSecret } from './secrets.ts';
@@ -421,7 +422,9 @@ export class AdminApi {
       if (!client[2] && method === 'DELETE') {
         const text = this.messageText(url.searchParams.get('messageText') ?? undefined, false);
         if (text) this.live?.message(text, token);
-        this.api.endById(listId);
+        const was = this.api.list().find((x) => x.id === listId);
+        const ended = this.api.endById(listId);
+        if (ended && was) this.sessionsEnded(req, was.db, was.account);
         return { client: { id: client[1] } };
       }
     }
@@ -442,13 +445,24 @@ export class AdminApi {
     }
     if (path === '/server/config/blocknewusers') {
       if (method === 'GET') return { blockNewUsers: this.host.config.blockNewUsers() };
-      if (method === 'PATCH') return this.blockNewUsers(body);
+      if (method === 'PATCH') return this.blockNewUsers(body, req);
     }
     if (path === '/plugins' && method === 'GET') return { plugins: this.plugins() };
-    if (path === '/server/certificate/csr' && method === 'PATCH') return this.certificate('csr', body);
-    if (path === '/server/certificate/import' && method === 'PATCH') return this.certificate('import', body);
-    if (path === '/server/certificate/delete' && method === 'DELETE') return this.certificate('delete', body);
+    if (path === '/server/certificate/csr' && method === 'PATCH') return this.certificate('csr', body, req);
+    if (path === '/server/certificate/import' && method === 'PATCH') return this.certificate('import', body, req);
+    if (path === '/server/certificate/delete' && method === 'DELETE') return this.certificate('delete', body, req);
     throw new AdminApiError(3, 'Unavailable command', 404);
+  }
+
+  /** Server-wide changes go to the Admin log with the way in ("Admin API") and the address the server saw, as the console's do. */
+  private serverEvent(req: IncomingMessage, kind: ServerSecurityEventKind, detail: ServerEventDetail): void {
+    recordServerSecurityEvent(this.host, (m) => this.host.logs?.write('Event', 'Warning', '', m), { channel: 'Admin API', address: clientAddress(req) || 'unknown' }, kind, detail);
+  }
+
+  /** A client the administrator disconnected is recorded in the security log of its file. Logging never undoes the disconnect. */
+  private sessionsEnded(req: IncomingMessage, database: string, account: string): void {
+    try { this.host.get(database)?.recordSessionsEnded({ scope: 'session', count: 1, account, by: 'Admin API', from: clientAddress(req) || 'unknown' }); }
+    catch (e) { this.host.logs?.write('Event', 'Warning', '', `security log: could not record that a session was ended in ${database}: ${(e as Error).message}`); }
   }
 
   /** A PATCH of settings Tabularius doesn't have: fine when it changes nothing (tools send every value back), else Not Supported. */
@@ -460,7 +474,7 @@ export class AdminApi {
     return fixed.values;
   }
 
-  private blockNewUsers(body: Record<string, unknown>): { blockNewUsers: boolean } {
+  private blockNewUsers(body: Record<string, unknown>, req: IncomingMessage): { blockNewUsers: boolean } {
     const on = body.blockNewUsers;
     if (on === undefined) throw new AdminApiError(958, 'Parameter missing: blockNewUsers');
     if (typeof on !== 'boolean') throw new AdminApiError(960, 'Parameter is invalid: blockNewUsers is true or false');
@@ -469,12 +483,13 @@ export class AdminApi {
         if (e instanceof SettingsError) throw new AdminApiError(960, e.message, 409);
         throw e;
       }
+      this.serverEvent(req, 'server-setting-changed', { setting: 'block new users', before: !on, after: on });
       this.host.logs?.write('Event', 'Information', '', on ? 'New users are blocked (Admin API): only sessions already open carry on' : 'New users may sign in again (Admin API)');
     }
     return { blockNewUsers: on };
   }
 
-  private certificate(action: 'csr' | 'import' | 'delete', body: Record<string, unknown>): Record<string, unknown> {
+  private certificate(action: 'csr' | 'import' | 'delete', body: Record<string, unknown>, req: IncomingMessage): Record<string, unknown> {
     const c = this.certificates;
     if (!c) throw new AdminApiError(21, 'Not Supported: certificates');
     if (c.managed) throw new AdminApiError(21, `Not Supported: ${c.managed}`);
@@ -502,10 +517,12 @@ export class AdminApi {
         if (!certificate) throw new AdminApiError(958, 'Parameter missing: certificate');
         const r = c.store.import({ certificate, privateKey: text('privateKey'), intermediateCertificates: text('intermediateCertificates'), password: text('password') });
         c.use?.(r.cert, r.key);
+        this.serverEvent(req, 'server-setting-changed', { setting: 'TLS certificate', after: `imported for ${r.subject}, valid until ${r.expires}` });
         this.host.logs?.write('Event', 'Information', '', `Certificate for ${r.subject} (valid until ${r.expires}) imported (Admin API)${c.use ? ', in use now' : ', used from the next start'}`);
         return { subject: r.subject, expires: r.expires, restartRequired: !c.use };
       }
       if (!c.store.delete()) throw new AdminApiError(1700, 'Resource doesn\'t exist: no certificate was imported here');
+      this.serverEvent(req, 'server-setting-changed', { setting: 'TLS certificate', before: 'imported', after: 'deleted' });
       this.host.logs?.write('Event', 'Information', '', 'Imported certificate deleted (Admin API): the next start serves without it');
       return { restartRequired: true };
     } catch (e) {
