@@ -472,7 +472,7 @@ const COOKIE_FLAGS = 'Path=/; HttpOnly; SameSite=Strict';
 const SECURE_COOKIE_ID = new RegExp(`(?:^|;\\s*)${SECURE_COOKIE}=([0-9a-f]{64})`);
 const PLAIN_COOKIE_ID = /(?:^|;\s*)(?:tabularius|openhbam)_admin=([0-9a-f]{64})/;
 
-/** The cookies that sign the console in. Over HTTPS the `__Host-` one, and the plain-named one from before is dropped; over plain HTTP the plain name, as it always was. */
+/** The cookies that sign the console in. Over HTTPS the `__Host-` one, and the plain-named one from before is dropped (and no longer read); over plain HTTP the plain name, as it always was. */
 function signInCookies(req: IncomingMessage, id: string): string[] {
   const maxAge = SIGN_IN_MS / 1000;
   if (secureConnection(req)) return [`${SECURE_COOKIE}=${id}; ${COOKIE_FLAGS}; Max-Age=${maxAge}; Secure`, `${COOKIE}=; ${COOKIE_FLAGS}; Max-Age=0`];
@@ -710,9 +710,9 @@ export class Admin {
 
   /** The console sign-in a request carries (cookie), if it is current. */
   private consoleSession(req: IncomingMessage): string | undefined {
-    // Both names are read, the `__Host-` one first: a sign-in made over plain HTTP, or by an earlier version, carries the plain one.
+    // Over HTTPS only the `__Host-` name counts: a plain-HTTP page on the same host can plant a cookie with the plain name. Over plain HTTP both are read, the `__Host-` one first.
     const cookie = req.headers.cookie ?? '';
-    const id = (SECURE_COOKIE_ID.exec(cookie) ?? PLAIN_COOKIE_ID.exec(cookie))?.[1];
+    const id = (SECURE_COOKIE_ID.exec(cookie) ?? (secureConnection(req) ? null : PLAIN_COOKIE_ID.exec(cookie)))?.[1];
     this.endOldSignIns();
     if (!id) return undefined;
     const until = this.signedIn.get(id);

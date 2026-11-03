@@ -55,7 +55,7 @@ test('over plain HTTP: a Permissions-Policy on every kind of answer, no HSTS, an
   }
 });
 
-test('behind a proxy on this computer that says https: HSTS and the __Host- cookie; signing out clears both names; the plain name still reads', async () => {
+test('behind a proxy on this computer that says https: HSTS and the __Host- cookie; signing out clears both names; the plain name reads over plain HTTP only', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-exposure-proxy-'));
   setAdminPassword(dir, 'admin secret');
   const s = await serve({ dir, port: 0, log: () => {} });
@@ -76,7 +76,10 @@ test('behind a proxy on this computer that says https: HSTS and the __Host- cook
     const jar = secure.split(';')[0];
     const id = jar.split('=')[1];
     assert.equal((await status(jar, https)).status, 200);
-    assert.equal((await status(`tabularius_admin=${id}`)).status, 200, 'the plain name is still read');
+    assert.equal((await status(`tabularius_admin=${id}`)).status, 200, 'the plain name is still read over plain HTTP');
+    assert.equal((await status(`tabularius_admin=${id}`, https)).status, 401, 'but not over HTTPS, where a plain-HTTP page could have planted it');
+    assert.equal((await status(`openhbam_admin=${id}`, https)).status, 401, 'nor the older name');
+    assert.equal((await status(`tabularius_admin=${'b'.repeat(64)}; ${jar}`, https)).status, 200, 'a plain cookie beside the __Host- one does no harm over HTTPS');
     assert.equal((await status(`tabularius_admin=${'b'.repeat(64)}; ${jar}`)).status, 200, 'the __Host- one is the one that counts when both are sent');
     assert.equal((await status(`${'__Host-tabularius_admin'}=${'b'.repeat(64)}; tabularius_admin=${id}`)).status, 401, 'and a wrong one is not rescued by the other');
 
