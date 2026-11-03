@@ -157,7 +157,8 @@ test('the crm-showcase starter loads the sample and keeps every row', () => {
   try {
     const started = Date.now();
     const result = applyStarter(s, 'crm-showcase');
-    assert.ok(Date.now() - started < 5000);
+    // Seconds, not minutes; a busy Windows runner took 5.9 s once, so it gets more room there.
+    assert.ok(Date.now() - started < (process.platform === 'win32' ? 30_000 : 5000));
     assert.equal(result.sampleRecords, sample.reduce((n, g) => n + g.rows.length, 0));
     assert.equal(s.countIds('Accounts'), 40);
     assert.equal(s.countIds('Deals'), 70);
