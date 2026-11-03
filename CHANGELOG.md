@@ -29,6 +29,11 @@ The full notes, with what to check before upgrading, are in the release notes fo
 
 - Names on form controls in Design mode and the admin console, a darker light palette, and plain sentences for a lost connection or a reply that is not JSON.
 
+### Command line and migration
+
+- The command-line tools stop on an option they do not know or one with no value, and on a port, limit or address that is not valid, instead of running without it; `report --json` prints one JSON document for any number of files.
+- Answers from the Data API, OData, SCIM, Admin API and MCP routes carry `no-store` and `nosniff`; `migrate-fms --save` will not replace a file, and its read of FileMaker Server's Admin API is capped at 16 MiB and two minutes a call.
+
 ### Cluster and server
 
 - Cluster messages are checked at both ends, and a worker that cannot open a file reports it to the leader for the admin status and console.
