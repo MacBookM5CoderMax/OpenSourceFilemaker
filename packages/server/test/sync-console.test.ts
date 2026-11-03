@@ -4,7 +4,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -681,5 +681,46 @@ test('an unreadable sync setup is renamed before a later save replaces it', () =
     assert.match(readFileSync(join(host.dir, damaged!), 'utf8'), /broken setup/);
   } finally {
     writeFileSync(file, original);
+  }
+});
+
+test('a planted or unreadable sync setup is not followed, quoted in the log or lost', () => {
+  const file = join(host.dir, '.openhbam-sync.json');
+  new SyncConsole(host).put('Shop', setup());
+  const original = readFileSync(file);
+  const secret = ['planted', 'words', 'in', 'a', 'file', 'elsewhere'].join('-');
+  const outside = join(dir, 'outside-setup.txt');
+  const lines: string[] = [];
+  const names = () => readdirSync(host.dir).filter((name) => name.startsWith('.openhbam-sync.json'));
+  const before = new Set(names());
+  try {
+    // A link put where the setup file belongs: its target is not read, so none of its text reaches the log.
+    writeFileSync(outside, `${secret} not json`);
+    rmSync(file, { force: true });
+    symlinkSync(outside, file);
+    const linked = new SyncConsole(host, (m) => lines.push(m));
+    assert.ok(lines.some((m) => /can't read .*not a plain file/.test(m)), lines.join('\n'));
+    assert.doesNotMatch(lines.join('\n'), /planted-/);
+    assert.ok(linked);
+    // The link itself was moved aside (not followed), so a later save does not write through it.
+    assert.ok(names().some((name) => name.includes('.damaged-') && lstatSync(join(host.dir, name)).isSymbolicLink()));
+    assert.equal(readFileSync(outside, 'utf8'), `${secret} not json`);
+
+    // A damaged file: the log names the file and says it is not valid JSON, and a copy is kept; the text is not quoted.
+    rmSync(file, { force: true });
+    lines.length = 0;
+    writeFileSync(file, `${secret} {`);
+    const restarted = new SyncConsole(host, (m) => lines.push(m));
+    assert.ok(lines.some((m) => /can't read .*: not valid JSON/.test(m)), lines.join('\n'));
+    assert.doesNotMatch(lines.join('\n'), /planted-/);
+    const copies = names().filter((name) => name.includes('.damaged-') && !before.has(name) && lstatSync(join(host.dir, name)).isFile());
+    assert.equal(copies.length, 1);
+    assert.match(readFileSync(join(host.dir, copies[0]), 'utf8'), new RegExp(secret));
+    restarted.put('Shop', setup());
+  } finally {
+    rmSync(file, { force: true });
+    writeFileSync(file, original);
+    for (const name of names()) if (!before.has(name)) rmSync(join(host.dir, name), { force: true });
+    rmSync(outside, { force: true });
   }
 });

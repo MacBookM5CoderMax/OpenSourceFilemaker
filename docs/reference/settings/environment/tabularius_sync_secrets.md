@@ -8,6 +8,6 @@ Directory containing sync credentials for hosted files.
 | Accepted values | Directory path |
 | Restart needed | Yes; restart the server after changing its environment. |
 | Explained in | [ADMIN.md](../../../../ADMIN.md) |
-| Code | [packages/server/src/sync-console.ts:336](../../../../packages/server/src/sync-console.ts#L336) |
+| Code | [packages/server/src/sync-console.ts:341](../../../../packages/server/src/sync-console.ts#L341) |
 
 [All environment variables](../../../environment-variables.md)

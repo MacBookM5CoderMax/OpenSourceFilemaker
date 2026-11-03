@@ -16,7 +16,8 @@
 // `allowPulls` to change this file), and the request must ask for it (`write` / `pull`). Capture-only files never
 // sync. Only one run per file at a time.
 
-import { existsSync, readFileSync, realpathSync, renameSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { readFileSync as readCheckedSync, renameEntrySync } from '../../store/src/fs-boundary.ts';
 import { createHash } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
@@ -160,7 +161,7 @@ export class SyncConsole {
     const f = join(host.dir, FILE);
     if (existsSync(f)) {
       try {
-        const saved = (JSON.parse(readFileSync(f, 'utf8')) as { setups?: Record<string, SyncSetup> }).setups ?? {};
+        const saved = (JSON.parse(readCheckedSync(f, 'utf8')) as { setups?: Record<string, SyncSetup> }).setups ?? {};
         // Old request spellings may alias one hosted file. Keep one only when they agree; conflicting aliases
         // need a fresh PUT, so neither destination can silently win.
         const groups = new Map<string, [string, SyncSetup][]>();
@@ -177,9 +178,13 @@ export class SyncConsole {
           this.setups.set(this.canonical(name), setup);
         }
       } catch (e) {
-        // Keep the unreadable setup for recovery; the next successful save would otherwise replace it.
-        renameSync(f, `${f}.damaged-${Date.now()}`);
-        log(`sync: can't read ${FILE}: ${(e as Error).message}`);
+        // Keep the unreadable setup for recovery; the next successful save would otherwise replace it. A link or pipe
+        // put there is moved aside, not followed. The log says what kind of problem it was, never a piece of the file
+        // (the parser's own message quotes the start of it, and a link can point at any file this server can read).
+        let kept = '';
+        try { renameEntrySync(f, `${f}.damaged-${Date.now()}`); }
+        catch { kept = ' (it could not be moved aside; remove it by hand)'; }
+        log(`sync: can't read ${FILE}: ${e instanceof SyntaxError ? 'not valid JSON' : 'not a plain file of its own'}${kept}`);
       }
     }
     this.loadLast();

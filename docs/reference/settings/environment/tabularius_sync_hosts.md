@@ -8,6 +8,6 @@ Allowed source server hosts for the sync console.
 | Accepted values | Comma-separated host or host:port entries |
 | Restart needed | Yes; restart the server after changing its environment. |
 | Explained in | [ADMIN.md](../../../../ADMIN.md) |
-| Code | [packages/server/src/sync-console.ts:131](../../../../packages/server/src/sync-console.ts#L131) |
+| Code | [packages/server/src/sync-console.ts:132](../../../../packages/server/src/sync-console.ts#L132) |
 
 [All environment variables](../../../environment-variables.md)
