@@ -17,7 +17,7 @@ Sort Records by Field is a fields and values script step. This page describes ho
 ## What the engine does
 
 The engine handles this step with the limits described in the support notes.
-Ascending, descending and custom (value list) orders all sort. Sort Records by Field with a custom order uses the value list of the field's object on the layout. Only script text names a Sort Records step's custom-order value list. A step read from a converted .fmp12 (the binary reference isn't decoded) or from pasted XML doesn't carry it yet, so it stops with error 105.
+Ascending, descending and custom (value list) orders all sort. Sort Records by Field with a custom order uses the value list of the field's object on the layout. Script text and pasted or copied XML (a design snippet) name a Sort Records step's custom-order value list. A step read from a converted .fmp12 doesn't carry it yet (the binary reference isn't decoded), so a custom sort there stops with error 108 (value list is missing), as does a list that is not in the file or that the account cannot see.
 
 FileMaker comparisons in this note are inferred unless a Claris help page is linked. See the [full support notes](../../script-steps-support.md) for surrounding conditions.
 

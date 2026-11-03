@@ -1,6 +1,6 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { scriptStepName, stepLine, type FieldType, type Script, type ScriptStep } from '@tabularius/fmp12';
@@ -41,6 +41,16 @@ function setup(t: TestContext) {
 
 const sort = (list = 'Priorities', second = '') => `Sort Records [ Restore; Tasks::Priority; custom; Value list: “${list}”${second}; With dialog: Off ]`;
 const expected = ['hi-a', 'hi-z', 'hi-b', 'med', 'low', 'other', 'z', 'blank'];
+
+test('the support page says what a custom sort without a resolved value list does, and where the list comes from', () => {
+  const page = readFileSync(join(import.meta.dirname, '../../../docs/script-steps-support.md'), 'utf8');
+  const row = page.split('\n').find((line) => line.startsWith('| Sort Records; Sort Records by Field |'));
+  assert.ok(row, 'the Sort Records row is in the partly supported table');
+  assert.match(row, /pasted or copied XML/, 'a pasted snippet carries the list (tested above)');
+  assert.match(row, /error 108/, 'the unresolved list is value-list error 108 (tested above)');
+  assert.doesNotMatch(row, /error 105/, 'error 105 is a missing layout');
+  assert.doesNotMatch(row, /pasted XML doesn't carry/);
+});
 
 test('Sort Records follows custom values, then unlisted values in normal order; the list survives text editing', async (t) => {
   const { store, parsed, run } = setup(t);
