@@ -13,7 +13,8 @@ The full notes, with what to check before upgrading, are in the release notes fo
 ### Security and accounts
 
 - Credential files, the hosted-file record, command-line export folders and write-back files, plug-in packages, backup sets and logs, the outbox, inbound-hook call logs and standby copies are read and written only when they are what they should be: no planted link, hard link or pipe, the right owner and a private mode.
-- Restores, ended sessions, server-wide settings, admin passkeys, schedules, inbound hooks, webhooks and backup destination changes are recorded in the security log or the Admin log, with the way in and address.
+- Restores, ended sessions, server-wide settings, admin passkeys, schedules, inbound hooks, webhooks, backup destination changes and changes made through the Admin API are recorded in the security log or the Admin log, with the way in and address.
+- A failed notification send logs the address's domain, not the address.
 - A standby refuses an unsafe primary address, never follows a redirect, and needs `--allow-plain-http` for a plain `http://` primary on another computer; `TABULARIUS_ALLOW_PLAIN_HTTP` no longer lifts that refusal.
 - Agent write proposals respect the caller's privileges and the ceiling of the token they came from.
 - The OAuth approval cookie keeps its `__Host-` name and `Secure` attribute behind a trusted HTTPS proxy.
@@ -30,6 +31,7 @@ The full notes, with what to check before upgrading, are in the release notes fo
 - Names on form controls in Design mode and the admin console, a darker light palette, and plain sentences for a lost connection or a reply that is not JSON.
 - Empty, error and failed-start messages are announced to screen readers, relationship lines in Design mode can be reached from the keyboard, and Show All Records, Show Omitted Only and Perform Quick Find keep the found set's sort.
 - The fault log hides folders in a path, including Windows long paths.
+- Redo works after Undo removes a record's only uncommitted change.
 
 ### Command line and migration
 

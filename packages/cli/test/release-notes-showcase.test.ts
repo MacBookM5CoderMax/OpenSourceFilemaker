@@ -19,3 +19,11 @@ test('the release notes name each showcase page the showcase guide lists, and th
   for (const page of pages!) assert.ok(guide.includes(`**${page}** (modern layout)`), `the showcase guide describes the page "${page}"`);
   assert.ok(notes.includes(`tabularius-${version}-linux-x64`), 'the download table names this version');
 });
+
+test('the changelog has a section for this version, and it and the notes both say the Admin API records security events', () => {
+  const { version } = JSON.parse(read('package.json')) as { version: string };
+  const changelog = read('CHANGELOG.md');
+  assert.ok(changelog.includes(`\n## ${version}\n`), 'the changelog has a heading for this version');
+  const section = changelog.slice(changelog.indexOf(`## ${version}`)).split('\n## ')[0];
+  for (const text of [section, read(`.github/release-notes/v${version}.md`)]) assert.match(text, /through the Admin API/);
+});
