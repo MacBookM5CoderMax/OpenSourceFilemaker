@@ -112,6 +112,15 @@ Other choices that the pages do not settle, and what was done:
 
 ## Errors
 
+User SQL cannot call the internal `fm_find_key`, `fm_find_invalid`, `fm_find_word_range` or `fm_find_text` functions.
+Ordinary reads reject them while preparing the query. A transaction-held read uses that same check, then executes on
+the transaction's connection so it can see uncommitted changes. During that execution a call-time guard also refuses
+find functions reached through nested SQL or callbacks, with the same `no such function: <name>` error and SQLite error
+properties. Internal finds outside the user statement remain available, as do `fm_time_seconds`, `fm_time_max` and
+`fm_time_min` in held reads. The guard is synchronous and ends after all result rows have been consumed or the statement
+has failed. This describes Tabularius's own functions; compatibility with another product is unverified.
+<!-- known-difference-ok: documents internal SQL function isolation, not an established vendor difference -->
+
 The check asks that a documented error case is an error on both paths. It does not compare the code or the text. Claris's errors have codes of the form `FQL0001` to `FQL0056` and wording of their own; here the engine's messages come back (`ExecuteSQL` as the text, the SQL connection as SQLSTATE `42000`, or `42601` for a syntax error). Matching Claris's codes would need each rewrite and each SQLite error mapped to one; that is not done.
 
 The statements that write (`INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, `CREATE INDEX`, `DROP INDEX`, `TRUNCATE`) are refused on both paths. The Claris pages say `ExecuteSQL` supports only `SELECT`, and that the ODBC and JDBC drivers support the others; the SQL connection is read-only by design (SQLSTATE `25006`), so these are a difference from the ODBC and JDBC drivers, not a gap in the grammar. Started with `--sql-writes`, the SQL connection can run `INSERT`, `UPDATE` and `DELETE` in a narrow grammar ([pgwire-writes.md](pgwire-writes.md)); `CREATE`, `ALTER`, `DROP` and `TRUNCATE` stay refused.

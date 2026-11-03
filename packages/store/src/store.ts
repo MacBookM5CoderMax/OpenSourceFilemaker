@@ -27,7 +27,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { closeSync, constants as fsConstants, copyFileSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, readdirSync, readSync, renameSync, rmSync, statSync } from 'node:fs';
 import { checkedFile, cleanupPath, openSync, readFileSync, writeFileSync, writeSync } from './fs-boundary.ts';
 import { externalFieldNames, parseDate, parseTime, parseTimestamp, type DateStyle, type Field, type FieldType, type LayoutDesign, type LayoutDesigns, type LayoutObject, type Schema, type Table } from '../../fmp12/src/index.ts';
-import { findWhere, findScope, registerFindFunctions, registerTimeFunctions, timeSeconds, beginFindBudget, findBudgetScope, FindError, type RelatedCriteria, type FieldInfo, type FindRequest, type SqlValue, type WordIndex } from './find.ts';
+import { findWhere, findScope, registerFindFunctions, registerTimeFunctions, withoutFindFunctions, timeSeconds, beginFindBudget, findBudgetScope, FindError, type RelatedCriteria, type FieldInfo, type FindRequest, type SqlValue, type WordIndex } from './find.ts';
 import { defineFold, WordIndexes, wordIndexName } from './words.ts';
 import { q, dataSourceFile, SQL_TYPES, DESIGN_LOG, writeDesign, addExternalSizeColumn } from './import.ts';
 import { decimalKey, decimalNumberText, nativeValue } from './native-types.ts';
@@ -11550,9 +11550,12 @@ export class Store {
     // This connection holds the transaction, so the query cannot run apart from it where it could be stopped.
     if (!unbounded && usesRecursion(opened)) throw new StoreError(8310, "A recursive query can't run on a file this transaction has written to: it runs apart from the server so that it can be stopped, and there it would not see the transaction's changes. End the transaction first");
     for (const [name, fn] of this.queryFunctions) this.sql.function(name, { varargs: true, useBigIntArguments: true }, exactIntegerArguments(name, fn));
-    const st = this.sql.prepare(text);
-    const columns = st.columns();
-    return { names: columns.map((c) => c.name), types: columns.map((c) => c.type), rows: this.rowsOf(this.sql, st, text, columns, params, limit, unbounded) };
+    return withoutFindFunctions(() => {
+      const st = this.sql.prepare(text);
+      const columns = st.columns();
+      // rowsOf consumes and closes its iterator here, including at the row limit, before this scope is restored.
+      return { names: columns.map((c) => c.name), types: columns.map((c) => c.type), rows: this.rowsOf(this.sql, st, text, columns, params, limit, unbounded) };
+    });
   }
 
   /** A read-only query's columns and their declared types, without running it. */

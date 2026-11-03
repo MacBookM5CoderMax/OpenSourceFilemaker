@@ -231,11 +231,34 @@ export function registerTimeFunctions(db: DatabaseSync): void {
   }
 }
 
+// DatabaseSync stepping is synchronous. Keep the restriction through nested SQL/callbacks, including on other
+// connections, and restore the enclosing scope on every exit. The callback must consume any iterators before returning.
+let userSqlActive = false;
+export function withoutFindFunctions<T>(run: () => T): T {
+  const previous = userSqlActive;
+  userSqlActive = true;
+  try { return run(); }
+  finally { userSqlActive = previous; }
+}
+
+function requireFindFunction(name: string): void {
+  if (userSqlActive) {
+    // Match node:sqlite's missing-function Error, including the properties exposed by Store.select.
+    throw Object.assign(new Error(`no such function: ${name}`), {
+      code: 'ERR_SQLITE_ERROR', errcode: 1, errstr: 'SQL logic error',
+    });
+  }
+}
+
 /** SQL functions used by the shared find compiler and time sorts. */
 export function registerFindFunctions(db: DatabaseSync): void {
   registerTimeFunctions(db);
-  db.function('fm_find_key', { deterministic: true }, (v) => v == null ? null : fold(String(v), false));
+  db.function('fm_find_key', { deterministic: true }, (v) => {
+    requireFindFunction('fm_find_key');
+    return v == null ? null : fold(String(v), false);
+  });
   db.function('fm_find_invalid', { deterministic: true }, (v, type) => {
+    requireFindFunction('fm_find_invalid');
     if (v == null || v === '') return 0;
     const s = String(v);
     const parts = s.split('T');
@@ -247,6 +270,7 @@ export function registerFindFunctions(db: DatabaseSync): void {
   // based on the index order of words"), which is the order of the field's language: the order a sort on it gives.
   // A null bound is open; op says whether it counts. The bounds come in as typed, and are put in order here.
   db.function('fm_find_word_range', { deterministic: true }, (v, lo, loIncl, hi, hiIncl, language) => {
+    requireFindFunction('fm_find_word_range');
     if (v == null || v === '') return 0;
     const id = typeof language === 'string' ? language : 'en';
     const low = lo == null ? undefined : sortKey(String(lo), id);
@@ -262,6 +286,7 @@ export function registerFindFunctions(db: DatabaseSync): void {
   });
   const patterns = new Map<string, TextPattern>();
   db.function('fm_find_text', { deterministic: true }, (v, raw, relaxed, row, scope) => {
+    requireFindFunction('fm_find_text');
     // Every record a scan reads earns its share of the budget the first time a call names it, an empty value too: a query
     // padded with cheap criteria earns no more per record than one criterion does. Only the records that earned are
     // remembered, so the set is as small as the budget is.
