@@ -4271,7 +4271,10 @@ export class ScriptEngine {
       case 23: { // Show All Records
         win.mode = 'browse';
         const info = this.layoutOf(win);
-        this.setFound(win, await this.findIdsCooperative(f, info));
+        // The sort stays, as after Perform Find: the records come back in the order the found set was sorted in.
+        // Whether the source product does the same is unverified offline.
+        const sort = this.foundSet(win).sort;
+        await this.setFoundCooperative(f, win, await this.findIdsCooperative(f, info), sort);
         return undefined;
       }
       case 21: { // Unsort Records
@@ -4372,7 +4375,8 @@ export class ScriptEngine {
         this.commit(win);
         const info = this.layoutOf(win);
         const shown = new Set(this.foundSet(win).ids);
-        this.setFound(win, (await this.findIdsCooperative(f, info)).filter((id) => !shown.has(id)));
+        const sort = this.foundSet(win).sort;
+        await this.setFoundCooperative(f, win, (await this.findIdsCooperative(f, info)).filter((id) => !shown.has(id)), sort);
         return undefined;
       }
       case 22: // Enter Find Mode
@@ -9054,7 +9058,8 @@ export class ScriptEngine {
       ids = (ids ?? await this.findIdsCooperative(f, info)).filter((x) => hits.has(x));
     }
     win.mode = 'browse';
-    this.setFound(win, ids ?? await this.findIdsCooperative(f, info));
+    const sort = this.foundSet(win).sort;
+    await this.setFoundCooperative(f, win, ids ?? await this.findIdsCooperative(f, info), sort);
     if (!ids?.length && words.length) throw new ScriptError(ERROR.noRecords, 'No records match the request');
   }
 
