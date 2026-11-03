@@ -42,6 +42,8 @@ const ROW_H = 16;
 const expanded = new Set<string>();
 /** Occurrences the review problem last clicked is about, outlined until the background is clicked. */
 let flagged: number[] = [];
+/** The line or box a key or click just selected: the redraw replaces every element, so focus is put back on its new copy. */
+let refocus: { kind: 'rel' | 'to'; id: number } | undefined;
 
 /** Where each occurrence is drawn: its saved place on the graph, or a grid for ones without. */
 function boxes(tos: DesignOccurrence[], heightOf: (t: DesignOccurrence) => number): Map<number, Box> {
@@ -105,7 +107,7 @@ export function graphTab(studio: Studio): HTMLElement {
     const a = at.get(r.leftTableOccurrenceId);
     const b = at.get(r.rightTableOccurrenceId);
     if (!a || !b) continue;
-    const g = svg('g', { class: `d-rel${sel.relationship === r.id ? ' selected' : ''}`, tabindex: 0, role: 'button', 'aria-label': relationshipName(r), 'aria-pressed': String(sel.relationship === r.id) });
+    const g = svg('g', { class: `d-rel${sel.relationship === r.id ? ' selected' : ''}`, tabindex: 0, role: 'button', 'aria-label': relationshipName(r), 'aria-pressed': String(sel.relationship === r.id), 'data-rel': r.id });
     // A line from field to field for each pair of match fields, leaving each box from its nearer side.
     const rightward = a.left + a.width / 2 <= b.left + b.width / 2;
     const ax = rightward ? a.left + a.width : a.left;
@@ -125,6 +127,7 @@ export function graphTab(studio: Studio): HTMLElement {
     const pick = () => {
       sel.relationship = r.id;
       sel.occurrence = undefined;
+      refocus = { kind: 'rel', id: r.id };
       studio.render();
     };
     g.addEventListener('click', (e) => {
@@ -190,10 +193,17 @@ export function graphTab(studio: Studio): HTMLElement {
       else {
         sel.occurrence = t.id;
         sel.relationship = undefined;
+        refocus = { kind: 'to', id: t.id };
         studio.render();
       }
     });
     canvas.append(g);
+  }
+  // The new canvas is attached after this function returns; one timer later, give the selected line or box the focus back.
+  if (refocus) {
+    const want = refocus;
+    refocus = undefined;
+    setTimeout(() => restoreGraphFocus(canvas, want), 0);
   }
   canvas.addEventListener('click', () => {
     if (sel.occurrence === undefined && sel.relationship === undefined && !flagged.length) return;
@@ -452,6 +462,20 @@ export function relationshipName(r: DesignRelationship): string {
   const right = r.rightTableOccurrence ?? 'the right table';
   const pairs = r.predicates.map((p) => `${p.leftField ?? 'a field'} ${p.operator} ${p.rightField ?? 'a field'}`).join(', ');
   return pairs ? `Relationship between ${left} and ${right}: ${pairs}` : `Relationship between ${left} and ${right}`;
+}
+
+/** The selector of the line (`kind` rel) or box (`to`) with this id on the graph. */
+export function graphFocusSelector(kind: 'rel' | 'to', id: number): string {
+  return kind === 'rel' ? `.d-rel[data-rel="${id}"]` : `.d-to[data-to="${id}"]`;
+}
+
+/** Put focus on the line or box a selection redrew, if it is still on the page; false when it is not. */
+export function restoreGraphFocus(canvas: { isConnected: boolean; querySelector(selector: string): { focus(options?: { preventScroll?: boolean }): void } | null }, want: { kind: 'rel' | 'to'; id: number }): boolean {
+  if (!canvas.isConnected) return false;
+  const el = canvas.querySelector(graphFocusSelector(want.kind, want.id));
+  if (!el) return false;
+  el.focus({ preventScroll: true });
+  return true;
 }
 
 /** Enter or Space on a focused relationship line selects it, as a click does. */
