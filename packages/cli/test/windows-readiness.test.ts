@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, linkSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { serviceSummary, type ServiceOptions } from '../src/service.ts';
@@ -39,6 +39,27 @@ test('Windows stop listener ignores stale/malformed requests and invokes gracefu
   assert.equal(existsSync(file), false);
   t.mock.timers.tick(300);
   assert.equal(stops, 1);
+});
+
+test('a link or a second name planted at the stop request is refused, not written through or taken for a request', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'tabularius-stop-planted-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const outside = join(root, 'elsewhere.txt');
+  writeFileSync(outside, 'not a pid');
+  // A link at the name of the request.
+  const file = join(root, '.openhbam-stop-4242');
+  symlinkSync(outside, file);
+  assert.throws(() => requestStop(root, 4242), { code: 'ESTALE' });
+  assert.equal(readFileSync(outside, 'utf8'), 'not a pid');
+  // A second name for another file.
+  const other = join(root, '.openhbam-stop-4243');
+  linkSync(outside, other);
+  assert.throws(() => requestStop(root, 4243), { code: 'ESTALE' });
+  assert.equal(readFileSync(outside, 'utf8'), 'not a pid');
+  // A request already made is still not an error, and a free name is written with the process id only.
+  requestStop(root, 4244);
+  requestStop(root, 4244);
+  assert.equal(readFileSync(join(root, '.openhbam-stop-4244'), 'utf8'), '4244');
 });
 
 test('Windows stop waits for cleanup and refuses force termination on timeout or permission failure', (t) => {

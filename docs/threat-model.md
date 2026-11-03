@@ -61,6 +61,7 @@ Known gap: the admin password file (`.openhbam-admin`) is refused when a link, p
 - `packages/cli/src/main.ts`
 - `packages/cli/src/output-files.ts`
 - `packages/cli/src/service.ts`
+- `packages/cli/src/stop-request.ts`
 - `packages/cli/src/windows-task.ts`
 - `packages/plugins/src/package.ts`
 - `packages/plugins/src/sandboxed.ts`

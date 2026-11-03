@@ -1,5 +1,6 @@
-import { lstatSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { writeFileSync } from '../../store/src/fs-boundary.ts';
 
 function requestPath(folder: string, pid: number): string {
   if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error('Invalid server process id');
@@ -12,6 +13,7 @@ function requestPath(folder: string, pid: number): string {
  */
 export function requestStop(folder: string, pid: number): void {
   const file = requestPath(folder, pid);
+  // A link or a file with several names put at this name is refused (ESTALE), not taken for a request already made.
   try { writeFileSync(file, String(pid), { flag: 'wx', mode: 0o600 }); }
   catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e; }
 }
