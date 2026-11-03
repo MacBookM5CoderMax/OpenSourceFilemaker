@@ -9,7 +9,7 @@ import { fences, handWrittenDocs, inlineCode, root } from './docs-examples.ts';
 
 const OTHER_PROGRAMS = new Set<string>([
   // CSS custom properties named in docs/design-guide.md
-  '--accent-hover', '--accent-soft', '--accent-text', '--faint',
+  '--accent-hover', '--accent-text',
   // tsc, as docs/audit-mutation.md ran it
   '--allowImportingTsExtensions', '--erasableSyntaxOnly', '--module', '--moduleResolution', '--noEmit', '--skipLibCheck', '--types', '--verbatimModuleSyntax',
   // npm and git (docs/versioning.md, CONTRIBUTING.md, docs/contributing.md)
