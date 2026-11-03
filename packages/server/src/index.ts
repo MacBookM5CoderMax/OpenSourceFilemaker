@@ -485,7 +485,8 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
         if (closed) p.stop();
         else admin.progressive = p;
       }, (e) => log(`point-in-time backups could not start: ${(e as Error).message}`));
-      disposers.push(async () => { await progressiveStarting; admin.progressive?.stop(); });
+      // The files are closed after this (disposers run last in, first out), so a copy still being made is waited for first.
+      disposers.push(async () => { await progressiveStarting; const p = admin.progressive; p?.stop(); await Promise.race([p?.settled(), new Promise<void>((resolve) => setTimeout(resolve, 30_000).unref())]); });
     }
     const schedules = new Schedules(host, log);
     disposers.push(() => schedules.stop());

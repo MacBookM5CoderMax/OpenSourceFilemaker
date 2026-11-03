@@ -864,6 +864,8 @@ export interface ProgressiveSchedule {
   /** Saves the changes now (also done on stop, so nothing since the last time is lost). */
   run(): void;
   stop(): void;
+  /** Resolves once the copies of newly hosted files that are being made have finished or failed (after `stop`, so the files can be closed and removed). */
+  settled(): Promise<void>;
 }
 
 /**
@@ -889,6 +891,8 @@ export async function scheduleProgressive(host: Host, opts: { every: number; des
   const adding = new Set<string>();
   const current = new Map<string, LogWriter & { started: number }>();
   // With a passphrase, the set's manifest is only ever changed through an amender, which checks the signature first.
+  // Copies of files hosted since this started that are still being made; a server closing waits for them.
+  const copying = new Set<Promise<void>>();
   let amending: { set: string; key: string; amender: Amender } | undefined;
   const amenderFor = (dir: string, key: string): Amender => {
     if (!amending || amending.set !== dir || amending.key !== key) amending = { set: dir, key, amender: openAmenderSync(dir, key) };
@@ -979,7 +983,10 @@ export async function scheduleProgressive(host: Host, opts: { every: number; des
       }
       if (!inSet.has(file)) {
         // Hosted since this started (dropped into the folder): copy it into the set first, keeping its changes until then.
-        if (!adding.has(store.name)) void addToSet(store.name);
+        if (!adding.has(store.name)) {
+          const copy: Promise<void> = addToSet(store.name).finally(() => copying.delete(copy));
+          copying.add(copy);
+        }
         return false;
       }
       const key = backupKey();
@@ -1045,6 +1052,7 @@ export async function scheduleProgressive(host: Host, opts: { every: number; des
       shipper.ship();
       shipper.remove(follower);
     },
+    settled: async () => { while (copying.size) await Promise.allSettled([...copying]); },
   };
   // Opened now, so the first changes are saved at once.
   const key = backupKey();
