@@ -9,6 +9,7 @@ promises dates or prices.
 ## Page structure
 
 1. Hero (looping animation)
+1b. Two-minute tour video (YouTube, loaded only when the visitor presses play)
 2. "Bring your file" (conversion)
 3. "It looks like your layouts" (web client)
 4. "Your scripts run" (scripts, debugger, time travel)

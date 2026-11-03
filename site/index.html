@@ -62,6 +62,25 @@ em.s{font-family:var(--serif);font-style:italic;font-weight:400;letter-spacing:-
 .vid-ctl svg{width:13px;height:13px;fill:currentColor}
 .vid-ctl .ic-play{display:none}.paused-all .vid-ctl .ic-play{display:block}.paused-all .vid-ctl .ic-pause{display:none}
 
+/* tour: the two-minute video, on a dark band that continues the stage. Nothing is fetched from YouTube until the visitor presses play. */
+.tour{background:var(--night);color:#fff;padding-block:8px clamp(64px,8vw,110px)}
+.tour .wrap{display:grid;gap:clamp(22px,3vw,36px)}
+.tour .kicker{color:var(--teal-hi)}
+.tour h2{margin:0;font:700 clamp(28px,4vw,52px)/1.05 var(--display);letter-spacing:-.04em;max-width:22ch;text-wrap:balance}
+.tour h2 span{color:#97a3a8}
+.player{position:relative;aspect-ratio:16/9;border-radius:18px;overflow:hidden;background:#0d1214;box-shadow:0 0 0 1px rgba(255,255,255,.14),0 50px 120px -40px rgba(76,194,207,.5)}
+.player iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.poster{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;cursor:pointer;color:#fff;text-align:left;font:inherit;background:radial-gradient(60% 90% at 18% 110%,rgba(76,194,207,.55),transparent 70%),radial-gradient(55% 80% at 85% -10%,rgba(124,92,255,.55),transparent 70%),radial-gradient(40% 60% at 70% 110%,rgba(255,107,90,.35),transparent 70%),linear-gradient(180deg,#0f1619,#07090a)}
+.poster:hover .play,.poster:focus-visible .play{transform:scale(1.06);background:#fff;color:var(--ink)}
+.poster-art{position:absolute;left:clamp(18px,4%,44px);bottom:clamp(16px,4%,40px);display:flex;align-items:center;gap:14px}
+.poster-art svg{width:clamp(34px,5vw,56px);height:auto;filter:drop-shadow(0 12px 30px rgba(76,194,207,.5))}
+.poster-art b{display:block;font:700 clamp(17px,2.2vw,26px)/1.1 var(--display);letter-spacing:-.03em}
+.poster-art i{display:block;font:400 clamp(13px,1.4vw,16px)/1.3 var(--serif);color:#c9d3d6;margin-top:3px}
+.play{position:absolute;left:50%;top:50%;width:clamp(64px,9vw,96px);height:clamp(64px,9vw,96px);margin:calc(clamp(64px,9vw,96px) / -2) 0 0 calc(clamp(64px,9vw,96px) / -2);border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.14);box-shadow:inset 0 0 0 1px rgba(255,255,255,.4),0 20px 60px rgba(0,0,0,.45);backdrop-filter:blur(10px);transition:transform .2s,background .2s,color .2s}
+.play svg{width:42%;height:42%;fill:currentColor;margin-left:6%}
+.tour-note{margin:0;font-size:14px;color:#97a3a8}
+.tour-note a{color:#e7eef0}
+
 /* intro with ribbons */
 .intro{position:relative;overflow:hidden;padding-block:clamp(90px,11vw,150px) clamp(40px,5vw,70px)}
 .ribbons{position:absolute;top:2%;right:-28%;width:min(1100px,110vw);aspect-ratio:1.4;z-index:0;pointer-events:none}
@@ -296,8 +315,27 @@ footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
     <p class="tag">Opens and hosts your .fmp12 files, <em class="s">built for AI</em>. Open source, hosted by you.</p>
     <div class="ctas">
       <a class="pill w big" href="#get">Get it</a>
-      <a class="pill ghost big" href="#how">See how it works</a>
+      <a class="pill ghost big" href="#watch">Watch the tour</a>
     </div>
+  </div>
+</section>
+
+<section class="tour gut" id="watch" aria-labelledby="tour-h">
+  <div class="wrap">
+    <div>
+      <span class="kicker">Two-minute tour</span>
+      <h2 id="tour-h">Watch a .fmp12 open, get hosted and <span>answer questions about itself.</span></h2>
+    </div>
+    <div class="player">
+      <button class="poster" type="button" id="play-tour" aria-label="Play the two-minute tour. The video loads from YouTube when you press play.">
+        <span class="poster-art" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><rect x="3" y="18.5" width="26" height="6.5" rx="2.4" fill="#f3f6f7"/><rect x="3" y="10.5" width="26" height="6.5" rx="2.4" fill="#f3f6f7" opacity=".6"/><rect x="7" y="2.5" width="22" height="6.5" rx="2.4" fill="#4cc2cf" transform="rotate(-8 18 5.75)"/></svg>
+          <span><b>Tabularius</b><i>the tour, one minute forty-seven</i></span>
+        </span>
+        <span class="play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span>
+      </button>
+    </div>
+    <p class="tour-note">Nothing is loaded from YouTube until you press play. You can also <a href="https://www.youtube.com/watch?v=XtsxVCsfrcs">watch it on YouTube</a>.</p>
   </div>
 </section>
 
@@ -652,6 +690,16 @@ tabularius</pre>
     document.querySelectorAll('.rb,.canvas,.quote,.fallback-mark svg,.hs-pk,.hs-ring,.hs-led').forEach(function(el){el.style.animationPlayState=p?'paused':'';});
     document.querySelectorAll('.canvas,.quote').forEach(function(el){el.classList.toggle('np',p);});
   });
+  var play=document.getElementById('play-tour');
+  if(play){play.addEventListener('click',function(){
+    var f=document.createElement('iframe');
+    f.src='https://www.youtube-nocookie.com/embed/XtsxVCsfrcs?autoplay=1&rel=0';
+    f.title='Tabularius two-minute tour';
+    f.allow='autoplay; encrypted-media; picture-in-picture; fullscreen';
+    f.setAttribute('allowfullscreen','');
+    f.setAttribute('referrerpolicy','strict-origin-when-cross-origin');
+    play.parentNode.replaceChild(f,play); f.focus();
+  });}
   if('IntersectionObserver' in window){
     var io=new IntersectionObserver(function(es){es.forEach(function(e){e.target.classList.toggle('off',!e.isIntersecting);});},{rootMargin:'100px'});
     document.querySelectorAll('.device.dark').forEach(function(el){io.observe(el);});
