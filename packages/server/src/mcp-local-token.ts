@@ -4,8 +4,9 @@
 // it trusts this computer until it has a password).
 
 import { randomBytes } from 'node:crypto';
-import { closeSync, constants, fstatSync, linkSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, openSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { cleanupPath, linkSync, writeFileSync } from '../../store/src/fs-boundary.ts';
 
 export const MCP_LOCAL_TOKEN_FILE = '.openhbam-mcp-token';
 /** Starts every token made here, so a leaked one is easy to recognise (and to scan for). */
@@ -21,13 +22,17 @@ export function localMcpToken(dir: string): string {
   const existing = readLocalMcpToken(dir);
   if (existing) return existing;
   const temp = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
+  // Both the write and the link go through the filesystem boundary: the folder and the file are checked again as they are used.
   writeFileSync(temp, `${PREFIX}${randomBytes(32).toString('base64url')}\n`, { mode: 0o600, flag: 'wx' });
+  const removeTemp = cleanupPath(temp, { force: true });
   try {
     linkSync(temp, file);
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    // The boundary refuses (ESTALE) a name that is already taken; the file read back below is checked either way.
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code !== 'EEXIST' && code !== 'ESTALE') throw e;
   } finally {
-    unlinkSync(temp);
+    removeTemp({ throwOnError: true });
   }
   const made = readLocalMcpToken(dir);
   if (!made) throw new Error(`${file} could not be made; check that this user can write to the folder`);
