@@ -22,21 +22,37 @@ export const CONNECT_SNIPPETS: { title: string; note: string; text: string }[] =
 export function connectPage(names?: Partial<ShowcaseNames>): string {
   const N = withNames(names);
   const body = `
-<header><h1>Connect</h1><span class="muted">Replace the parts in &lt;angle brackets&gt; with your own.</span></header>
-<section class="tiles" id="counts"><div class="tile muted">Counting records…</div></section>
-<section class="grid" id="snips"></section>`;
+<div class="wrap">
+  <div class="top">
+    <div><div class="eyebrow">Connect</div><h1>Reach this file from anywhere</h1><p class="lede">The same records, over the Data API, SQL, an AI app or a calendar feed. Replace the parts in &lt;angle brackets&gt; with your own.</p></div>
+  </div>
+  <section class="tiles" id="counts"><div class="tile muted">Counting records…</div></section>
+  <section class="snips" id="snips"></section>
+</div>
+<style>
+  .snips { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 14px; margin-top: 14px; }
+  .snip { gap: 10px; }
+  .snip .head { margin: 0; align-items: center; justify-content: flex-start; gap: 12px; } .snip .head h2 { font-size: 15px; }
+  pre.code { margin: 0; padding: 14px 16px; border-radius: 12px; background: #0f1722; color: #dbe4f0; font: 12.5px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid #1d2838; flex: 1; }
+  pre.code .ph { color: #ffc46b; background: rgba(255, 196, 107, .12); border-radius: 4px; padding: 0 3px; }
+  .snip .foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+</style>`;
   const script = `
   const N = ${js(N)};
+  Object.assign(ICONS, { plug: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1', db: 'M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3', cal: 'M4 6h16v13H4zM4 10h16M8 3v4M16 3v4', search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4', users: 'M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM2 20c0-3 3-5 6-5s6 2 6 5M14 15c3 0 8 1 8 5', dollar: 'M12 3v18M16.5 7.5C15.5 6.5 14 6 12 6c-2.5 0-4 1.2-4 3s1.5 2.6 4 3 4 1.2 4 3-1.5 3-4 3c-2 0-3.5-.6-4.5-1.6' });
   const SNIPS = ${js(CONNECT_SNIPPETS)};
-  const TABLES = [['Reps', N.reps], ['Accounts', N.accounts], ['Contacts', N.contacts], ['Deals', N.deals], ['Activities', N.activities], ['Email Log', N.emailLog]];
+  const TABLES = [['Reps', N.reps, 'users', 1], ['Accounts', N.accounts, 'layers', 7], ['Contacts', N.contacts, 'users', 3], ['Deals', N.deals, 'dollar', 2], ['Activities', N.activities, 'clock', 4], ['Email Log', N.emailLog, 'Email', 5]];
+  const ICON_FOR = ['plug', 'search', 'db', 'sparkle', 'cal'], SLOT_FOR = [1, 1, 3, 7, 4];
   async function counts() {
-    const tiles = TABLES.map(([name]) => h('div', { class: 'tile' }, h('span', { class: 'muted' }, name), h('b', { id: 'n-' + name }, '–')));
+    const tiles = TABLES.map(([name, , ic, slot]) => h('div', { class: 'tile' }, h('div', { class: 'lab' }, name, chip(ic, slot)), h('b', { class: 'val', id: 'n-' + name }, '–')));
     $('counts').replaceChildren(...tiles);
     TABLES.forEach(([name, layout]) => tabularius.summarize({ title: name, kind: 'number', layout }).then((r) => ($('n-' + name).textContent = Number(r.value).toLocaleString()), (e) => fail($('n-' + name), e)));
   }
+  // The text of a snippet, with each <placeholder> picked out so it is plain what to replace.
+  const withPlaceholders = (text) => text.split(/(<[^>\\s][^>]*>)/).map((p) => (p.charAt(0) === '<' && p.length > 2 ? h('span', { class: 'ph' }, p) : p));
   function snippets() {
-    $('snips').replaceChildren(...SNIPS.map((s) => h('div', { class: 'card' }, h('h2', {}, s.title), h('p', { class: 'muted' }, s.note),
-      h('pre', { style: 'white-space:pre-wrap;word-break:break-all;margin:0 0 10px;font-size:13px' }, s.text), copyButton(s.text))));
+    $('snips').replaceChildren(...SNIPS.map((s, i) => h('div', { class: 'card snip' }, h('div', { class: 'head' }, chip(ICON_FOR[i] || 'plug', SLOT_FOR[i] || 1), h('h2', {}, s.title)), h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, s.note),
+      h('pre', { class: 'code' }, withPlaceholders(s.text)), h('div', { class: 'foot' }, h('span', { class: 'faint', style: 'font-size:12px' }, 'Replace the highlighted parts'), copyButton(s.text)))));
   }
   snippets();
   if (window.tabularius) { counts(); tabularius.on('refresh', counts); }

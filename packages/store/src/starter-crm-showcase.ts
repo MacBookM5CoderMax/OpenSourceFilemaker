@@ -321,11 +321,8 @@ Exit Script [ Result: "duplicated" ]` },
       { table: 'Products', list: { fields: ['ID', 'SKU', 'Name', 'Unit Price', 'Active'] } },
       { table: 'Deal Lines', list: { fields: ['ID', 'Deal ID', 'Product ID', 'Product Name', 'Quantity', 'Unit Price', 'Discount Percent', 'Line Total'] } },
     ],
-    // REPORTS
-    reports: [
-      { name: 'Pipeline by rep and stage', table: 'Deals', fields: ['Owner Name', 'Title', 'Stage', 'Amount', 'Weighted Amount'], groups: ['Owner Name', 'Stage'], totals: ['Total Amount', 'Weighted Total'] },
-      { name: 'Activity by type', table: 'Activities', fields: ['Type', 'Subject'], groups: ['Type'], totals: ['Activity Count'], summaryOnly: true },
-    ],
+    // REPORTS: none. A report layout shows its groups only once the found set is sorted by the break field, so opened from the layout menu it looked broken; the Sales dashboard page covers the same ground.
+    reports: [],
     // PRIVILEGES
     privilegeSets: [
       { name: 'Rep', comment: 'Can view and change only records owned by the signed-in rep; cannot delete or change the design.',

@@ -186,12 +186,18 @@ function designLayouts(store: Store, starter: Starter, account: string): number 
           for (const child of o.children ?? []) shift(child);
         };
         for (const o of form.design.objects ?? []) shift(o);
-        const positions: Record<string, number> = { Name: 20, 'Owner Name': 220, Health: 420 };
+        // Label and field for each header item, wide enough to read a company or rep name in full and inside the form's width: Name and Owner Name on one row, Health under them.
+        const spots: Record<string, { row: number; label: [number, number]; field: [number, number] }> = {
+          Name: { row: 8, label: [20, 90], field: [94, 290] },
+          'Owner Name': { row: 8, label: [300, 390], field: [394, 540] },
+          Health: { row: 38, label: [20, 90], field: [94, 290] },
+        };
         for (const o of form.design.objects ?? []) {
           const fieldName = o.kind === 'field' ? o.field?.field : o.kind === 'text' ? o.text : undefined;
-          if (fieldName && positions[fieldName] !== undefined) {
-            const left = positions[fieldName] + (o.kind === 'field' ? 90 : 0);
-            o.bounds = { top: oldBodyTop + 16, left, bottom: oldBodyTop + 42, right: left + (o.kind === 'field' ? 110 : 90) };
+          const spot = fieldName ? spots[fieldName] : undefined;
+          if (spot) {
+            const [left, right] = o.kind === 'field' ? spot.field : spot.label;
+            o.bounds = { top: oldBodyTop + spot.row, left, bottom: oldBodyTop + spot.row + 26, right };
           }
         }
       }
@@ -255,9 +261,8 @@ function designLayouts(store: Store, starter: Starter, account: string): number 
     store.applyDesign([{ op: 'setOrder', list: 'layouts', order: [
       { folder: 'Home', children: ordered([]) },
       { folder: 'Accounts', children: ordered(['Account 360', 'Accounts list', 'Accounts']) },
-      { folder: 'Deals', children: ordered(['Deals', 'Deals list', 'Quote', 'Pipeline by rep and stage']) },
+      { folder: 'Deals', children: ordered(['Deals', 'Deals list', 'Quote']) },
       { folder: 'Activity', children: ordered(['Activities', 'Activities list', 'Email Log', 'Email Log list']) },
-      { folder: 'Reports', children: ordered(['Activity by type']) },
       ...ordered(['Reps', 'Reps list', 'Contacts', 'Contacts list', 'Products', 'Products list', 'Deal Lines', 'Deal Lines list']),
     ] }] as never, { account });
   }
