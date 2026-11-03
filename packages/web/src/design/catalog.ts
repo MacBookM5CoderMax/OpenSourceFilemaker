@@ -141,7 +141,7 @@ export function layoutsTab(studio: Studio): HTMLElement | Promise<HTMLElement> {
       studio.render();
     }).catch((e) => {
       studio.selected.editLayout = undefined;
-      return h('p', { class: 'd-muted' }, `Couldn't open the layout: ${errorText(e)}`);
+      return h('p', { class: 'd-muted', role: 'alert' }, `Couldn't open the layout: ${errorText(e)}`);
     });
   }
   const tos = design.tableOccurrences.map((t) => [String(t.id), t.name] as [string, string]);
@@ -694,7 +694,7 @@ function scriptEditor(studio: Studio, s: Studio['design']['scripts'][number], ta
     try {
       r = await studio.client.compareScriptDraft(s.id, draft, against !== base ? against : undefined);
     } catch (e) {
-      proof.replaceChildren(h('p', { class: 'd-error' }, `Couldn't check the draft: ${errorText(e)}`),
+      proof.replaceChildren(h('p', { class: 'd-error', role: 'alert' }, `Couldn't check the draft: ${errorText(e)}`),
         h('div', { class: 'd-actions' }, button('Use it anyway', put, { title: 'Put the draft in the editor without the check; nothing is saved until you save the script' })));
       return;
     }
@@ -1132,7 +1132,7 @@ export async function historyTab(studio: Studio): Promise<HTMLElement> {
   try {
     entries = await studio.client.history();
   } catch (e) {
-    return h('p', { class: 'd-muted' }, errorText(e));
+    return h('p', { class: 'd-muted', role: 'alert' }, errorText(e));
   }
   if (!entries.length) return h('section', { class: 'd-main' }, h('p', { class: 'd-muted' }, 'No design changes yet. Changes made here, by scripts or by AI are listed with who made them.'));
   const rows = entries.reverse().map((e) => h('tr', {},

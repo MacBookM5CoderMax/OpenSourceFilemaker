@@ -179,7 +179,7 @@ export async function themesTab(studio: Studio): Promise<HTMLElement> {
     try {
       main.append(...themeDetail(studio, await studio.client.theme(summary.id)));
     } catch (e) {
-      main.append(h('p', {}, errorText(e)));
+      main.append(h('p', { role: 'alert' }, errorText(e)));
     }
   }
   return h('div', { class: 'd-split' }, side, main);
@@ -365,7 +365,7 @@ function restyleFile(studio: Studio): HTMLElement {
       };
       draw(await studio.client.restyle(asked), asked);
     } catch (e) {
-      results.replaceChildren(h('p', { class: 'd-error' }, errorText(e)));
+      results.replaceChildren(h('p', { class: 'd-error', role: 'alert' }, errorText(e)));
     } finally {
       previewButton.disabled = false;
     }

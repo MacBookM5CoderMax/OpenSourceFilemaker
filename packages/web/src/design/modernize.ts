@@ -41,7 +41,7 @@ function modernizePanel(studio: Studio, done: () => void): HTMLElement {
     try {
       draw(await studio.client.modernize({ tables: chosen, styles, ...(fromLayouts.input.checked ? { fromLayouts: true } : {}) }));
     } catch (e) {
-      results.replaceChildren(h('p', { class: 'd-error' }, errorText(e)));
+      results.replaceChildren(h('p', { class: 'd-error', role: 'alert' }, errorText(e)));
     } finally {
       previewButton.disabled = false;
     }

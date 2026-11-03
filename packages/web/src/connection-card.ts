@@ -114,7 +114,7 @@ export function connectionCard(ref: { name: string }, db: string, token: string)
     allowed = r.allowed;
     draw(r.connection);
   }, (e) => {
-    card.replaceChildren(h('div', { class: 'ai-proposal-title' }, `Connection: ${ref.name}`), h('p', { class: 'ai-note' }, plainMessage(e)));
+    card.replaceChildren(h('div', { class: 'ai-proposal-title' }, `Connection: ${ref.name}`), h('p', { class: 'ai-note', role: 'alert' }, plainMessage(e)));
   });
   return card;
 }

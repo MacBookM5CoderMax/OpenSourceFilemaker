@@ -398,7 +398,7 @@ function reviewPanel(studio: Studio): HTMLElement {
     out.replaceChildren(h('h3', {}, 'About this graph'), ...r.summary.map((line) => h('p', {}, line)),
       ...(r.issues.length ? [issues] : []),
       ...explain(studio, `Explain this relationship graph in plain English: what each group is for, how the tables relate, and what you'd change. Here is what a quick review found:\n${[...r.summary, ...r.issues.map((i) => `- ${i.message}`)].join('\n')}`));
-  }, (e) => out.replaceChildren(h('h3', {}, 'About this graph'), h('p', { class: 'd-muted' }, plainMessage(e))));
+  }, (e) => out.replaceChildren(h('h3', {}, 'About this graph'), h('p', { class: 'd-muted', role: 'alert' }, plainMessage(e))));
   return out;
 }
 

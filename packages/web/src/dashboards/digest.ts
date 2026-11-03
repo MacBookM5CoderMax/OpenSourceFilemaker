@@ -74,7 +74,7 @@ export function digestPanel(db: string, token: string, dashboard: { id: string; 
     try {
       list = await call<DigestList>('GET');
     } catch (e) {
-      el.replaceChildren(h('p', { class: 'dash-error' }, plainMessage(e)));
+      el.replaceChildren(h('p', { class: 'dash-error', role: 'alert' }, plainMessage(e)));
       return;
     }
     show();

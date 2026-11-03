@@ -108,7 +108,7 @@ export function testsPanel(studio: Studio, script: { id: number; name: string })
     try {
       tests = await studio.client.scriptTests(script.id);
     } catch (e) {
-      list.replaceChildren(h('p', { class: 'se-error' }, errorText(e)));
+      list.replaceChildren(h('p', { class: 'se-error', role: 'alert' }, errorText(e)));
       return;
     }
     draw();
@@ -215,7 +215,7 @@ export function testsPanel(studio: Studio, script: { id: number; name: string })
         })),
         ...(skipped?.length ? [h('p', { class: 'd-muted' }, `Left out ${plural(skipped.length, 'case')} that couldn't run: ${skipped.join('; ')}`)] : []));
     } catch (e) {
-      suggestions.replaceChildren(h('p', { class: 'se-error' }, errorText(e)));
+      suggestions.replaceChildren(h('p', { class: 'se-error', role: 'alert' }, errorText(e)));
     } finally {
       b.disabled = false;
     }
@@ -242,7 +242,7 @@ export function historyPanel(studio: Studio, script: { id: number }, restore: (t
     try {
       versions = await studio.client.scriptVersions(script.id);
     } catch (e) {
-      body.replaceChildren(h('p', { class: 'se-error' }, errorText(e)));
+      body.replaceChildren(h('p', { class: 'se-error', role: 'alert' }, errorText(e)));
       return;
     }
     if (!versions.length) {

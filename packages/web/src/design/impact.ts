@@ -63,7 +63,7 @@ export function impactPanel(studio: Studio, kind: ImpactKind, name: string): HTM
           ...(studio.ask ? [button('Ask AI what would break', () => void studio.ask!(`What would break if I ${change} the ${kind === 'valueList' ? 'value list' : kind} "${name}"? ` +
             'Call check_change_impact, then say in plain words what stops working, for whom, and what to change first so nothing breaks.'))] : [])));
     } catch (e) {
-      body.replaceChildren(h('p', { class: 'd-muted' }, errorText(e)));
+      body.replaceChildren(h('p', { class: 'd-muted', role: 'alert' }, errorText(e)));
     }
   };
   box.addEventListener('toggle', () => {

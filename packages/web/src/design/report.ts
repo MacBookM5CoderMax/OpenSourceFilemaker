@@ -38,7 +38,7 @@ export async function reportTab(studio: Studio): Promise<HTMLElement> {
   try {
     r = await studio.client.report();
   } catch (e) {
-    return h('p', { class: 'd-muted' }, errorText(e));
+    return h('p', { class: 'd-muted', role: 'alert' }, errorText(e));
   }
   const sources = r.dataSources.filter((d) => !d.hosted);
   const parts = [

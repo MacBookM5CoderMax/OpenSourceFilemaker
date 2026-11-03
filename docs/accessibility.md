@@ -257,6 +257,12 @@ native prompts are inventoried from the page code, not individually driven by ax
     already holding its text is often not read out.
   - Errors use `role="alert"`.
   - A toast no longer goes away while the pointer or keyboard focus is on it.
+- **Failures inside a panel.** When a request fails and a Design, Security or Dashboards panel (the
+  script tests and history, what a script uses, the privilege-set preview, the sign-in passkey list,
+  the connection card, a digest and the like) puts the sentence in place of its content, the
+  sentence is `role="alert"`, so a screen reader says it instead of leaving the panel silent. A
+  phone preview that cannot be drawn is a `role="status"`. `packages/web/test/error-states-announced.test.ts`
+  reads the source and fails if a paragraph built from a failure's words has neither role.
 - **Administrator messages.** A message from the administrator now takes focus, and
   Dismiss returns focus to where it was.
 - **Layout canvas in dark mode.** A layout part with no fill showed the dark page behind

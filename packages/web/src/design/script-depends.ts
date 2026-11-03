@@ -25,14 +25,14 @@ export function dependsPanel(studio: Studio, script: { id: number; name: string 
     void Promise.all([studio.client.impact(kind, name, 'rename'), studio.client.impact(kind, name, 'delete')]).then(([ren, del]) => {
       box.replaceChildren(h('strong', {}, 'If renamed'), h('pre', { class: 'se-dep-pre' }, impactText(ren)),
         h('strong', {}, 'If deleted'), h('pre', { class: 'se-dep-pre' }, impactText(del)));
-    }, (e) => box.replaceChildren(h('p', { class: 'd-error' }, errorText(e))));
+    }, (e) => box.replaceChildren(h('p', { class: 'd-error', role: 'alert' }, errorText(e))));
   };
   const load = async () => {
     let d: ScriptDependencies;
     try {
       d = await studio.client.scriptDependencies(script.id);
     } catch (e) {
-      body.replaceChildren(h('p', { class: 'd-error' }, errorText(e)));
+      body.replaceChildren(h('p', { class: 'd-error', role: 'alert' }, errorText(e)));
       return;
     }
     const groups = (Object.keys(KINDS) as (keyof typeof KINDS)[]).map((k) => [k, d.uses.filter((u) => u.kind === k)] as const).filter(([, us]) => us.length);

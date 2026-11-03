@@ -944,7 +944,7 @@ class LayoutEditor {
     try {
       r = await this.studio.client.phone(this.design.id, this.design);
     } catch (e) {
-      if (asked === this.phoneAsked) this.phonePane.replaceChildren(h('p', { class: 'd-muted' }, `No phone preview: ${errorText(e)}`));
+      if (asked === this.phoneAsked) this.phonePane.replaceChildren(h('p', { class: 'd-muted', role: 'status' }, `No phone preview: ${errorText(e)}`));
       return;
     }
     if (asked !== this.phoneAsked || !this.showPhone) return;
@@ -3660,7 +3660,7 @@ class LayoutEditor {
         b.addEventListener('click', () => finish(img.id, img.url));
         return b;
       }) : [h('span', { class: 'd-muted' }, 'No images yet. Upload one.')]));
-    }, (e) => grid.replaceChildren(h('span', { class: 'd-muted' }, errorText(e))));
+    }, (e) => grid.replaceChildren(h('span', { class: 'd-muted', role: 'alert' }, errorText(e))));
   }
 
   private barInspector(o: LayoutObject): HTMLElement[] {

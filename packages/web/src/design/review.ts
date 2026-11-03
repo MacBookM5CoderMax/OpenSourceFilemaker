@@ -133,7 +133,7 @@ export async function reviewTab(studio: Studio): Promise<HTMLElement> {
   try {
     review = await studio.client.pending();
   } catch (e) {
-    return h('p', { class: 'd-muted' }, errorText(e));
+    return h('p', { class: 'd-muted', role: 'alert' }, errorText(e));
   }
   const picked = new Set<number>();
   const force = new Set<number>();

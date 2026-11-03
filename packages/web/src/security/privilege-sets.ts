@@ -130,7 +130,7 @@ function rulePreview(t: TablePrivileges, table: string, sec: Sec, setViewRule: (
         button('Use as the View rule', () => { setViewRule(rule); calc.value = rule; }, { title: 'Set this table’s View rule to this calculation' }),
       );
     } catch (e) {
-      out.replaceChildren(h('p', { class: 'sec-bad' }, `Couldn't preview: ${plainMessage(e)}`));
+      out.replaceChildren(h('p', { class: 'sec-bad', role: 'alert' }, `Couldn't preview: ${plainMessage(e)}`));
     }
   });
 

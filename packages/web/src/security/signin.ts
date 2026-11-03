@@ -40,7 +40,7 @@ export function signinTab(sec: Sec): HTMLElement {
       applyBlocked();
       render(passkeys);
     } catch (e) {
-      passkeyList.replaceChildren(h('p', { class: 'd-hint' }, errorText(e)));
+      passkeyList.replaceChildren(h('p', { class: 'd-hint', role: 'alert' }, errorText(e)));
     }
   };
   const remove = async (p: Passkey): Promise<void> => {

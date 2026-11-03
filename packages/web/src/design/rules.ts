@@ -36,7 +36,7 @@ export function rulesPanel(studio: Studio, table: string): HTMLElement {
         ...(studio.ask ? [h('div', { class: 'd-actions' }, button('Ask AI which rules are worth having', () => void studio.ask!(`Which validation rules, value lists and auto-enter options should the table "${table}" have? ` +
           'Call suggest_rules for it, say which are worth adding and why (and which to skip), and propose each as its own change.'), { class: 'quiet' }))] : []));
     } catch (e) {
-      body.replaceChildren(h('p', { class: 'd-muted' }, errorText(e)));
+      body.replaceChildren(h('p', { class: 'd-muted', role: 'alert' }, errorText(e)));
     }
   };
   box.addEventListener('toggle', () => {
