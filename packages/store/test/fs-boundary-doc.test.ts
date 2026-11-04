@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, linkSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { readCredentialFileSync } from '../src/fs-boundary.ts';
 
 const root = join(import.meta.dirname, '../../..');
 const sectionStart = '## Filesystem boundary';
@@ -70,4 +71,24 @@ test('filesystem-boundary documentation checker reports a listed module without 
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
+});
+
+test('the threat model does not call a planted admin password file accepted while the boundary refuses it', { skip: process.platform === 'win32' ? 'Windows has no owner or mode bits to check' : false }, (t) => {
+  const markdown = readFileSync(new URL('../../../docs/threat-model.md', import.meta.url), 'utf8');
+  // The behaviour: a file with a second name, and one anyone in the group or the world may write, are refused.
+  const folder = mkdtempSync(join(tmpdir(), 'fs-boundary-planted-admin-'));
+  t.after(() => rmSync(folder, { recursive: true, force: true }));
+  const plain = join(folder, '.openhbam-admin');
+  writeFileSync(plain, 'hash\n', { mode: 0o600 });
+  assert.equal(readCredentialFileSync(plain).trim(), 'hash');
+  linkSync(plain, join(folder, 'second-name'));
+  assert.throws(() => readCredentialFileSync(plain), { code: 'ESTALE' });
+  const loose = join(folder, 'loose');
+  writeFileSync(loose, 'hash\n');
+  chmodSync(loose, 0o666);
+  assert.throws(() => readCredentialFileSync(loose), { code: 'ESTALE' });
+  // The words: the page does not say the opposite, and says what the checks cannot tell apart.
+  assert.doesNotMatch(markdown, /Known gap: the admin password/);
+  assert.doesNotMatch(markdown, /is still accepted/);
+  assert.match(markdown, /What the checks cannot tell apart:/);
 });

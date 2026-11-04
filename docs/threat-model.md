@@ -52,7 +52,7 @@ The AI key path may be an operator-provided symlink: its private-mode check appl
 
 These checks are not `openat(2)` and do not make path-based operations atomic. The folders must belong to the service user. A hostile concurrent rename of a parent folder is out of scope.
 
-Known gap: the admin password file (`.openhbam-admin`) is refused when a link, pipe or folder stands at its name, but a plain file planted there by someone who can write to the hosted folder is still accepted. That covers a file owned by another user, a hard-linked file and a file with mode 0666. Anyone who can create entries in the hosted folder can therefore still set the admin password. A follow-up is meant to close this; until then, keep the hosted folder writable only by the service user.
+What the checks cannot tell apart: a plain file made by the server's own user (or by an administrator account) with one name and a private mode is accepted, whoever really wrote it, and an admin password file that is removed reads as no password set. Keep the hosted folder writable only by the service user.
 
 **Modules that use it**
 
