@@ -314,7 +314,7 @@ test('another open of the file between the approval page and the click does not 
     const page = await consent.text();
     new Store(store.path, 'Test').close();
     const back = await allow(page);
-    assert.equal(back.status, 302, 'the approval still stands');
+    assert.equal(back.status, 302, `the approval still stands: ${await back.clone().text()}`);
     const code = new URL(back.headers.get('location')!).searchParams.get('code')!;
     const t = await post('/oauth/token', form({ grant_type: 'authorization_code', code, code_verifier: verifier, client_id, redirect_uri: REDIRECT }));
     assert.equal(t.status, 200);
@@ -344,7 +344,7 @@ for (const change of ['inactive', 'no fmmcp', 'second factor', 'file AI off']) {
       const consent = await throughProvider(params);
       assert.equal(consent.status, 200);
       const back = await allow(await consent.text());
-      assert.equal(back.status, 302);
+      assert.equal(back.status, 302, await back.clone().text()); // a refusal's reason is in its body
       const code = new URL(back.headers.get('location')!).searchParams.get('code')!;
       const retained = db.prepare('SELECT identity FROM codes WHERE client_id = ?').get(client_id) as { identity: string };
       assert.deepEqual(JSON.parse(retained.identity), { issuer, sub: 'u1', person: 'pat@example.test', mapping: '@example.test' });

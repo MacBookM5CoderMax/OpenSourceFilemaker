@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { evaluate, evaluateText, Env, parse, text } from '../src/index.ts';
-import { guardedAll, guardedMatches, guardedReplace, guardedSplit } from '../src/regex-guard.ts';
+import { guardedAll, guardedMatches, guardedReplace, guardedSplit, withRegexBudget } from '../src/regex-guard.ts';
 import { MAX_TEXT_RESULT, substituteText } from '../src/text-budget.ts';
 
 // Generated inputs only. No processes, files, network or external programs.
@@ -25,7 +25,10 @@ const budget = (run: () => void, runaways = 1) => {
 const context = (values: Record<string, string>) => ({ variable: (name: string) => text(values[name] ?? '') });
 
 test('Substitute refuses exponential expansion before allocating the result', () => budget(() => {
-  const pairs = Array.from({ length: 30 }, () => '["a"; "aa"]').join(';');
+  // Each pair multiplies the text by about a thousand, so the third is refused from the counted size alone. Doubling it
+  // instead takes 23 steps over text of up to eight million characters before the refusal, a few hundred milliseconds on
+  // a fast machine, which a slow one turns into the calculation work budget (an error this test is not about).
+  const pairs = Array.from({ length: 30 }, () => `["a"; "${'a'.repeat(999)}"]`).join(';');
   assert.throws(() => evaluateText(`Substitute("a"; ${pairs})`), /Too many text matches|too large/);
   assert.throws(() => substituteText('a'.repeat(100_000), 'a', 'b'.repeat(100)), RangeError);
   assert.equal(substituteText('a', 'a', '$&'), '$&');
@@ -135,8 +138,12 @@ test('generated ordinary text at audit sizes stays within budget', () => {
 });
 
 test('regex time is counted only while a regex runs, so other slow work cannot use up the allowance', () => budget(() => {
-  const formula = 'Let([b = While([s="ab"]; Length(s) < 4000000; [s = s & s]; s); w = Length(Filter(b;"b")) + Length(Filter(b;"b")) + Length(Filter(b;"b")) + Length(Filter(b;"b")) + Length(Filter(b;"b")) + Length(Filter(b;"b"))]; w & "|" & MBS("RegEx.Match";"a";"a") & "|" & MBS("RegEx.ReplaceAll";"abc";"b";"x"))';
-  assert.equal(evaluateText(formula, context({})), '12582912|1|axc');
+  // The allowance is narrowed to 40 ms so that one slow step (growing a 4 MB text and filtering it, over 100
+  // milliseconds here) is several times the allowance and uses none of it; a clock that counted that time would
+  // refuse the two regex calls after it. The default allowance would need the slow work to last well past 500 ms,
+  // which on a slow runner ends in the 2,500 ms deadline of the whole calculation, an error this test is not about.
+  const formula = 'Let([b = While([s="ab"]; Length(s) < 4000000; [s = s & s]; s); w = Length(Filter(b;"b"))]; w & "|" & MBS("RegEx.Match";"a";"a") & "|" & MBS("RegEx.ReplaceAll";"abc";"b";"x"))';
+  assert.equal(withRegexBudget(() => evaluateText(formula, context({})), 40), '2097152|1|axc');
 }));
 
 test('many expensive built-in calls stop at the deadline, not after the next 1,024 steps', () => {
