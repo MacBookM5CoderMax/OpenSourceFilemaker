@@ -261,3 +261,21 @@ test('another worker thread that imports the store keeps its own messages (the b
     assert.equal(failure, undefined, failure?.message);
   } finally { await worker.terminate(); }
 });
+
+test('a refresh that fails halfway (a repeated key after new rows) leaves the old mirror whole', async () => {
+  const { store, outside, tick } = await setup('halfway');
+  try {
+    await outside.query('INSERT INTO orders VALUES (1, 1, 5), (2, 2, 6)', []);
+    store.applyDesign([{ op: 'createShadowTable', dataSource: 'Sales', table: 'orders', keys: ['customer_id'] }]);
+    assert.equal(store.findIds('orders').length, 2);
+    // A new row comes first, then a repeat of key 1: the new row is applied before the repeat is seen.
+    await outside.query('INSERT INTO orders VALUES (3, 3, 7), (4, 1, 8)', []);
+    tick(5_000);
+    assert.throws(() => store.findIds('orders'), (error: unknown) => error instanceof StoreError && error.code === ESS_ERROR && /not unique/.test(error.message));
+    assert.deepEqual(store.query('SELECT customer_id FROM orders ORDER BY customer_id').map((r) => r.customer_id), [1, 2]);
+    // The failed transaction is closed, so the store still takes the next refresh.
+    await outside.query('DELETE FROM orders WHERE id = 4', []);
+    tick(5_000);
+    assert.equal(store.findIds('orders').length, 3);
+  } finally { store.close(); await outside.close(); }
+});
