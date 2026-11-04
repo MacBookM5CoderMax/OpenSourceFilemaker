@@ -1132,6 +1132,8 @@ class Session implements Host {
       if (!frame?.dataset.viewerKey || !viewerMessage(e, frame)) return;
       if (e.data.tabularius === 'fmp') {
         if (typeof e.data.url !== 'string') return;
+        // A viewer without "Allow JavaScript to perform FileMaker scripts" runs no script from a link either.
+        if (frame.dataset.bridge !== '1') { toast('This web viewer is not allowed to run scripts: turn on "Allow JavaScript to perform FileMaker scripts" in its settings.'); return; }
         const now = Date.now();
         if (now - Number(frame.dataset.lastFmpMessage ?? 0) < 250) return;
         frame.dataset.lastFmpMessage = String(now);

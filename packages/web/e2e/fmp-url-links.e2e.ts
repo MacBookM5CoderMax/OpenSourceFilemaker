@@ -38,8 +38,14 @@ before(async () => {
     webUrl: JSON.stringify('data:text/html,' + page),
     webOptions: { interaction: true, findMode: false, progressBar: false, statusMessages: false, encodeUrl: false, jsBridge: true },
   } as LayoutObject;
+  // The same page in a viewer that does not allow JavaScript to perform scripts.
+  const viewerOff: LayoutObject = {
+    ...viewer, id: 951,
+    bounds: { top: body.top + 300, left: 20, bottom: body.top + 460, right: 520 },
+    webOptions: { interaction: true, findMode: false, progressBar: false, statusMessages: false, encodeUrl: false, jsBridge: false },
+  } as LayoutObject;
   store.applyDesign([{ op: 'updateLayout', layout: 'Home', design: {
-    objects: [...design.objects, viewer], parts: design.parts,
+    objects: [...design.objects, viewer, viewerOff], parts: design.parts,
   } } as DesignOp]);
   recordId = Number(store.create('Home', { Marker: '' }).recordId);
   const open = { view: true, edit: true, create: true, delete: true };
@@ -105,6 +111,28 @@ test('credentials in an fmp link never appear in page text or request URLs', { s
     await until(() => field(page, markerId).inputValue(), (v) => v === 'ran');
     assert.ok(!/user|pw/i.test(await page.locator('body').innerText()));
     assert.ok(urls.every((url) => !/user|pw/i.test(url)), urls.join('\n'));
+    assert.deepEqual(page.errors, []);
+  } finally { await page.context().close(); }
+});
+
+test('a link click a page script makes (no user gesture) is ignored, and a viewer without script permission runs nothing', { skip }, async () => {
+  const page = await openFor(ALLOWED);
+  try {
+    // 1. A script in the page calls link.click(): isTrusted is false, so nothing is sent to the window.
+    const allowed = page.frameLocator('.fm[data-id="950"] iframe.fm-webviewer');
+    await allowed.locator('#run').evaluate((a: HTMLElement) => a.click());
+    await allowed.locator('#run').evaluate((a: HTMLElement) => a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })));
+    await page.waitForTimeout(1500);
+    assert.equal(await field(page, markerId).inputValue(), '', 'a synthetic click ran the script');
+    // 2. A real click in a viewer without "Allow JavaScript to perform FileMaker scripts": refused with a toast, nothing runs,
+    //    even for an account that has fmurlscript.
+    await page.frameLocator('.fm[data-id="951"] iframe.fm-webviewer').getByRole('link', { name: 'Run script' }).click();
+    await page.locator('.toast', { hasText: 'not allowed to run scripts' }).waitFor();
+    await page.waitForTimeout(500);
+    assert.equal(await field(page, markerId).inputValue(), '', 'a viewer without script permission ran the script');
+    // 3. The permitted viewer still works with a real click.
+    await allowed.getByRole('link', { name: 'Run script' }).click();
+    await until(() => field(page, markerId).inputValue(), (v) => v === 'ran');
     assert.deepEqual(page.errors, []);
   } finally { await page.context().close(); }
 });

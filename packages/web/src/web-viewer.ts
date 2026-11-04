@@ -11,7 +11,10 @@ addEventListener('click',function(e){
   var a=e.target.closest&&e.target.closest('a[href]');
   var hash=a&&a.getAttribute('href');
   if(!e.defaultPrevented&&e.button===0&&typeof hash==='string'&&/^fmp\\d*:/i.test(hash)){
-    e.preventDefault();var now=Date.now();if(now-lastFmp>=250){lastFmp=now;parent.postMessage({tabularius:'fmp',documentId:documentId,url:hash},parentOrigin)}return;
+    e.preventDefault();
+    // Only a click a person made: a script in the page that calls link.click() or dispatches an event has isTrusted false.
+    if(!e.isTrusted)return;
+    var now=Date.now();if(now-lastFmp>=250){lastFmp=now;parent.postMessage({tabularius:'fmp',documentId:documentId,url:hash},parentOrigin)}return;
   }
   if(e.defaultPrevented||e.button!==0||typeof hash!=='string'||!/^#[^\\x00-\\x1f]*$/.test(hash))return;
   e.preventDefault();
