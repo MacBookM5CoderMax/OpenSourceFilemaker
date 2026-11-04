@@ -1,6 +1,6 @@
 // Custom Web Publishing XML, the legacy way FileMaker Server answered scripts and web pages that asked for records as
 // XML (help.claris.com, "FileMaker Server Custom Web Publishing with XML"). Writes are opt-in, POST forms only,
-// with same-origin browser checks and the Data API store privileges, validation and history. No script is run.
+// with same-origin browser checks and the Data API store privileges, validation and history. Scripts use the same opt-in switch and Data API engine.
 // Write compatibility, including portal row suffixes, is unverified against that server offline.
 //
 //   GET /fmi/xml/fmresultset.xml?-db=Sales&-lay=Contacts&-findall&-max=20&-sortfield.1=Name
@@ -11,8 +11,11 @@
 // Commands: -dbnames -layoutnames -scriptnames -find -findall -findany -findquery -view. Parameters: -db -lay -skip -max
 // -sortfield.N -sortorder.N -lop -recid -query -qN -qN.value -lay.response, and field=value with field.op (eq cn bw ew gt
 // gte lt lte neq). -new -edit -delete -dup need TABULARIUS_XML_PUBLISHING_WRITES=1; otherwise error 3.
-// Any -script parameter is refused (9 when script access
-// is denied, otherwise 960). The account signs in with HTTP Basic or an API token,
+// -script.prefind, -script.presort and -script (each with .param) run before the query, before sorting, and after it.
+// Script timing, result-state compatibility and omitted script errors are unverified against the vendor.
+// As in the Data API, the query snapshot is returned; script window/found-set changes do not replace it.
+// Scripts off: 960 naming the switch; denied: 9; missing: 104, before any phase runs.
+// The account signs in with HTTP Basic or an API token,
 // as with OData, and its privilege set needs the fmxml extended privilege.
 //
 // Errors are answered in the grammar asked for, with HTTP 200, as that server did; only a missing or wrong sign-in is a
@@ -29,6 +32,7 @@ import { signIn } from './sql.ts';
 import { boolean } from '../../store/src/settings.ts';
 import { sameOriginRequest } from './browser-request.ts';
 import { clientAddress } from './client-address.ts';
+import { ScriptSession } from '../../scripts/src/index.ts';
 import { SERVER_VERSION } from './version.ts';
 
 const PREFIX = '/fmi/xml/';
@@ -415,7 +419,8 @@ export class CwpXmlEndpoint {
   }
 
   private async answer(req: IncomingMessage, params: Params, grammar: Grammar, crossOrigin = false): Promise<string> {
-    const command = commandOf(params, this.writes ?? boolean('TABULARIUS_XML_PUBLISHING_WRITES'));
+    const enabled = this.writes ?? boolean('TABULARIUS_XML_PUBLISHING_WRITES');
+    const command = commandOf(params, enabled);
     if (WRITE_COMMANDS.includes(command)) {
       if (crossOrigin || !sameOriginRequest(req, this.host.publicUrl, this.host.browserOrigins)) {
         this.host.logs?.write('Event', 'Warning', clientAddress(req), 'XML publishing write refused: cross-origin request');
@@ -424,7 +429,7 @@ export class CwpXmlEndpoint {
       if (req.method !== 'POST' || !params.hasBody) throw new CwpError(3, 'Command is unavailable: send XML publishing writes as a POST form (application/x-www-form-urlencoded)');
     }
     const scripts = params.pairs.filter(([k]) => /^-script(\.|=|$)/i.test(k));
-    const refuseScripts = () => { throw new CwpError(960, 'Parameter is invalid: scripts are not run through this read-only interface'); };
+    const refuseScripts = () => { throw new CwpError(960, 'Parameter is invalid: XML scripts require TABULARIUS_XML_PUBLISHING_WRITES=1 and a query command'); };
     if (grammar === 'FMPXMLLAYOUT' && command !== 'view') throw new CwpError(954, `Unsupported XML grammar: FMPXMLLAYOUT answers -view; use fmresultset or FMPXMLRESULT for -${command}`);
     const render = (r: Result) => (grammar === 'FMPXMLRESULT' ? fmpxmlresult(r) : fmresultset(r));
 
@@ -442,14 +447,22 @@ export class CwpXmlEndpoint {
       await refuseUnknownFile(this.host, req, db);
       throw new CwpError(802, `Unable to open file "${db}"`);
     }
-    const { privileges: p, readOnlyToken } = await signIn(req, store, this.api, this.verified, 'fmxml', 'XML publishing');
+    const { privileges: p, readOnlyToken, via } = await signIn(req, store, this.api, this.verified, 'fmxml', 'XML publishing');
     if (scripts.length) {
       for (const [key, name] of scripts) {
         if (['-script', '-script.prefind', '-script.presort'].includes(key.toLowerCase()) && p.script(name) === 'none') {
           throw new CwpError(9, `Insufficient privileges to run script "${name}"`);
         }
       }
-      refuseScripts();
+      if (!enabled || !['find', 'findall', 'findany', 'findquery', ...WRITE_COMMANDS].includes(command)) refuseScripts();
+      if (readOnlyToken) throw new CwpError(9, 'This API token is read-only and cannot run scripts');
+      for (const [key, name] of scripts) {
+        if (!['-script', '-script.param', '-script.prefind', '-script.prefind.param', '-script.presort', '-script.presort.param'].includes(key.toLowerCase())) throw new CwpError(960, 'Parameter is invalid: unknown script parameter');
+        if (['-script', '-script.prefind', '-script.presort'].includes(key.toLowerCase()) && !store.schema.scripts.some((s) => s.name.toLowerCase() === name.toLowerCase())) {
+          throw new CwpError(104, `Script is missing: "${name}"`);
+        }
+      }
+      if (!sameOriginRequest(req, this.host.publicUrl, this.host.browserOrigins)) throw new CwpError(3, 'Command is unavailable: XML scripts require a same-origin request');
     }
 
     if (WRITE_COMMANDS.includes(command) && readOnlyToken) throw new CwpError(9, 'This API token is read-only');
@@ -470,12 +483,40 @@ export class CwpXmlEndpoint {
       if (grammar === 'FMPXMLLAYOUT') return fmpxmllayout(this.layoutDoc(store, info, p));
       return render(this.describe(store, info, p));
     }
-    if (WRITE_COMMANDS.includes(command)) {
-      if (req.socket.destroyed) throw new CwpError(3, 'Command is unavailable: the connection closed before the write');
-      return writer.run({ ...writer.getStore(), account: p.account, surface: 'XML publishing' },
-        () => atomicWrites(() => render(this.write(store, info, p, params, command))));
-    }
-    return render(this.records(store, info, p, params, command));
+    const checkFile = this.api.fileGuard(store);
+    // The sign-in mark is only worked out for a request that writes or runs a script: a plain read must not touch the sign-in ledger
+    // (the first look at an account records it), and it has no step to guard.
+    const guarded = WRITE_COMMANDS.includes(command) || params.pairs.some(([k]) => /^-script(\.|=|$)/i.test(k));
+    const mark = guarded ? store.signInMark(p.account, via) : undefined;
+    const checkCurrent = () => {
+      if (req.socket.destroyed || req.aborted || (req.destroyed && !req.complete)) throw new CwpError(3, 'Command is unavailable: the connection closed before the write');
+      checkFile();
+      if (mark !== undefined && store.signInMark(p.account, via) !== mark) throw new CwpError(9, 'The account changed while this request was waiting; retry');
+    };
+    const session = { account: p.account, via, scripts: new ScriptSession() };
+    const phase = async (key: string, ids?: number[]) => {
+      checkCurrent();
+      const name = params.get(key);
+      if (name === undefined) return;
+      await this.api.scriptPhase(store, info.name, session, () => p, name, params.get(`${key}.param`) ?? '', checkCurrent, clientAddress(req), ids,
+        key === '-script.prefind' ? 'prerequest' : key === '-script.presort' ? 'presort' : 'script');
+      checkCurrent();
+    };
+    return writer.run({ ...writer.getStore(), account: p.account, surface: 'XML publishing' }, async () => {
+      await phase('-script.prefind');
+      checkCurrent();
+      let result: Result;
+      if (WRITE_COMMANDS.includes(command)) {
+        result = atomicWrites(() => this.write(store, info, p, params, command));
+        await phase('-script.presort', result.records.map((r) => r.recordId));
+      } else {
+        result = await this.records(store, info, p, params, command,
+          params.get('-script.presort') === undefined ? undefined : (ids) => phase('-script.presort', ids));
+      }
+      await phase('-script', result.records.map((r) => r.recordId));
+      checkCurrent();
+      return render(result);
+    });
   }
 
   /** Writes use the same store methods and user-entry defaults as Data API records and portalData. */
@@ -552,7 +593,7 @@ export class CwpXmlEndpoint {
   }
 
   /** Finds the records for -find, -findall, -findany and -findquery, and describes them. */
-  private records(store: Store, info: LayoutInfo, p: Privileges, params: Params, command: string): Result {
+  private async records(store: Store, info: LayoutInfo, p: Privileges, params: Params, command: string, presort?: (ids: number[]) => Promise<void>): Promise<Result> {
     const skip = whole(params.get('-skip'), '-skip', 0)!;
     const cap = maxLimit() || Number.MAX_SAFE_INTEGER;
     const asked = params.get('-max');
@@ -564,7 +605,24 @@ export class CwpXmlEndpoint {
     const opts: FindOptions = { sort, offset: skip + 1, limit, dateFormat: 'us', privileges: p, layoutOnly: true };
 
     let found: { records: StoredRecord[]; foundCount: number; totalCount: number };
-    if (command === 'findall') {
+    if (presort) {
+      // Preserve the query's membership through the script, then sort and page it. Vendor details are unverified.
+      const recid = params.get('-recid');
+      let ids: number[];
+      if (command === 'find' && recid !== undefined && recid !== '') {
+        const id = whole(recid, '-recid', undefined)!;
+        store.get(info.name, id, 'us', undefined, p, { fields: [] });
+        ids = [id];
+      } else {
+        ids = store.findIds(info, { privileges: p, query: command === 'findall' || command === 'findany' ? undefined : command === 'findquery' ? queryRequests(params, info) : findRequests(params, info) });
+        if (command === 'findany' && ids.length) ids = [ids[Math.floor(Math.random() * ids.length)]];
+      }
+      if (!ids.length) throw new CwpError(401, 'No records match the request');
+      await presort(ids);
+      const sorted = sort?.length ? store.sortIds(info, ids, sort, { privileges: p }) : ids;
+      const records = store.getMany(info, sorted.slice(skip, skip + limit), sorted, { privileges: p, dateFormat: 'us', layoutOnly: true, sort });
+      found = { records, foundCount: ids.length, totalCount: store.find(info, { privileges: p, limit: 0 }).totalCount };
+    } else if (command === 'findall') {
       found = store.find(info, opts);
     } else if (command === 'findany') {
       const count = store.find(info, { privileges: p, limit: 0 }).totalCount;

@@ -1735,7 +1735,8 @@ export class DataApi {
     if (this.host.get(store.name) !== store) throw new ApiError(3, 'The file is no longer open for this request; retry', 409);
   }
 
-  private fileGuard(store: Store): () => void {
+  /** Revalidate a captured file after a script wait, including session-less XML phases. */
+  fileGuard(store: Store): () => void {
     const schema = store.schemaSignature;
     const generation = this.host.fileGeneration(store);
     return () => {
@@ -1758,9 +1759,15 @@ export class DataApi {
 
   /** Runs a script on a layout for a Data API session; errors become scriptError, as FileMaker Server reports them. */
   private async script(store: Store, layout: string, session: Session, script: string, parameter: string, checkCurrent: (inScript?: boolean) => void, from: string, foundSet?: number[], phase: DenialAudit['phase'] = 'script') {
+    return this.scriptPhase(store, layout, session, () => sessionPrivileges(store, session), script, parameter, checkCurrent, from, foundSet, phase);
+  }
+
+  /** Shared engine path for Data API phases and session-less XML requests. XML supplies request-local globals,
+   * never client windows; engine defaults bound each run and reset Get ( ScriptResult ) for each phase. */
+  async scriptPhase(store: Store, layout: string, session: Pick<Session, 'account' | 'via' | 'scripts'>, getPrivileges: () => Privileges, script: string, parameter: string, checkCurrent: (inScript?: boolean) => void, from: string, foundSet?: number[], phase: DenialAudit['phase'] = 'script') {
     const collector = denialOperation.getStore();
     try {
-      const privileges = sessionPrivileges(store, session);
+      const privileges = getPrivileges();
       try {
         privileges.checkScript(script);
       } catch (e) {
@@ -1794,7 +1801,7 @@ export class DataApi {
     }
   }
 
-  private scriptFailed(store: Store, script: string, session: Session, error: number, why?: string): void {
+  private scriptFailed(store: Store, script: string, session: Pick<Session, 'account'>, error: number, why?: string): void {
     this.host.logs?.write('ScriptEvent', 'Warning', store.name, `Data API script "${script}" (${session.account}) ended with error ${error}${why ? `, ${why}` : ''}`);
   }
 

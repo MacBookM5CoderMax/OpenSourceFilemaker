@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**279 entries in 35 areas.** Unverified: 140. Waiting on: 24 on a sample file, 167 on a FileMaker run or Design Report, 15 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
+**282 entries in 35 areas.** Unverified: 143. Waiting on: 24 on a sample file, 170 on a FileMaker run or Design Report, 15 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -460,5 +460,8 @@ part of it.
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
 | XML write command compatibility is unverified against FileMaker Server | Tabularius tests cover required parameters, repetition syntax, modification checks, response layouts, error codes, date conversion, auto-enter and validation using the existing store methods, but the vendor behavior has not been compared | A FileMaker Server run of equivalent XML requests | [docs/hosting-for-a-team.md › Hosting for a team](hosting-for-a-team.md) — “” |
+| XML script final found-set and current-record behavior is unverified against FileMaker Server | Tabularius retains the query snapshot like its Data API, ignoring script window and found-set navigation, with presort changes read before sorting and paging | A FileMaker Server comparison of script navigation and record changes | [docs/hosting-for-a-team.md › Hosting for a team](hosting-for-a-team.md) — “…vendor's final found-set and record behavior is unverified.” |
+| Omission of script errors from vendor XML is unverified | Tabularius logs script errors and returns the query error only when the query fails | A FileMaker Server comparison of successful and failed queries with failing scripts | [docs/hosting-for-a-team.md › Hosting for a team](hosting-for-a-team.md) — “omits script errors from XML is unverified offline.” |
 | GET writes are deliberately refused and vendor GET support is unverified | Clients must send a POST form and pass the same-origin browser checks instead of putting a write in a GET URL | A FileMaker Server run confirms vendor GET behavior, while Tabularius retains its POST-only security rule | [docs/hosting-for-a-team.md › Hosting for a team](hosting-for-a-team.md) — “Server accepting GET writes is unverified offline; POST-only is deliberate” |
+| XML script phase timing and parameter compatibility are unverified against FileMaker Server | Tabularius runs prefind before the query, presort before sorting and paging, then script, with separate parameter text and the shared Data API engine | A FileMaker Server comparison of all phases on read and write commands | [docs/hosting-for-a-team.md › Hosting for a team](hosting-for-a-team.md) — “Server are unverified offline.” |
 | Portal row suffixes and zero-id creation are unverified against FileMaker Server | Tabularius maps TO::Field.recid and TO::Field.0 on edits to Data API portalData, refusing ambiguous portals and other commands | A FileMaker Server run of existing and new related-row XML edits | [docs/hosting-for-a-team.md › Hosting for a team](hosting-for-a-team.md) — “spellings are unverified against FileMaker Server. They map to the store's” |

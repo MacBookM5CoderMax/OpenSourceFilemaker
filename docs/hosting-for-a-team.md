@@ -669,9 +669,41 @@ All parent and portal changes commit together or roll back together. Portal
 suffixes on commands other than `-edit` are refused with error 3.
 <!-- known-difference: XML publishing ;; Portal row suffixes and zero-id creation are unverified against FileMaker Server ;; Tabularius maps TO::Field.recid and TO::Field.0 on edits to Data API portalData, refusing ambiguous portals and other commands ;; A FileMaker Server run of existing and new related-row XML edits -->
 
-Scripts remain unavailable: `-script` and its variants give 960 (or 9 when
-script access is denied), including when attached to a write. The existing
-script refusal text is unchanged. Script execution is a separate feature.
+Scripts are also **off by default**, enabled by `TABULARIUS_XML_PUBLISHING_WRITES=1`
+or `--xml-publishing-writes`. They require `fmxml` and the account's script,
+layout, record and field privileges. Read-only tokens cannot run scripts.
+With the switch off, script parameters give 960 naming the switch. Any denied
+script gives 9 before any phase or query runs; any missing script gives 104.
+Scripts attach only to `-find`, `-findall`, `-findany`, `-findquery`, `-new`,
+`-edit`, `-delete` and `-dup`; listing and metadata commands refuse them.
+
+| Parameter | When it runs | Parameter text |
+|---|---|---|
+| `-script.prefind` | Before the find or write | `-script.prefind.param` |
+| `-script.presort` | After the find or write, before sorting and paging | `-script.presort.param` |
+| `-script` | After the query, before writing the XML answer | `-script.param` |
+
+Each `.param` supplies `Get ( ScriptParameter )`, defaulting to empty text.
+Phases share request-local globals and variables, discarded when the request
+ends. Each uses the Data API's engine options and default 60-second time limit,
+without client windows; `Get ( ScriptResult )` starts empty in each phase.
+Script browser requests must pass the same-origin checks; write commands still
+require a POST form. Phase timing and parameter compatibility with FileMaker
+Server are **unverified** offline.
+<!-- known-difference: XML publishing ;; XML script phase timing and parameter compatibility are unverified against FileMaker Server ;; Tabularius runs prefind before the query, presort before sorting and paging, then script, with separate parameter text and the shared Data API engine ;; A FileMaker Server comparison of all phases on read and write commands -->
+
+As with the Data API, the answer retains the query's result snapshot, not the
+window, current record or found set left by a script. Post-query field changes
+are visible in a subsequent read. Presort receives the query's full unsorted
+membership; sorting and paging read its changed values but retain that membership.
+Script-created records do not join that set, and deleted or unreadable records
+are omitted. The vendor's final found-set and record behavior is **unverified**.
+<!-- known-difference: XML publishing ;; XML script final found-set and current-record behavior is unverified against FileMaker Server ;; Tabularius retains the query snapshot like its Data API, ignoring script window and found-set navigation, with presort changes read before sorting and paging ;; A FileMaker Server comparison of script navigation and record changes -->
+
+A script error is logged in ScriptEvent and does not fail a successful query.
+A failed query retains its own XML error code. The claim that FileMaker Server
+omits script errors from XML is **unverified** offline.
+<!-- known-difference: XML publishing ;; Omission of script errors from vendor XML is unverified ;; Tabularius logs script errors and returns the query error only when the query fails ;; A FileMaker Server comparison of successful and failed queries with failing scripts -->
 
 **How many people?** `node scripts/loadtest.ts <file.fmp12> --users 50` hosts
 a copy of a file and has 50 simulated people browse, open, find and edit

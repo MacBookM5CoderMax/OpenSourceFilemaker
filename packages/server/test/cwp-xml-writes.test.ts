@@ -198,13 +198,16 @@ test('writes require a POST form and refuse cross-site browsers in the XML gramm
   assert.equal(code(empty.text), '3');
 });
 
-test('501 field pairs and oversized bodies fail without partial writes; scripts remain refused', async () => {
+test('501 field pairs and oversized bodies fail without partial writes; scripts are refused with the switch off', async () => {
   const before = snapshot();
   assert.equal(code((await post('-new&' + Array.from({ length: 501 }, () => 'Name=x').join('&'))).text), '960');
   assert.notEqual(code((await post('-new&Name=' + 'x'.repeat(65536))).text), '0');
-  for (const script of ['-script=Touch', '-script.param=1', '-script.prefind=Touch', '-script.presort=Touch']) {
-    assert.equal(code((await post(`-new&Name=Denied&${script}`)).text), '960');
-  }
+  delete process.env.TABULARIUS_XML_PUBLISHING_WRITES;
+  try {
+    for (const script of ['-script=Touch', '-script.param=1', '-script.prefind=Touch', '-script.presort=Touch']) {
+      assert.equal(code((await fm(`${FIND}&-findall&${script}`)).text), '960');
+    }
+  } finally { process.env.TABULARIUS_XML_PUBLISHING_WRITES = '1'; }
   assert.equal(code((await post('-new&-script=Touch', 'fmresultset', { authorization: 'Basic ' + btoa('Cy:pw') })).text), '9');
   assert.deepEqual(snapshot(), before);
 });
