@@ -209,6 +209,19 @@ test('TLS rejects an untrusted certificate before sending LOGIN7', async (t) => 
   assert.equal(server.counts().logins, 0);
 });
 
+test('a packet queued in plaintext behind the PRELOGIN answer fails the connection before the TLS handshake', async (t) => {
+  let loginSeen = false;
+  const port = await fake(t, (socket) => {
+    messages(socket, (type) => {
+      // The forged login acknowledgement arrives in the same write as the PRELOGIN answer.
+      if (type === 0x12) socket.write(Buffer.concat([packet(4, prelogin(1)), packet(4, Buffer.concat([loginAck(), done()]))]));
+      else if (type === 0x10) loginSeen = true;
+    });
+  });
+  await assert.rejects(TdsClient.connect({ ...credentials, port, timeoutMs: 2000 }));
+  assert.equal(loginSeen, false, 'LOGIN7 was sent');
+});
+
 test('TLS rejects a trusted certificate for a different host', async (t) => {
   const server = await tlsFake(t, 1, ['localhost']);
   await assert.rejects(TdsClient.connect({ ...credentials, port: server.port, ca: server.ca, timeoutMs: 3000 }), /TLS/);
@@ -394,11 +407,10 @@ for (const [id, info, name] of [
   [0xe7, Buffer.from([255, 255]), 'NVARCHAR(max)'], [0xa7, Buffer.from([255, 255]), 'VARCHAR(max)'],
   [0xa5, Buffer.from([255, 255]), 'VARBINARY(max)'], [0xf1, undefined, 'XML'],
   [0x62, undefined, 'sql_variant'], [0x2b, undefined, 'DATETIMEOFFSET'],
-] as const) test(`unsupported ${name} fails with a named not-decoded error`, async (t) => {
-  const client = await plain(t, (_, socket) => socket.write(packet(4, metadata([{ id, info }]))));
-  await assert.rejects(client.batch('unsupported'), (error: unknown) => {
-    assert.ok(error instanceof Error); assert.ok(error.message.includes(name)); assert.match(error.message, /not decoded yet/); return true;
-  });
+] as const) test(`truncated ${name} metadata is rejected before reading a value`, async (t) => {
+  const client = await plain(t, (_, socket) => socket.write(packet(4, metadata([{ id, info }]).subarray(0, -5))));
+  await assert.rejects(client.batch('truncated metadata'), /invalid or oversized/);
+  await assert.rejects(client.batch('after malformed metadata'), /connection closed/);
 });
 
 for (const [label, reply] of [
@@ -508,4 +520,314 @@ test('compressed null rows cannot expand beyond the decoded cell budget', async 
 
 test('a connection to the metadata address is refused before any socket opens', async () => {
   await assert.rejects(TdsClient.connect({ ...credentials, host: '169.254.169.254', port: 1433, encryption: 'optional' }), /SQL Server:/);
+});
+
+async function rpcPeer(t: TestContext, reply: (type: number, body: Buffer, socket: Socket) => void): Promise<TdsClient> {
+  const port = await fake(t, (socket) => messages(socket, (type, body) => {
+    if (type === 0x12) socket.write(packet(4, prelogin(2)));
+    else if (type === 0x10) socket.write(packet(4, Buffer.concat([loginAck(), done()])));
+    else reply(type, body, socket);
+  }));
+  const client = await TdsClient.connect({ ...credentials, port, encryption: 'optional', allowUnencrypted: true });
+  t.after(() => client.close()); return client;
+}
+function rpcName(name: string): Buffer { return Buffer.concat([Buffer.from([name.length]), text(name), Buffer.from([0])]); }
+function nvarchar(s: string): Buffer {
+  return Buffer.concat([Buffer.from([0xe7]), u16(8000), Buffer.from([9, 4, 0, 0, 0]), u16(s.length * 2), text(s)]);
+}
+
+test('sp_executesql RPC exact bytes: SQL, declarations and one parameter of every input type', async (t) => {
+  const sql = 'select @p1, @p2, @p3, @p4, @p5, @p6, @p7';
+  const client = await rpcPeer(t, (type, body, socket) => {
+    // [MS-TDS] RPCRequest: ALL_HEADERS (22,18,2,descriptor,1), 0xffff
+    // procedure-id sentinel, ProcID=10, OptionFlags=0. Each parameter has a
+    // B_VARCHAR name, status=0, TYPE_INFO, and its nullable length + value.
+    // INTN(8), FLTN(8), BITN(1), BIGVARBIN(8000), DATETIME2(scale=7).
+    // 0001-01-02 midnight: time=5 zero bytes, date=01 00 00.
+    const expected = Buffer.concat([u32(22), u32(18), u16(2), Buffer.alloc(8), u32(1), u16(65535), u16(10), u16(0),
+      rpcName(''), nvarchar(sql), rpcName(''), nvarchar('@p1 nvarchar(4000), @p2 bigint, @p3 float, @p4 bit, @p5 varbinary(8000), @p6 datetime2(7), @p7 nvarchar(4000)'),
+      rpcName('@p1'), nvarchar('雪'),
+      rpcName('@p2'), Buffer.from([0x26, 8, 8, 254, 255, 255, 255, 255, 255, 255, 255]),
+      rpcName('@p3'), Buffer.from([0x6d, 8, 8, 0, 0, 0, 0, 0, 0, 0xf4, 0x3f]),
+      rpcName('@p4'), Buffer.from([0x68, 1, 1, 1]),
+      rpcName('@p5'), Buffer.from([0xa5, 0x40, 0x1f, 2, 0, 0x12, 0x34]),
+      rpcName('@p6'), Buffer.from([0x2a, 7, 8, 0, 0, 0, 0, 0, 1, 0, 0]),
+      rpcName('@p7'), Buffer.from([0xe7, 0x40, 0x1f, 9, 4, 0, 0, 0, 255, 255]),
+    ]);
+    assert.equal(type, 3); assert.deepEqual(body, expected);
+    socket.write(packet(4, done(0, 0n, 0xfe)));
+  });
+  assert.deepEqual(await client.query(sql, ['雪', -2n, 1.25, true, Uint8Array.from([0x12, 0x34]), new Date('0001-01-02T00:00:00Z'), null]), { columns: [], rows: [] });
+});
+
+test('transactions carry ENVCHANGE descriptor and nested failures roll back to a savepoint', async (t) => {
+  const descriptor = Buffer.from([1, 3, 5, 7, 2, 4, 6, 8]); const statements: string[] = [];
+  const client = await plain(t, (body, socket) => {
+    const sql = body.subarray(22).toString('utf16le'); statements.push(sql);
+    assert.deepEqual(body.subarray(10, 18), statements.length === 1 ? Buffer.alloc(8) : descriptor);
+    const change = sql === 'BEGIN TRANSACTION' ? env(8, descriptor, Buffer.alloc(0))
+      : sql === 'COMMIT TRANSACTION' ? env(9, Buffer.alloc(0), descriptor) : Buffer.alloc(0);
+    socket.write(packet(4, Buffer.concat([change, done()])));
+  });
+  await client.transaction(async (tx) => {
+    await tx.query('select 1', []);
+    await assert.rejects(tx.transaction(async () => { throw new Error('synthetic callback failure'); }), /synthetic callback/);
+    await tx.query('select 2', []);
+  });
+  assert.deepEqual(statements, ['BEGIN TRANSACTION', 'select 1', 'SAVE TRANSACTION [tabularius_1]', 'ROLLBACK TRANSACTION [tabularius_1]', 'select 2', 'COMMIT TRANSACTION']);
+});
+
+test('query timeout sends ATTENTION and drains DONE_ATTN before allowing another query', async (t) => {
+  const types: number[] = [];
+  const client = await rpcPeer(t, (type, body, socket) => {
+    types.push(type);
+    if (type === 6) {
+      assert.equal(body.length, 0);
+      // A normal result may race with the attention acknowledgement.
+      socket.write(packet(4, done())); socket.write(packet(4, done(0x20)));
+    } else if (types.length > 1) socket.write(packet(4, done()));
+  });
+  await assert.rejects(client.query('wait', [], { timeoutMs: 20 }), /timed out/);
+  await client.query('again', []);
+  assert.deepEqual(types, [1, 6, 1]);
+});
+
+function plpBytes(chunks: Buffer[], total?: bigint): Buffer {
+  const length = Buffer.alloc(8); length.writeBigUInt64LE(total ?? BigInt(chunks.reduce((n, b) => n + b.length, 0)));
+  return Buffer.concat([length, ...chunks.flatMap((b) => [u32(b.length), b]), u32(0)]);
+}
+function sendResponse(socket: Socket, bytes: Buffer, size = 73): void {
+  for (let at = 0, id = 1; at < bytes.length; at += size, id = (id + 1) & 255) {
+    socket.write(packet(4, bytes.subarray(at, at + size), at + size >= bytes.length, id));
+  }
+}
+const collation = Buffer.from([9, 4, 0, 0, 0]);
+
+test('PLP NVARCHAR, VARCHAR, VARBINARY and XML decode chunks crossing packets, null and empty', async (t) => {
+  const cols = [{ id: 0xe7, info: Buffer.concat([u16(65535), collation]) },
+    { id: 0xa7, info: Buffer.concat([u16(65535), collation]) }, { id: 0xa5, info: u16(65535) }, { id: 0xf1, info: Buffer.from([0]) }];
+  const unicode = text('雪🙂'.repeat(40));
+  const client = await plain(t, (_, socket) => sendResponse(socket, Buffer.concat([metadata(cols), Buffer.from([0xd1]),
+    plpBytes([unicode.subarray(0, 3), unicode.subarray(3)], 0xfffffffffffffffen),
+    plpBytes([Buffer.from([0x80]), Buffer.from([0xe9])]), plpBytes([Buffer.from([0, 255]), Buffer.from([128])]),
+    plpBytes([text('<a>'), text('雪</a>')]), Buffer.from([0xd1]), ...cols.map(() => Buffer.alloc(8, 255)),
+    Buffer.from([0xd1]), ...cols.map(() => plpBytes([])), done(),
+  ])));
+  assert.deepEqual((await client.query('plp', [])).rows, [
+    ['雪🙂'.repeat(40), '€é', Uint8Array.from([0, 255, 128]), '<a>雪</a>'], [null, null, null, null], ['', '', new Uint8Array(), ''],
+  ]);
+});
+
+for (const unknown of [false, true]) test(`PLP ${unknown ? 'unknown' : 'known'} length over 64 MiB is refused before reading its body`, async (t) => {
+  const total = Buffer.alloc(8); total.writeBigUInt64LE(unknown ? 0xfffffffffffffffen : 64n * 1024n * 1024n + 1n);
+  const client = await plain(t, (_, socket) => socket.write(packet(4, Buffer.concat([
+    metadata([{ id: 0xa5, info: u16(65535) }]), Buffer.from([0xd1]), total, ...(unknown ? [u32(64 * 1024 * 1024 + 1)] : []),
+  ]))));
+  await assert.rejects(client.query('cap', []), /64 MiB/);
+  await assert.rejects(client.query('closed', []), /connection closed/);
+});
+
+for (const body of [plpBytes([Buffer.from([1])], 2n), plpBytes([Buffer.from([1, 2])], 1n)]) test('PLP declared length must equal its chunks', async (t) => {
+  const client = await plain(t, (_, socket) => socket.write(packet(4, Buffer.concat([
+    metadata([{ id: 0xa5, info: u16(65535) }]), Buffer.from([0xd1]), body, done(),
+  ]))));
+  await assert.rejects(client.query('bad length', []), /invalid or oversized/);
+});
+
+test('remaining scalar types: DATETIMEOFFSET, legacy text/image, SMALLMONEY and sql_variant bases', async (t) => {
+  const offset = Buffer.alloc(10); offset.writeUIntLE(3600 * 10 ** 7, 0, 5); offset.writeUIntLE(1, 5, 3); offset.writeInt16LE(120, 8);
+  const legacyInfo = (id: number) => Buffer.concat([u32(1000), id === 0x22 ? Buffer.alloc(0) : collation, Buffer.from([1]), u16(1), text('t')]);
+  const legacy = (b: Buffer) => Buffer.concat([Buffer.from([16]), Buffer.alloc(24), u32(b.length), b]);
+  const variant = (id: number, properties: Buffer, b: Buffer) => Buffer.concat([u32(2 + properties.length + b.length), Buffer.from([id, properties.length]), properties, b]);
+  const cols = [{ id: 0x2b, info: Buffer.from([7]) }, ...[0x23, 0x63, 0x22].map((id) => ({ id, info: legacyInfo(id) })),
+    { id: 0x7a }, ...Array.from({ length: 4 }, () => ({ id: 0x62, info: u32(8016) }))];
+  const client = await plain(t, (_, socket) => sendResponse(socket, Buffer.concat([metadata(cols), Buffer.from([0xd1, 10]), offset,
+    legacy(Buffer.from([0x80])), legacy(text('雪')), legacy(Buffer.from([255, 0])), u32(0xffffcfc7),
+    variant(0x38, Buffer.alloc(0), u32(42)), variant(0xe7, Buffer.concat([collation, u16(20)]), text('雪')),
+    variant(0x6a, Buffer.from([9, 2]), Buffer.from([1, 0x39, 0x30, 0, 0])), variant(0xa5, u16(10), Buffer.from([1, 2])),
+    Buffer.from([0xd1, 0, 0, 0, 0]), u32(0), u32(0), u32(0), u32(0), u32(0), done(),
+  ])));
+  assert.deepEqual((await client.query('types', [])).rows, [
+    [new Date('0001-01-01T23:00:00Z'), '€', '雪', Uint8Array.from([255, 0]), '-1.2345', 42, '雪', '123.45', Uint8Array.from([1, 2])],
+    [null, null, null, null, '0.0000', null, null, null, null],
+  ]);
+});
+
+for (const [id, name] of [[0xf0, 'UDT'], [0xf3, 'TVP']] as const) test(`${name} produces a clear unsupported error`, async (t) => {
+  const client = await plain(t, (_, socket) => socket.write(packet(4, metadata([{ id }]))));
+  await assert.rejects(client.query('unsupported', []), new RegExp(`${name}.*not supported`));
+});
+
+test('typed RPC NULLs retain each TYPE_INFO', async (t) => {
+  const types = ['nvarchar', 'bigint', 'float', 'bit', 'varbinary', 'datetime2'] as const;
+  const client = await rpcPeer(t, (type, body, socket) => {
+    assert.equal(type, 3);
+    const nulls = [Buffer.from([0xe7, 0x40, 0x1f, 9, 4, 0, 0, 0, 255, 255]), Buffer.from([0x26, 8, 0]),
+      Buffer.from([0x6d, 8, 0]), Buffer.from([0x68, 1, 0]), Buffer.from([0xa5, 0x40, 0x1f, 255, 255]), Buffer.from([0x2a, 7, 0])];
+    const tail = Buffer.concat(nulls.flatMap((b, i) => [rpcName(`@p${i + 1}`), b]));
+    assert.deepEqual(body.subarray(-tail.length), tail); socket.write(packet(4, done()));
+  });
+  await client.rpc('nulls', types.map(() => null), { parameterTypes: [...types] });
+});
+
+test('long text and binary parameters use PLP and max declarations', async (t) => {
+  const largeText = '🙂'.repeat(2001), binary = new Uint8Array(8001).fill(7);
+  const client = await rpcPeer(t, (type, body, socket) => {
+    assert.equal(type, 3);
+    assert.ok(body.includes(text('@p1 nvarchar(max), @p2 varbinary(max)')));
+    const tail = Buffer.concat([rpcName('@p1'), Buffer.from([0xe7, 255, 255]), collation, plpBytes([text(largeText)]),
+      rpcName('@p2'), Buffer.from([0xa5, 255, 255]), plpBytes([Buffer.from(binary)])]);
+    assert.deepEqual(body.subarray(-tail.length), tail); socket.write(packet(4, done()));
+  });
+  await client.query('large', [largeText, binary]);
+});
+
+test('parameter validation and server errors never expose a parameter value', async (t) => {
+  const secret = ['private', 'parameter', 'value'].join('_');
+  const client = await rpcPeer(t, (_type, _body, socket) => socket.write(packet(4, Buffer.concat([errorToken(secret), done(2)]))));
+  await assert.rejects(client.query('select @p1', [secret]), (e: Error) => !e.message.includes(secret) && /rejected/.test(e.message));
+  for (const value of [NaN, Infinity, 1n << 63n, new Date(NaN)]) await assert.rejects(client.query('select @p1', [value]), /invalid type or value/);
+});
+
+test('adapter catalogs use INFORMATION_SCHEMA, parameterized names and primary key membership', async (t) => {
+  let requests = 0;
+  const client = await rpcPeer(t, (type, body, socket) => {
+    if (++requests === 1) {
+      assert.equal(type, 1); assert.match(body.subarray(22).toString('utf16le'), /INFORMATION_SCHEMA.TABLES/);
+      socket.write(packet(4, Buffer.concat([metadata([{ id: 0xe7, info: Buffer.concat([u16(100), collation]) }, { id: 0xe7, info: Buffer.concat([u16(100), collation]) }]),
+        Buffer.from([0xd1]), u16(6), text('dbo'), u16(10), text('items'), done()])));
+    } else {
+      assert.equal(type, 3);
+      assert.ok(body.includes(text('INFORMATION_SCHEMA.TABLE_CONSTRAINTS'))); assert.ok(body.includes(text('INFORMATION_SCHEMA.KEY_COLUMN_USAGE')));
+      assert.ok(body.includes(text('c.TABLE_NAME = @p2'))); assert.ok(body.includes(text('odd]name')));
+      const cols = [0, 1, 2].map(() => ({ id: 0xe7, info: Buffer.concat([u16(100), collation]) }));
+      socket.write(packet(4, Buffer.concat([metadata([...cols, { id: 0x38 }]), Buffer.from([0xd1]),
+        u16(4), text('id'), u16(6), text('int'), u16(4), text('NO'), u32(1), Buffer.from([0xd1]),
+        u16(8), text('name'), u16(16), text('nvarchar'), u16(6), text('YES'), u32(0), done()])));
+    }
+  });
+  assert.equal(client.dialect, 'sqlserver'); assert.equal(client.placeholder(3), '@p3');
+  assert.equal(client.quoteName('odd]name'), '[odd]]name]');
+  assert.deepEqual(await client.tables(), [{ schema: 'dbo', name: 'items' }]);
+  assert.deepEqual(await client.columns({ schema: 'dbo', name: 'odd]name' }), [
+    { name: 'id', type: 'int', nullable: false, key: true }, { name: 'name', type: 'nvarchar', nullable: true, key: false },
+  ]);
+});
+
+test('maxRows rejects the whole result instead of returning a partial result', async (t) => {
+  const client = await plain(t, (_, socket) => socket.write(packet(4, Buffer.concat([metadata([{ id: 0x38 }]),
+    Buffer.from([0xd1]), u32(1), Buffer.from([0xd1]), u32(2), done()]))));
+  await assert.rejects(client.query('rows', [], { maxRows: 1 }), /invalid or oversized/);
+  await assert.rejects(client.query('after cap', []), /connection closed/);
+});
+
+test('outer transaction rolls back after a callback throws', async (t) => {
+  const seen: string[] = [], descriptor = Buffer.from([1, 1, 1, 1, 1, 1, 1, 1]);
+  const client = await plain(t, (body, socket) => {
+    const sql = body.subarray(22).toString('utf16le'); seen.push(sql);
+    assert.deepEqual(body.subarray(10, 18), seen.length === 1 ? Buffer.alloc(8) : descriptor);
+    socket.write(packet(4, Buffer.concat([sql === 'BEGIN TRANSACTION' ? env(8, descriptor, Buffer.alloc(0))
+      : env(10, Buffer.alloc(0), descriptor), done()])));
+  });
+  await assert.rejects(client.transaction(async () => { throw new Error('callback failed'); }), /callback failed/);
+  assert.deepEqual(seen, ['BEGIN TRANSACTION', 'ROLLBACK TRANSACTION']);
+});
+
+test('a caught query error cannot lead to a partial transaction commit', async (t) => {
+  const seen: string[] = [];
+  const client = await plain(t, (body, socket) => {
+    const sql = body.subarray(22).toString('utf16le'); seen.push(sql);
+    socket.write(packet(4, sql === 'bad statement' ? Buffer.concat([errorToken('bad value'), done(2)]) : done()));
+  });
+  await assert.rejects(client.transaction(async (tx) => {
+    await tx.query('write', []);
+    await assert.rejects(tx.query('bad statement', []), TdsError);
+  }), /must be rolled back/);
+  assert.deepEqual(seen, ['BEGIN TRANSACTION', 'write', 'bad statement', 'ROLLBACK TRANSACTION']);
+  await client.query('after rollback', []);
+});
+
+test('unrelated calls cannot enter a transaction, and escaped callback work cannot use an ended transaction', async (t) => {
+  let entered!: () => void, release!: () => void, late!: () => void;
+  const started = new Promise<void>((resolve) => { entered = resolve; });
+  const hold = new Promise<void>((resolve) => { release = resolve; });
+  const after = new Promise<void>((resolve) => { late = resolve; });
+  let escaped: Promise<void> | undefined;
+  const seen: string[] = [];
+  const client = await plain(t, (body, socket) => { seen.push(body.subarray(22).toString('utf16le')); socket.write(packet(4, done())); });
+  const transaction = client.transaction(async (tx) => {
+    escaped = after.then(async () => { await assert.rejects(tx.query('escaped', []), /transaction has ended/); });
+    entered(); await hold;
+  });
+  await started;
+  await assert.rejects(client.query('outsider', []), /already running/);
+  await assert.rejects(client.transaction(async () => {}), /already running/);
+  release(); await transaction; late(); await escaped;
+  assert.deepEqual(seen, ['BEGIN TRANSACTION', 'COMMIT TRANSACTION']);
+});
+
+test('query timeout keeps the connection reserved until attention acknowledgement is consumed', async (t) => {
+  let noticed!: () => void, acknowledge!: () => void;
+  const attention = new Promise<void>((resolve) => { noticed = resolve; });
+  const client = await rpcPeer(t, (type, _body, socket) => {
+    if (type === 6) { acknowledge = () => socket.write(packet(4, done(0x20))); noticed(); }
+  });
+  const pending = assert.rejects(client.query('wait', [], { timeoutMs: 20 }), /timed out/);
+  await attention;
+  await assert.rejects(client.query('overlap', []), /already running/);
+  acknowledge(); await pending;
+});
+
+test('RPC errors drain DONEINPROC and DONEPROC before allowing rollback or another query', async (t) => {
+  let count = 0;
+  const client = await rpcPeer(t, (_type, _body, socket) => {
+    if (++count === 1) socket.write(packet(4, Buffer.concat([errorToken('hidden parameter'), done(2, 0n, 0xff), done(2, 0n, 0xfe)])));
+    else socket.write(packet(4, done()));
+  });
+  await assert.rejects(client.query('select @p1', ['hidden parameter']), TdsError);
+  await client.query('again', []); assert.equal(count, 2);
+});
+
+test('malformed bytes after DONE_ATTN close the connection instead of permitting reuse', async (t) => {
+  const client = await rpcPeer(t, (type, _body, socket) => {
+    if (type === 6) socket.write(packet(4, Buffer.concat([done(0x20), Buffer.from([0])])));
+  });
+  await assert.rejects(client.query('wait', [], { timeoutMs: 20 }), /timed out/);
+  await assert.rejects(client.query('again', []), /connection closed/);
+});
+
+test('PLP values larger than the old whole-message limit stream across packets', async (t) => {
+  const data = Buffer.alloc(17 * 1024 * 1024, 37);
+  const client = await plain(t, (_, socket) => sendResponse(socket, Buffer.concat([
+    metadata([{ id: 0xa5, info: u16(65535) }]), Buffer.from([0xd1]), plpBytes([data.subarray(0, 9000000), data.subarray(9000000)]), done(),
+  ]), 4088));
+  const result = await client.query('large PLP', [], { timeoutMs: 10000 });
+  assert.ok(result.rows[0][0] instanceof Uint8Array);
+  assert.equal(result.rows[0][0].length, data.length);
+  assert.deepEqual(result.rows[0][0], Uint8Array.from(data));
+});
+
+test('RPC within a transaction carries the active descriptor and successful nesting does not commit early', async (t) => {
+  const descriptor = Buffer.from([2, 2, 2, 2, 2, 2, 2, 2]); const seen: string[] = [];
+  const client = await rpcPeer(t, (type, body, socket) => {
+    const sql = type === 3 ? 'rpc' : body.subarray(22).toString('utf16le'); seen.push(sql);
+    assert.deepEqual(body.subarray(10, 18), seen.length === 1 ? Buffer.alloc(8) : descriptor);
+    const change = sql === 'BEGIN TRANSACTION' ? env(8, descriptor, Buffer.alloc(0))
+      : sql === 'COMMIT TRANSACTION' ? env(9, Buffer.alloc(0), descriptor) : Buffer.alloc(0);
+    socket.write(packet(4, Buffer.concat([change, done()])));
+  });
+  assert.equal(await client.transaction(async (tx) => tx.transaction(async (nested) => {
+    await nested.query('select @p1', [42]); return 'result';
+  })), 'result');
+  assert.deepEqual(seen, ['BEGIN TRANSACTION', 'SAVE TRANSACTION [tabularius_1]', 'rpc', 'COMMIT TRANSACTION']);
+});
+
+for (const status of [0x21, 0x120]) test(`fatal or incomplete attention DONE ${status} cannot make a connection reusable`, async (t) => {
+  let requests = 0;
+  const client = await rpcPeer(t, (type, _body, socket) => {
+    if (type === 6) socket.write(packet(4, done(status)));
+    else if (++requests > 1) socket.write(packet(4, done()));
+  });
+  await assert.rejects(client.query('wait', [], { timeoutMs: 20 }), /timed out/);
+  await assert.rejects(client.query('again', []), /connection closed/);
 });
