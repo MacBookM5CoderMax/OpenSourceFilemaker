@@ -22,6 +22,7 @@ import type { Host } from './host.ts';
 import { layoutProfile } from './insight.ts';
 import { secretName } from './ai-output.ts';
 import { said } from './said.ts';
+import { logFault } from './fault-log.ts';
 
 export type Check = 'duplicates' | 'valueLists' | 'consistency' | 'phones' | 'emails';
 export const CHECKS: Check[] = ['duplicates', 'valueLists', 'consistency', 'phones', 'emails'];
@@ -1120,7 +1121,7 @@ export class CleanupApi {
       } else throw new ApiError(3, 'Not supported', 405);
     } catch (e) {
       const err = e instanceof ApiError ? e : e instanceof URIError ? badPathError() : e instanceof CleanupError ? new ApiError(960, e.message, 400) : e instanceof StoreError ? new ApiError(e.code, e.message, e.code === 200 || e.code === 201 ? 403 : 400) : new ApiError(-1, 'Unknown error');
-      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof CleanupError) && !(e instanceof StoreError)) console.error(e);
+      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof CleanupError) && !(e instanceof StoreError)) logFault(e);
       send(err.status, { error: { code: err.code, message: err.message } });
     }
     return true;

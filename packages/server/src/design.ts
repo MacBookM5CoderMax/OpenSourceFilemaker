@@ -94,6 +94,7 @@ import { PendingChanges } from './design-review.ts';
 import { suggestRules } from './rule-suggestions.ts';
 import { layoutsBefore, ordersBefore, previewDesign, restyleFileChange, undoChanges } from './design-preview.ts';
 import { modernizeChange } from './modernize.ts';
+import { logFault } from './fault-log.ts';
 
 /** The theme of a layout, by id. */
 export function layoutTheme(store: Store, layout: unknown) {
@@ -970,7 +971,7 @@ export class DesignApi {
       } else throw new ApiError(3, 'Command is unavailable', 405);
     } catch (e) {
       const err = e instanceof ApiError ? e : e instanceof URIError ? badPathError() : e instanceof StoreError || e instanceof DesignError ? new ApiError(e.code, e.message, 400) : new ApiError(-1, 'Unknown error');
-      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof StoreError) && !(e instanceof DesignError)) console.error(e);
+      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof StoreError) && !(e instanceof DesignError)) logFault(e);
       send(err.status, { error: { code: err.code, message: err.message } });
     }
     return true;

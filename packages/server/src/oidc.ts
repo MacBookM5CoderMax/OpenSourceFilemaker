@@ -53,6 +53,7 @@ import { closeSync, constants, mkdirSync, openSync, lstatSync, statSync, type St
 import { join } from 'node:path';
 import { guardedFetch } from '../../scripts/src/net-guard.ts';
 import { sameSecret } from './secrets.ts';
+import { logFault } from './fault-log.ts';
 
 /** The identity provider is one an administrator chose (a provider on the network is normal); its requests still go through the shared outbound guard, with a time and size limit. */
 const IDP_NET = { policy: { private: true }, timeoutMs: 15_000, maxBytes: 2 * 1024 * 1024 } as const;
@@ -267,7 +268,7 @@ export class Oidc {
       try {
         await this.dataApiStart(req, res, url);
       } catch (e) {
-        if (!(e instanceof SignInError)) console.error(e);
+        if (!(e instanceof SignInError)) logFault(e);
         const wait = e instanceof SignInError ? e.retryAfter : undefined;
         // A refusal that waiting cures is 429 with Retry-After; anything the app must change is 400.
         res.writeHead(wait ? 429 : 400, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...(wait ? { 'retry-after': String(wait) } : {}) }).end(JSON.stringify({ error: e instanceof SignInError ? e.message : 'Sign-in failed' }));
@@ -288,7 +289,7 @@ export class Oidc {
       }
     } catch (e) {
       const message = e instanceof ApiError || e instanceof SignInError ? e.message : isBusy(e) ? 'Sign-in is temporarily unavailable; please try again shortly' : 'Sign-in failed';
-      if (!(e instanceof ApiError) && !(e instanceof SignInError)) console.error(e);
+      if (!(e instanceof ApiError) && !(e instanceof SignInError)) logFault(e);
       // Back to the web client's sign-in screen, which shows the message.
       res.writeHead(302, { location: `/app/#error=${encodeURIComponent(message)}`, 'cache-control': 'no-store' }).end();
     }
@@ -409,7 +410,7 @@ export class Oidc {
     try {
       await this.redirect(this.pick(slug), db, req, res, resume);
     } catch (e) {
-      if (!(e instanceof SignInError)) console.error(e);
+      if (!(e instanceof SignInError)) logFault(e);
       resume.fail(res, e instanceof SignInError ? e.message : isBusy(e) ? 'Sign-in is temporarily unavailable; please try again shortly' : 'Sign-in failed');
     }
   }
@@ -574,7 +575,7 @@ export class Oidc {
       try {
         await this.finish(p, params, req, res);
       } catch (e) {
-        if (!(e instanceof SignInError) && !(e instanceof ApiError)) console.error(e);
+        if (!(e instanceof SignInError) && !(e instanceof ApiError)) logFault(e);
         this.backToApp(res, p.dataApi, { error: e instanceof SignInError || e instanceof ApiError ? e.message : 'Sign-in failed' });
       }
       return;
@@ -590,7 +591,7 @@ export class Oidc {
     try {
       await this.finish(p, params, req, res);
     } catch (e) {
-      if (!(e instanceof SignInError) && !(e instanceof ApiError)) console.error(e);
+      if (!(e instanceof SignInError) && !(e instanceof ApiError)) logFault(e);
       resume.fail(res, e instanceof SignInError || e instanceof ApiError ? e.message : 'Sign-in failed');
     }
   }

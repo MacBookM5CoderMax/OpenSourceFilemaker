@@ -28,6 +28,7 @@ import { AccountProvisioningApi } from './account-provisioning.ts';
 import type { Host } from './host.ts';
 import { assertAiSecurityChanges } from './ai-security.ts';
 import { said } from './said.ts';
+import { logFault } from './fault-log.ts';
 
 /** The three extended-privilege-catalog ops a Manage Security change batch may also carry (see applySecurityChanges). */
 type ExtendedPrivilegeOp = Extract<DesignOp, { op: 'createExtendedPrivilege' | 'updateExtendedPrivilege' | 'deleteExtendedPrivilege' }>;
@@ -238,7 +239,7 @@ export class SecurityApi {
       }
     } catch (e) {
       const err = e instanceof ApiError ? e : e instanceof URIError ? badPathError() : e instanceof StoreError ? new ApiError(e.code, e.message, 400) : new ApiError(-1, 'Unknown error');
-      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof StoreError)) console.error(e);
+      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof StoreError)) logFault(e);
       send(err.status, { error: { code: err.code, message: err.message } });
     }
     return true;

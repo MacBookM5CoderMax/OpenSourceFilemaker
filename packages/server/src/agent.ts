@@ -24,6 +24,7 @@ import { DRY_RUN_MAX_BYTES, fitChanges } from './dry-run.ts';
 import { parseRequestJson } from './request-json.ts';
 import type { Host } from './host.ts';
 import { narrowPrivileges, type TokenScope } from './token-scope.ts';
+import { logFault } from './fault-log.ts';
 
 export type AgentStep =
   | { kind: 'find'; layout: string; query?: FindRequest[]; why?: string }
@@ -209,7 +210,7 @@ async function runStep(store: Store, step: AgentStep, state: RunState, who: { ac
       failed = true;
       if (e instanceof AgentError || e instanceof StoreError) message = e.message;
       else {
-        console.error(e);
+        logFault(e);
         message = 'The step stopped with an unexpected error';
       }
     }
@@ -410,7 +411,7 @@ export class AgentApi {
     } catch (e) {
       const err = e instanceof ApiError ? e : e instanceof AgentError || e instanceof CleanupError ? new ApiError(960, e.message, 400)
         : e instanceof StoreError ? new ApiError(e.code, e.message, e.code === 200 || e.code === 201 ? 403 : 400) : new ApiError(-1, 'Unknown error');
-      if (!(e instanceof ApiError) && !(e instanceof AgentError) && !(e instanceof CleanupError) && !(e instanceof StoreError)) console.error(e);
+      if (!(e instanceof ApiError) && !(e instanceof AgentError) && !(e instanceof CleanupError) && !(e instanceof StoreError)) logFault(e);
       send(err.status, { error: { code: err.code, message: err.message } });
     }
     return true;

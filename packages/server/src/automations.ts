@@ -35,6 +35,7 @@ import type { Host } from './host.ts';
 import { checkScript } from './script-check.ts';
 import { DRY_RUN_MAX_BYTES } from './dry-run.ts';
 import { HIDDEN_VALUE, containsSecret, secretName, storedSecretValues } from './ai-output.ts';
+import { logFault } from './fault-log.ts';
 
 export type AutomationEvent = 'create' | 'update' | 'createOrUpdate' | 'delete';
 
@@ -612,7 +613,7 @@ export class AutomationApi {
       }
     } catch (e) {
       const err = e instanceof ApiError ? e : e instanceof URIError ? badPathError() : e instanceof AutomationError ? new ApiError(960, e.message, 400) : e instanceof StoreError ? new ApiError(e.code, e.message, 400) : new ApiError(-1, 'Unknown error');
-      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof AutomationError) && !(e instanceof StoreError)) console.error(e);
+      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof AutomationError) && !(e instanceof StoreError)) logFault(e);
       send(err.status, { error: { code: err.code, message: err.message } });
     }
     return true;

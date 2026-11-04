@@ -81,6 +81,7 @@ import type { LogType } from './server-logs.ts';
 import { sameSecret } from './secrets.ts';
 import { frontMessage, Refusals, workerMessage, workerNote } from './cluster-messages.ts';
 import { OPEN_FAILURE_PER_WORKER_MAX } from './open-failures.ts';
+import { logFault } from './fault-log.ts';
 
 /** Where this process sits in its cluster. */
 export interface ClusterRole {
@@ -391,7 +392,7 @@ export class ClusterLink {
         try {
           l(change);
         } catch (e) {
-          console.error(e);
+          logFault(e);
         }
       }
     } else if (note.k === 'design') {

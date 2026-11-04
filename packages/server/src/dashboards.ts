@@ -21,6 +21,7 @@ import { StoreError, type FindRequest, type Privileges, type Store } from '../..
 import { ApiError, badPathError, readJson, sessionPrivileges, type DataApi } from './dataapi.ts';
 import type { Host } from './host.ts';
 import { summarizeRecords, type Measure, type Period } from './summarize.ts';
+import { logFault } from './fault-log.ts';
 
 export type WidgetKind = 'chart' | 'table' | 'number';
 export type ChartType = 'column' | 'bar' | 'line' | 'pie';
@@ -478,7 +479,7 @@ export class DashboardApi {
       }
     } catch (e) {
       const err = e instanceof ApiError ? e : e instanceof URIError ? badPathError() : e instanceof DashboardError ? new ApiError(960, e.message, 400) : e instanceof StoreError ? new ApiError(e.code, e.message, 400) : new ApiError(-1, 'Unknown error');
-      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof DashboardError) && !(e instanceof StoreError)) console.error(e);
+      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof DashboardError) && !(e instanceof StoreError)) logFault(e);
       send(err.status, { error: { code: err.code, message: err.message } });
     }
     return true;

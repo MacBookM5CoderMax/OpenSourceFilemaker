@@ -29,6 +29,7 @@ import { DESIGN_TABLE, DESIGN_SCRIPTS, DESIGN_TABLES, isDesignTable, StoreError,
 import { ApiError, badPathError, readJson, sessionPrivileges, type DataApi, type Session } from './dataapi.ts';
 import type { Host } from './host.ts';
 import { sameSecret } from './secrets.ts';
+import { logFault } from './fault-log.ts';
 
 const HEARTBEAT_MS = 20_000;
 /** Event streams one session may hold open at once (a person's windows and tabs); opening one more closes its oldest. */
@@ -235,7 +236,7 @@ export class Live {
       throw new ApiError(3, 'Command is unavailable', 405);
     } catch (e) {
       const err = e instanceof ApiError ? e : e instanceof StoreError ? new ApiError(e.code, e.message, 400) : e instanceof URIError ? badPathError() : new ApiError(-1, 'Unknown error');
-      if (!(e instanceof ApiError) && !(e instanceof StoreError) && !(e instanceof URIError)) console.error(e);
+      if (!(e instanceof ApiError) && !(e instanceof StoreError) && !(e instanceof URIError)) logFault(e);
       if (!res.headersSent) send(err.status, { error: { code: err.code, message: err.message } });
     }
     return true;

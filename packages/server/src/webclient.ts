@@ -520,7 +520,7 @@ export class WebClient {
       captureDenial(e);
       denialOperation.getStore()?.flush();
       const err = e instanceof ApiError ? e : e instanceof URIError ? badPathError() : e instanceof StoreError || e instanceof PrivilegeError ? new ApiError(e.code, e.message, 400, e.denial) : unknownError(e);
-      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof StoreError) && !(e instanceof PrivilegeError)) console.error(e);
+      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof StoreError) && !(e instanceof PrivilegeError)) logFault(e);
       send(err.status, { error: { code: err.code, message: err.message, ...(err.denial ? { denial: explainAccessDenial(err.denial) } : {}) } });
     }
     return true;
@@ -627,7 +627,7 @@ export class WebClient {
       captureDenial(e);
       denialOperation.getStore()?.flush();
       const err = e instanceof ApiError ? e : e instanceof URIError ? badPathError() : e instanceof StoreError || e instanceof PrivilegeError ? new ApiError(e.code, e.message, 400, e.denial) : unknownError(e);
-      if (!(e instanceof URIError) && !(e instanceof ApiError)) console.error(e);
+      if (!(e instanceof URIError) && !(e instanceof ApiError)) logFault(e);
       send(err.status, { error: { code: err.code, message: err.message, ...(err.denial ? { denial: explainAccessDenial(err.denial) } : {}) } });
     }
   }
@@ -2186,7 +2186,7 @@ export class WebClient {
       send(200, { stopped: mine?.size ?? 0 });
     } catch (e) {
       const err = e instanceof ApiError ? e : e instanceof URIError ? badPathError() : e instanceof StoreError || e instanceof PrivilegeError ? new ApiError(e.code, e.message, 400, e.denial) : unknownError(e);
-      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof StoreError) && !(e instanceof PrivilegeError)) console.error(e);
+      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof StoreError) && !(e instanceof PrivilegeError)) logFault(e);
       send(err.status, { error: { code: err.code, message: err.message, ...(err.denial ? { denial: explainAccessDenial(err.denial) } : {}) } });
     }
   }
@@ -2402,7 +2402,7 @@ export class WebClient {
       captureDenial(e);
       denialOperation.getStore()?.flush();
       const err = e instanceof ApiError ? e : e instanceof URIError ? badPathError() : e instanceof StoreError || e instanceof PrivilegeError ? new ApiError(e.code, e.message, 400, e.denial) : unknownError(e);
-      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof StoreError) && !(e instanceof PrivilegeError)) console.error(e);
+      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof StoreError) && !(e instanceof PrivilegeError)) logFault(e);
       send(err.status, { error: { code: err.code, message: err.message, ...(err.denial ? { denial: explainAccessDenial(err.denial) } : {}) } });
     }
   }

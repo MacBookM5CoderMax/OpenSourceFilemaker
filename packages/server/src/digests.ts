@@ -22,6 +22,7 @@ import { StoreError, type Privileges, type Store } from '../../store/src/index.t
 import { ApiError, badPathError, readJson, sessionPrivileges, type DataApi } from './dataapi.ts';
 import type { Host } from './host.ts';
 import { computeDashboard, Dashboards, mayChange, type Dashboard, type WidgetData } from './dashboards.ts';
+import { logFault } from './fault-log.ts';
 
 export interface Digest {
   id: string;
@@ -571,7 +572,7 @@ export class DigestApi {
       }
     } catch (e) {
       const err = e instanceof ApiError ? e : e instanceof URIError ? badPathError() : e instanceof DigestError ? new ApiError(960, e.message, 400) : e instanceof StoreError ? new ApiError(e.code, e.message, 400) : new ApiError(-1, 'Unknown error');
-      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof DigestError) && !(e instanceof StoreError)) console.error(e);
+      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof DigestError) && !(e instanceof StoreError)) logFault(e);
       send(err.status, { error: { code: err.code, message: err.message } });
     }
     return true;
