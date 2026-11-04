@@ -1,3 +1,4 @@
+import { statSync } from 'node:fs';
 import path from 'node:path';
 
 /** Names created by the server must also survive copying a folder to Windows. */
@@ -61,4 +62,21 @@ export function checkSqlExportPath(file: string, platform: NodeJS.Platform = pro
   checkPathLength(file, 0, platform, paths);
   const sidecar = paths.join(paths.dirname(file), name.replace(/\.sql$/i, '') + '.files', 't'.repeat(66), '9'.repeat(34) + '-' + 'f'.repeat(48));
   checkPathLength(sidecar, 0, platform, paths);
+}
+
+/**
+ * Whether two paths are the same file: the same path, or two names for one file (a name that differs only in case on a
+ * disk that ignores case, as macOS and Windows do by default, or a hard link), which share a device and an inode.
+ * Equal paths are the same file even when nothing is there; two different names are, only if both exist.
+ */
+export function sameFile(a: string, b: string): boolean {
+  if (a === b) return true;
+  try {
+    const x = statSync(a, { bigint: true });
+    const y = statSync(b, { bigint: true });
+    // A file system that gives no inode numbers (0) cannot say; the paths then decide.
+    return x.ino !== 0n && x.dev === y.dev && x.ino === y.ino;
+  } catch {
+    return false;
+  }
 }

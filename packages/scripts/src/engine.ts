@@ -1,4 +1,4 @@
-import { documentNamePart, checkPathLength } from '../../store/src/portable-path.ts';
+import { documentNamePart, checkPathLength, sameFile } from '../../store/src/portable-path.ts';
 // Runs FileMaker scripts against hosted stores, the way FileMaker Server runs
 // them for the Data API: no user interface, one window per file, found sets
 // kept as lists of record ids. Steps that need a screen (dialogs, web viewers,
@@ -6668,7 +6668,7 @@ export class ScriptEngine {
       if (!p.createFolders && !this.isDocumentsFolder(dirname(path))) throw new ScriptError(ERROR.missingFile, 'The folder is missing (Create folders is off)');
       mkdirSync(dirname(path), { recursive: true });
     }
-    if ([...this.dataFiles.values()].some((d) => d.path === path)) throw new ScriptError(ERROR.fileInUse, 'The file is open (Open Data File)');
+    if ([...this.dataFiles.values()].some((d) => sameFile(d.path, path))) throw new ScriptError(ERROR.fileInUse, 'The file is open (Open Data File)');
     if (existsSync(path) && statSync(path).isDirectory()) throw new ScriptError(ERROR.fileInUse, `"${basename(path)}" is a folder`);
     writeFileSync(path, data);
   }
@@ -7595,7 +7595,7 @@ export class ScriptEngine {
       this.opts.beforeFile?.(d.owner);
       return [id, d];
     };
-    const isOpen = (path: string) => [...this.dataFiles.values()].some((d) => d.path === path);
+    const isOpen = (path: string) => [...this.dataFiles.values()].some((d) => sameFile(d.path, path));
     switch (stepId) {
       case 188: { // Get File Exists
         let exists = false;
@@ -7690,7 +7690,7 @@ export class ScriptEngine {
         const name = asText(this.eval(f, p.newName ?? '')).trim();
         if (!documentNamePart(name) || (process.platform !== 'win32' && /[/\\:]/.test(name)) || name.startsWith('.')) throw new ScriptError(ERROR.missingFile, `"${name}" is not a file name`);
         const to = join(dirname(path), name);
-        if (existsSync(to)) throw new ScriptError(ERROR.fileInUse, `A file named "${name}" exists`);
+        if (existsSync(to) && !(to.toLowerCase() === path.toLowerCase() && sameFile(path, to))) /* only the case differs: allowed */ throw new ScriptError(ERROR.fileInUse, `A file named "${name}" exists`);
         renameEntrySync(path, to);
         return;
       }
