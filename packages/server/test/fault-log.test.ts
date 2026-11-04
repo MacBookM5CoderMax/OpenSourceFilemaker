@@ -5,6 +5,10 @@ import assert from 'node:assert/strict';
 import { faultLog, redactPaths } from '../src/fault-log.ts';
 import { SECRET_SEEDS } from '../../scripts/test/secret-seeds.ts';
 import { REDACTED } from '../../scripts/src/redaction.ts';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createStore, Store } from '../../store/src/index.ts';
 
 for (const [name, secret] of SECRET_SEEDS) test(`faults retain frames and cause chains while masking ${name}`, () => {
   const lines: unknown[] = [];
@@ -78,4 +82,21 @@ test('a capped minute flushes its dropped count at the boundary without another 
   timer!();
   assert.equal(lines.length, 2);
   assert.match(String(lines[1]), /^1 more faults/);
+});
+
+test("a store's change-listener fault has credentials masked once the server's fault log is loaded", (t) => {
+  const [name, secret] = SECRET_SEEDS[0];
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-listener-mask-'));
+  createStore(join(dir, 'M.sqlite'));
+  const store = new Store(join(dir, 'M.sqlite'), 'M');
+  const error = console.error;
+  const logged: string[] = [];
+  t.after(() => { console.error = error; store.close(); rmSync(dir, { recursive: true, force: true }); });
+  store.applyDesign([{ op: 'createTable', name: 'Items', fields: [{ name: 'Name' }] }]);
+  store.listeners.add(() => { throw new Error(`refused ${name}=${secret}`); });
+  console.error = (...a: unknown[]) => void logged.push(a.map(String).join(' '));
+  store.create('Items', { Name: 'a' });
+  assert.equal(logged.length, 1);
+  assert.ok(!logged[0].includes(secret), logged[0]);
+  assert.ok(logged[0].includes(`refused ${name}=${REDACTED}`), logged[0]);
 });

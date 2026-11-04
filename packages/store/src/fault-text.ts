@@ -2,10 +2,17 @@
 // the store package because the store cannot import the server; the server's fault-log.ts re-exports them.
 
 import { homedir } from 'node:os';
-import { redactDiagnosticText } from '../../scripts/src/redaction.ts';
 import { monotonicClock } from './monotonic.ts';
 
 export const FAULT_LOGS_PER_MINUTE = 20;
+
+// Credential masking lives in the scripts package, which the store may not import. The server registers it here when its
+// fault log loads (server/src/fault-log.ts), and every fault log, the store's included, looks it up at each line. Paths
+// are hidden either way.
+let maskCredentials: (text: string) => string = (text) => text;
+export function setCredentialMasking(mask: (text: string) => string): void {
+  maskCredentials = mask;
+}
 
 // The sink looks console.error up at each call, so a test that replaces it sees the lines.
 export interface FaultLog {
@@ -67,7 +74,7 @@ function diagnosticChain(error: unknown): string {
     current = current.cause;
   }
   // Redact together so a labelled value in one error is also hidden when echoed by a cause.
-  return redactPaths(redactDiagnosticText(parts.join('\nCaused by: ')));
+  return redactPaths(maskCredentials(parts.join('\nCaused by: ')));
 }
 
 export function faultLog(sink: (...args: unknown[]) => void = (...args) => console.error(...args), now: () => number = () => monotonicClock.now(), perMinute = FAULT_LOGS_PER_MINUTE,

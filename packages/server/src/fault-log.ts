@@ -4,10 +4,13 @@
 // logged when the next minute begins.
 
 import { redactDiagnosticText } from '../../scripts/src/redaction.ts';
-import { faultLog, type FaultLog } from '../../store/src/fault-text.ts';
+import { faultLog, setCredentialMasking, type FaultLog } from '../../store/src/fault-text.ts';
 
 // The path hiding, the cause chain and the per-minute cap are shared with the store (it cannot import the server).
 export { FAULT_LOGS_PER_MINUTE, faultLog, redactPaths, type FaultLog } from '../../store/src/fault-text.ts';
+
+// Every fault log, the store's listener log included, masks credentials once this module has loaded.
+setCredentialMasking((text) => redactDiagnosticText(text));
 
 /** The server's own log of faults, shared by the Data API and OData. */
 export const logFault: FaultLog = faultLog();
