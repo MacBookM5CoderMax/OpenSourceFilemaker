@@ -529,6 +529,7 @@
         "docs/reference/settings/environment/tabularius_oidc_issuer.md",
         "docs/reference/settings/environment/tabularius_oidc_name.md",
         "docs/reference/settings/environment/tabularius_oidc_trust_email.md",
+        "docs/reference/settings/environment/tabularius_oracle_trace.md",
         "docs/reference/settings/environment/tabularius_outbound_max_time_ms.md",
         "docs/reference/settings/environment/tabularius_password.md",
         "docs/reference/settings/environment/tabularius_pgwire_idle_ms.md",

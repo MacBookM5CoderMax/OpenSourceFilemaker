@@ -254,6 +254,13 @@
       "restart": "Read on each call.",
       "explainedBy": "docs/guides/running/external-sql-sources.md"
     },
+    "TABULARIUS_ORACLE_TRACE": {
+      "description": "Writes Oracle TNS packet direction, type and length to stderr during transport debugging. No packet body is logged. The Oracle transport is unverified against a real server.",
+      "default": "Off",
+      "accepted": "1, true, yes or on to trace; 0, false, no, off or empty for off",
+      "restart": "No restart; read for each packet.",
+      "explainedBy": "docs/environment-variables.md"
+    },
     "TABULARIUS_ENCRYPTION_KEY": {
       "description": "Passphrase used to unlock encrypted hosted files. A set-but-empty or whitespace-only value stops `serve`; unset it to run without encryption, or give a passphrase. Nonblank passphrases are used unchanged.",
       "default": "No encryption passphrase (unset); set but empty refuses to start",
