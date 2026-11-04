@@ -1077,7 +1077,11 @@ function serviceCommand(cmd: string, args: string[]): number {
   if (cmd === 'upgrade') {
     const backup = !bool(args, '--no-backup');
     const wait = wholeFlag(args, '--wait', { min: 1, max: 86400 });
+    requireValues(args, ['--from'], 'upgrade');
     const from = flag(args, '--from');
+    // A mistyped option must not start an upgrade from somewhere else (--form left GitHub as the source), nor a word that is no option.
+    refuseStrayOptions('upgrade', args, '--no-backup, --wait N and --from SOURCE');
+    if (args.length) throw new Error(`upgrade: takes no "${args[0]}"; it takes --no-backup, --wait N and --from SOURCE`);
     upgrade({
       ...(wait !== undefined ? { waitMs: wait * 1000 } : {}),
       ...(from ? { from } : {}),
@@ -1820,14 +1824,19 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'sync-log': {
+      const json = bool(args, '--json');
+      requireValues(args, ['--run'], 'sync-log');
+      const runId = flag(args, '--run');
+      const limit = wholeFlag(args, '--limit', { min: 1 }) ?? 200;
+      refuseStrayOptions('sync-log', args, '--run ID, --limit N and --json');
       const [database] = args;
       if (!database) throw new Error('sync-log: give a database');
       const file = join(path, database + STORE_EXT);
       if (!existsSync(file)) throw new Error(`sync-log: ${file} doesn't exist`);
       const store = openForPlanning(file);
       try {
-        const rows = readSyncLog(store, { runId: flag(args, '--run'), limit: wholeFlag(args, '--limit', { min: 1 }) ?? 200 });
-        if (bool(args, '--json')) console.log(JSON.stringify(rows, null, 2));
+        const rows = readSyncLog(store, { runId, limit });
+        if (json) console.log(JSON.stringify(rows, null, 2));
         else if (!rows.length) console.log('nothing has been sent to FileMaker yet');
         else for (const r of rows) console.log(`${r.at} ${r.runId.slice(0, 8)} ${r.op} ${r.status}${r.table ? ` ${r.table}` : ''}${r.uuid ? ` ${r.uuid}` : ''}${r.remoteRecordId ? ` (FileMaker record ${r.remoteRecordId}${r.modIdBefore ? `, modId ${r.modIdBefore}` : ''}${r.modIdAfter ? ` -> ${r.modIdAfter}` : ''})` : ''}${r.fields ? ` fields: ${r.fields.join(', ')}` : ''}${r.detail ? ` — ${r.detail}` : ''}`);
       } finally {
@@ -2177,8 +2186,10 @@ function main(argv: string[]): number {
     }
     case 'script-tests': {
       const only: string[] = [];
+      requireValues(args, ['--script'], 'script-tests');
       for (let v = flag(args, '--script'); v !== undefined; v = flag(args, '--script')) only.push(v);
       const json = bool(args, '--json');
+      refuseStrayOptions('script-tests', args, '--script NAME and --json');
       const host = new Host(path);
       trustCommandLine(host);
       const named = args[0] && !args[0].startsWith('--') ? args[0] : undefined;
@@ -2238,6 +2249,7 @@ function main(argv: string[]): number {
       const sqlOnly = bool(args, '--sql');
       const json = bool(args, '--json');
       const n = wholeFlag(args, '--n', { min: 1 }) ?? 200;
+      refuseStrayOptions('fidelity', args, '--sql, --n N and --json');
       const [database] = args;
       if (!database) throw new Error('fidelity: give a database');
       const file = join(path, database + STORE_EXT);
@@ -2281,6 +2293,7 @@ function main(argv: string[]): number {
       optionValue(args, '--fail-on', 'error or warning');
       const failOn = flag(args, '--fail-on') ?? 'warning';
       if (failOn !== 'error' && failOn !== 'warning') throw new Error(`check-solution: --fail-on is error or warning, not "${failOn}"`);
+      refuseStrayOptions('check-solution', args, '--json, --account A and --fail-on error|warning');
       const [database] = args;
       if (!database) throw new Error('check-solution: give a database');
       const file = join(path, database + STORE_EXT);
@@ -2308,7 +2321,9 @@ function main(argv: string[]): number {
     case 'stale-calcs': {
       const json = bool(args, '--json');
       const limit = wholeFlag(args, '--n', { min: 1 }) ?? 10_000;
+      requireValues(args, ['--table'], 'stale-calcs');
       const table = flag(args, '--table');
+      refuseStrayOptions('stale-calcs', args, '--table T, --n N and --json');
       const [database] = args;
       if (!database) throw new Error('stale-calcs: give a database');
       const file = join(path, database + STORE_EXT);

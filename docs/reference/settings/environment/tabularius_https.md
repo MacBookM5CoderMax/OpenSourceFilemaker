@@ -8,6 +8,6 @@
 | Accepted values | local, lan, or comma-separated DNS names |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1411](../../../../packages/cli/src/main.ts#L1411) |
+| Code | [packages/cli/src/main.ts:1415](../../../../packages/cli/src/main.ts#L1415) |
 
 [All environment variables](../../../environment-variables.md)

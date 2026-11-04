@@ -9,6 +9,6 @@
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | [`TABULARIUS_S3_ENDPOINT`](../environment/tabularius_s3_endpoint.md) |
 | Explained in | [docs/hosting-for-a-team.md](../../../hosting-for-a-team.md) |
-| Code | [packages/cli/src/main.ts:1489](../../../../packages/cli/src/main.ts#L1489) |
+| Code | [packages/cli/src/main.ts:1493](../../../../packages/cli/src/main.ts#L1493) |
 
 [All serve flags](../serve-flags.md)
