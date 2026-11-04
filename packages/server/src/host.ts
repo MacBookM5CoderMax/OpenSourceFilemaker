@@ -56,6 +56,9 @@ export const WEB_VIEWER_HOSTS_ALL_BYTES = 8000;
 const LINK_MAX_MS = 3600_000;
 const LINK_SKEW_MS = 60_000;
 
+/** One actionable warning per reference pair for the lifetime of this process. */
+const warnedFileReferences = new Set<string>();
+
 export class Host {
   readonly dir: string;
   readonly onApprove = new Set<(store: Store) => void>();
@@ -1268,7 +1271,19 @@ export class Host {
     this.stores.set(store.name.toLowerCase(), store);
     this.compactionClosing.delete(store.name.toLowerCase());
     // Multi-file solutions: layouts can use tables in other files hosted here.
-    store.resolveFile = (name) => this.get(name);
+    store.resolveFile = (name) => this.get(name); // Store's resolver wrapper enforces File Access on every call.
+    store.onReferenceRefused = (target) => {
+      const key = JSON.stringify([store.path, target.path]);
+      if (warnedFileReferences.has(key)) return;
+      warnedFileReferences.add(key);
+      const message = `File "${target.name}" requires authorization before "${store.name}" can use it: authorize "${store.name}" in ${target.name}${/s$/i.test(target.name) ? "'" : "'s"} File Access settings (design mode, Security).`;
+      this.logs?.write('Event', 'Warning', target.name, message);
+      this.log(message);
+    };
+    for (const other of this.openStores()) {
+      other.rememberFileAccessName(store);
+      store.rememberFileAccessName(other);
+    }
     // A password accepted in one file is tried in every other one hosted here (Store.crossFileProven).
     store.siblings = () => this.openStores();
     try {

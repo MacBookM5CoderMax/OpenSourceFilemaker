@@ -125,8 +125,38 @@ export const groups: RestGroup[] = [
       'custom functions, layouts, scripts and themes, plus the tools design mode uses (formula checks, layout Check and Fix, restyling, clipboard XML, ' +
       'where-used, the Database Design Report, the layout speed-up check and the component library shared by every file on the server). It signs in with the Data API\'s session tokens and needs [Full Access] on the file, as FileMaker\'s Manage Database does. ' +
       'Replies are plain JSON (no Data API envelope), sent with Cache-Control: no-store. ' + ERRORS,
-    anchors: [String.raw`/^\/tabularius\/design\/v1\/databases\/([^/]+)(?:\/(history|audit|report|ddr|docs|check|preview|restyle|modernize|import-tables|impact|pending(?:\/(?:apply|discard))?|suggest-rules|evaluate|snippet(?:\/copy)?|used|graph|scripts\/lint|scripts\/dry-run|layouts\/(\d+)|deleted(?:\/(\d+))?|themes\/(\d+)|images|layouts\/(\d+)\/(lint|fix|history|phone|speed)|script-tests(?:\/(run|record|[\w-]{1,64}))?|scripts\/(\d+)\/(history|profile|dry-run|refactor|compare|dependencies)|library(?:\/([0-9a-f]{12}))?))?$/.exec(`],
+    anchors: [String.raw`/^\/tabularius\/design\/v1\/databases\/([^/]+)(?:\/(file-access(?:\/(?:set|authorize|remove|reset))?|history|audit|report|ddr|docs|check|preview|restyle|modernize|import-tables|impact|pending(?:\/(?:apply|discard))?|suggest-rules|evaluate|snippet(?:\/copy)?|used|graph|scripts\/lint|scripts\/dry-run|layouts\/(\d+)|deleted(?:\/(\d+))?|themes\/(\d+)|images|layouts\/(\d+)\/(lint|fix|history|phone|speed)|script-tests(?:\/(run|record|[\w-]{1,64}))?|scripts\/(\d+)\/(history|profile|dry-run|refactor|compare|dependencies)|library(?:\/([0-9a-f]{12}))?))?$/.exec(`],
     routes: [
+      {
+        method: 'GET', path: D + '/file-access',
+        summary: "Read File Access settings and eligible hosted files.", permissions: DESIGN_PERM,
+        params: [DB],
+        example: { request: `GET ${DX}/file-access\n${AUTH}`, status: 200, response: j({ fileId: 'protected-file-id', protect: false, sameHost: false, authorized: [], hosted: ['Invoices', 'Reports'] }) },
+      },
+      {
+        method: 'POST', path: D + '/file-access/set',
+        summary: "Change File Access protection and the same-host flag.", permissions: DESIGN_PERM,
+        params: [DB, { name: 'protect', in: 'body', type: 'boolean', required: true, description: 'protect' }, { name: 'sameHost', in: 'body', type: 'boolean', required: true, description: 'sameHost' }],
+        example: { request: `POST ${DX}/file-access/set\n${AUTH}\nContent-Type: application/json\n\n${j({"protect": true, "sameHost": false} )}`, status: 200, response: j({ fileId: 'protected-file-id', protect: false, sameHost: false, authorized: [], hosted: ['Invoices', 'Reports'] }) },
+      },
+      {
+        method: 'POST', path: D + '/file-access/authorize',
+        summary: "Authorize another hosted file by its persistent identity; Full Access is required in both files.", permissions: DESIGN_PERM,
+        params: [DB, { name: 'file', in: 'body', type: 'string', required: true, description: 'file' }],
+        example: { request: `POST ${DX}/file-access/authorize\n${AUTH}\nContent-Type: application/json\n\n${j({"file": "Reports"} )}`, status: 200, response: j({ fileId: 'protected-file-id', protect: false, sameHost: false, authorized: [], hosted: ['Invoices', 'Reports'] }), skipReason: 'Needs a second hosted file; packages/server/test/ covers authorizing one file from another.' },
+      },
+      {
+        method: 'POST', path: D + '/file-access/remove',
+        summary: "Remove an authorized identity; its next reference is refused when protection is on.", permissions: DESIGN_PERM,
+        params: [DB, { name: 'fileId', in: 'body', type: 'string', required: true, description: 'fileId' }],
+        example: { request: `POST ${DX}/file-access/remove\n${AUTH}\nContent-Type: application/json\n\n${j({"fileId": "referencing-file-id"} )}`, status: 200, response: j({ fileId: 'protected-file-id', protect: false, sameHost: false, authorized: [], hosted: ['Invoices', 'Reports'] }) },
+      },
+      {
+        method: 'POST', path: D + '/file-access/reset',
+        summary: "Give this file a new identity, retaining its list; other files must authorize its new identity.", permissions: DESIGN_PERM,
+        params: [DB],
+        example: { request: `POST ${DX}/file-access/reset\n${AUTH}\nContent-Type: application/json\n\n${j({} )}`, status: 200, response: j({ fileId: 'protected-file-id', protect: false, sameHost: false, authorized: [], hosted: ['Invoices', 'Reports'] }) },
+      },
       {
         method: 'GET',
         path: D,

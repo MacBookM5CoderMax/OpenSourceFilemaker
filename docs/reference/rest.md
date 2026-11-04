@@ -5282,6 +5282,11 @@ Source: `packages/server/src/design.ts`
 
 | Method | Path | What it does |
 | --- | --- | --- |
+| GET | [`/tabularius/design/v1/databases/{database}/file-access`](#design-get-tabularius-design-v1-databases-database-file-access) | Read File Access settings and eligible hosted files. |
+| POST | [`/tabularius/design/v1/databases/{database}/file-access/set`](#design-post-tabularius-design-v1-databases-database-file-access-set) | Change File Access protection and the same-host flag. |
+| POST | [`/tabularius/design/v1/databases/{database}/file-access/authorize`](#design-post-tabularius-design-v1-databases-database-file-access-authorize) | Authorize another hosted file by its persistent identity; Full Access is required in both files. |
+| POST | [`/tabularius/design/v1/databases/{database}/file-access/remove`](#design-post-tabularius-design-v1-databases-database-file-access-remove) | Remove an authorized identity; its next reference is refused when protection is on. |
+| POST | [`/tabularius/design/v1/databases/{database}/file-access/reset`](#design-post-tabularius-design-v1-databases-database-file-access-reset) | Give this file a new identity, retaining its list; other files must authorize its new identity. |
 | GET | [`/tabularius/design/v1/databases/{database}`](#design-get-tabularius-design-v1-databases-database) | The file's whole design: tables with fields and record counts, occurrences, relationships, data sources, value lists, custom functions, menus, layouts, scripts and themes. |
 | POST | [`/tabularius/design/v1/databases/{database}`](#design-post-tabularius-design-v1-databases-database) | Applies a list of design changes, all or none, and returns them as applied with the new design; with ?preview=1 it describes them instead and saves nothing. |
 | GET | [`/tabularius/design/v1/databases/{database}/history`](#design-get-tabularius-design-v1-databases-database-history) | The latest 200 design changes made in Tabularius, oldest first, with who made them and when. |
@@ -5323,6 +5328,209 @@ Source: `packages/server/src/design.ts`
 | POST | [`/tabularius/design/v1/databases/{database}/library/{id}`](#design-post-tabularius-design-v1-databases-database-library-id) | Places a library component in this file, or brings this file's copy of it up to the latest version; with preview: true, shows what that would change without doing it. |
 | DELETE | [`/tabularius/design/v1/databases/{database}/library/{id}`](#design-delete-tabularius-design-v1-databases-database-library-id) | Takes a component out of the library. Files that placed it keep their own copies. |
 | GET | [`/tabularius/design/v1/databases/{database}/themes/{id}`](#design-get-tabularius-design-v1-databases-database-themes-id) | A theme in full: its element defaults and every named style, with their rules. |
+
+<a id="design-get-tabularius-design-v1-databases-database-file-access"></a>
+
+### `GET /tabularius/design/v1/databases/{database}/file-access`
+
+Read File Access settings and eligible hosted files.
+
+**Permissions:** A session token for this file (Authorization: Bearer …, or X-FM-Data-Access-Token), from a Data API sign-in (which needs fmrest) or the web client's (fmapp or fmwebdirect), or a scoped API token (ohbt_…) for this file; a token scoped to surfaces must include fmrest, and one for a local-only account works only from the server itself. The account must have the [Full Access] privilege set; any other set gets 403, code 9 ("Account "…" doesn't have full access, which design changes need").
+
+**Parameters:**
+
+| Name | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `database` | path | string | yes | The hosted file's name (URL-encoded). |
+
+**Example:**
+
+```http
+GET /tabularius/design/v1/databases/Invoices/file-access
+Authorization: Bearer 3f1d0c6e8a…
+```
+
+Response `200`:
+
+```json
+{
+  "fileId": "protected-file-id",
+  "protect": false,
+  "sameHost": false,
+  "authorized": [],
+  "hosted": [
+    "Invoices",
+    "Reports"
+  ]
+}
+```
+
+<a id="design-post-tabularius-design-v1-databases-database-file-access-set"></a>
+
+### `POST /tabularius/design/v1/databases/{database}/file-access/set`
+
+Change File Access protection and the same-host flag.
+
+**Permissions:** A session token for this file (Authorization: Bearer …, or X-FM-Data-Access-Token), from a Data API sign-in (which needs fmrest) or the web client's (fmapp or fmwebdirect), or a scoped API token (ohbt_…) for this file; a token scoped to surfaces must include fmrest, and one for a local-only account works only from the server itself. The account must have the [Full Access] privilege set; any other set gets 403, code 9 ("Account "…" doesn't have full access, which design changes need").
+
+**Parameters:**
+
+| Name | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `database` | path | string | yes | The hosted file's name (URL-encoded). |
+| `protect` | body | boolean | yes | protect |
+| `sameHost` | body | boolean | yes | sameHost |
+
+**Example:**
+
+```http
+POST /tabularius/design/v1/databases/Invoices/file-access/set
+Authorization: Bearer 3f1d0c6e8a…
+Content-Type: application/json
+
+{
+  "protect": true,
+  "sameHost": false
+}
+```
+
+Response `200`:
+
+```json
+{
+  "fileId": "protected-file-id",
+  "protect": false,
+  "sameHost": false,
+  "authorized": [],
+  "hosted": [
+    "Invoices",
+    "Reports"
+  ]
+}
+```
+
+<a id="design-post-tabularius-design-v1-databases-database-file-access-authorize"></a>
+
+### `POST /tabularius/design/v1/databases/{database}/file-access/authorize`
+
+Authorize another hosted file by its persistent identity; Full Access is required in both files.
+
+**Permissions:** A session token for this file (Authorization: Bearer …, or X-FM-Data-Access-Token), from a Data API sign-in (which needs fmrest) or the web client's (fmapp or fmwebdirect), or a scoped API token (ohbt_…) for this file; a token scoped to surfaces must include fmrest, and one for a local-only account works only from the server itself. The account must have the [Full Access] privilege set; any other set gets 403, code 9 ("Account "…" doesn't have full access, which design changes need").
+
+**Parameters:**
+
+| Name | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `database` | path | string | yes | The hosted file's name (URL-encoded). |
+| `file` | body | string | yes | file |
+
+**Example:**
+
+```http
+POST /tabularius/design/v1/databases/Invoices/file-access/authorize
+Authorization: Bearer 3f1d0c6e8a…
+Content-Type: application/json
+
+{
+  "file": "Reports"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "fileId": "protected-file-id",
+  "protect": false,
+  "sameHost": false,
+  "authorized": [],
+  "hosted": [
+    "Invoices",
+    "Reports"
+  ]
+}
+```
+
+<a id="design-post-tabularius-design-v1-databases-database-file-access-remove"></a>
+
+### `POST /tabularius/design/v1/databases/{database}/file-access/remove`
+
+Remove an authorized identity; its next reference is refused when protection is on.
+
+**Permissions:** A session token for this file (Authorization: Bearer …, or X-FM-Data-Access-Token), from a Data API sign-in (which needs fmrest) or the web client's (fmapp or fmwebdirect), or a scoped API token (ohbt_…) for this file; a token scoped to surfaces must include fmrest, and one for a local-only account works only from the server itself. The account must have the [Full Access] privilege set; any other set gets 403, code 9 ("Account "…" doesn't have full access, which design changes need").
+
+**Parameters:**
+
+| Name | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `database` | path | string | yes | The hosted file's name (URL-encoded). |
+| `fileId` | body | string | yes | fileId |
+
+**Example:**
+
+```http
+POST /tabularius/design/v1/databases/Invoices/file-access/remove
+Authorization: Bearer 3f1d0c6e8a…
+Content-Type: application/json
+
+{
+  "fileId": "referencing-file-id"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "fileId": "protected-file-id",
+  "protect": false,
+  "sameHost": false,
+  "authorized": [],
+  "hosted": [
+    "Invoices",
+    "Reports"
+  ]
+}
+```
+
+<a id="design-post-tabularius-design-v1-databases-database-file-access-reset"></a>
+
+### `POST /tabularius/design/v1/databases/{database}/file-access/reset`
+
+Give this file a new identity, retaining its list; other files must authorize its new identity.
+
+**Permissions:** A session token for this file (Authorization: Bearer …, or X-FM-Data-Access-Token), from a Data API sign-in (which needs fmrest) or the web client's (fmapp or fmwebdirect), or a scoped API token (ohbt_…) for this file; a token scoped to surfaces must include fmrest, and one for a local-only account works only from the server itself. The account must have the [Full Access] privilege set; any other set gets 403, code 9 ("Account "…" doesn't have full access, which design changes need").
+
+**Parameters:**
+
+| Name | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `database` | path | string | yes | The hosted file's name (URL-encoded). |
+
+**Example:**
+
+```http
+POST /tabularius/design/v1/databases/Invoices/file-access/reset
+Authorization: Bearer 3f1d0c6e8a…
+Content-Type: application/json
+
+{}
+```
+
+Response `200`:
+
+```json
+{
+  "fileId": "protected-file-id",
+  "protect": false,
+  "sameHost": false,
+  "authorized": [],
+  "hosted": [
+    "Invoices",
+    "Reports"
+  ]
+}
+```
 
 <a id="design-get-tabularius-design-v1-databases-database"></a>
 

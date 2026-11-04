@@ -6,7 +6,17 @@ import type { DatabaseSync } from 'node:sqlite';
 export function ensureCacheVersions(sql: DatabaseSync): void {
   sql.exec(`CREATE TABLE IF NOT EXISTS _fm_metadata_versions (
     id INTEGER PRIMARY KEY CHECK (id = 1), design INTEGER NOT NULL, privileges INTEGER NOT NULL);
-    INSERT OR IGNORE INTO _fm_metadata_versions VALUES (1, 0, 0)`);
+    INSERT OR IGNORE INTO _fm_metadata_versions (id, design, privileges) VALUES (1, 0, 0)`);
+  if (!(sql.prepare('PRAGMA table_info(_fm_metadata_versions)').all() as { name: string }[]).some((c) => c.name === 'fileAccess')) {
+    sql.exec("ALTER TABLE _fm_metadata_versions ADD COLUMN fileAccess TEXT NOT NULL DEFAULT ''");
+  }
+  // Random versions cannot be reused after a rollback, including raw SQL savepoints.
+  for (const op of ['INSERT', 'UPDATE', 'DELETE']) {
+    const row = op === 'DELETE' ? 'OLD' : 'NEW';
+    sql.exec(`CREATE TRIGGER IF NOT EXISTS _fm_meta_file_access_${op.toLowerCase()}
+      AFTER ${op} ON _fm_meta WHEN ${row}.key IN ('fileAccess', 'fileId')${op === 'UPDATE' ? " OR OLD.key IN ('fileAccess', 'fileId')" : ''}
+      BEGIN UPDATE _fm_metadata_versions SET fileAccess = lower(hex(randomblob(16))) WHERE id = 1; END`);
+  }
   for (const table of ['_fm_meta', '_fm_accounts', '_fm_privileges']) {
     if (!sql.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)) continue;
     for (const op of ['INSERT', 'UPDATE', 'DELETE']) {

@@ -265,13 +265,14 @@ export class Live {
   private files(store: Store): Set<Store> {
     const out = new Set<Store>([store]);
     for (const l of store.layouts()) {
-      const other = l.file ? this.host.get(l.file) : undefined;
+      const other = l.file ? store.resolveFile(l.file) : undefined;
       if (other) out.add(other);
     }
     return out;
   }
 
   private visibleRecord(home: Store, file: Store, table: string, id: number | undefined, p: Privileges, session: Session, deletedVisibility?: Change['deletedVisibility']): boolean {
+    if (home !== file && home.resolveFile(file.name) !== file) return false;
     if (isDesignTable(table)) return home === file && p.full;
     const owner = p.in(file);
     const rule = owner.table(table).view;

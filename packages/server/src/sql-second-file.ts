@@ -5,6 +5,7 @@ import type { Privileges, Store } from '../../store/src/index.ts';
 
 /** Why a query that runs in `target` for a connection to `connected` is refused for lack of the SQL privilege in `target`, if it is. */
 export function secondFileSqlRefusal(p: Privileges, target: Store, connected: Store): string | undefined {
+  if (target !== connected && !target.allowsReferenceFrom(connected)) return 'Unable to open file';
   if (target === connected || !target.sqlRequiresFmxdbc) return undefined;
   const there = p.in(target);
   return there.has('fmxdbc') ? undefined

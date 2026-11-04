@@ -2,7 +2,7 @@
 
 Generated with `node scripts/audit-cross-origin.ts` from the six modules in `scripts/reference/rest/`. Check with `--check`.
 
-Route-table entries after splitting methods: **456** (268 non-GET/HEAD; 188 GET/HEAD). All reads are included so data-bearing and stateful GETs cannot disappear behind a method-only filter.
+Route-table entries after splitting methods: **461** (272 non-GET/HEAD; 189 GET/HEAD). All reads are included so data-bearing and stateful GETs cannot disappear behind a method-only filter.
 
 Categories and exemption reasons: [audit](r25-08-csrf-cors-matrix.md). A is an ambient-credential origin guard; B is a bearer/header-token exemption from CSRF checks, never from authorization; U is an explicit URL capability; M is MCP; O is OAuth/OIDC; P is public; H is a webhook secret.
 
@@ -204,6 +204,11 @@ Handler: `packages/server/src/design.ts`.
 
 | Method | Route | Credential / invariant |
 | --- | --- | --- |
+| GET | `/tabularius/design/v1/databases/{database}/file-access` | B: explicit file token; no cookie |
+| POST | `/tabularius/design/v1/databases/{database}/file-access/set` | B: explicit file token; no cookie |
+| POST | `/tabularius/design/v1/databases/{database}/file-access/authorize` | B: explicit file token; no cookie |
+| POST | `/tabularius/design/v1/databases/{database}/file-access/remove` | B: explicit file token; no cookie |
+| POST | `/tabularius/design/v1/databases/{database}/file-access/reset` | B: explicit file token; no cookie |
 | GET | `/tabularius/design/v1/databases/{database}` | B: explicit file token; no cookie |
 | POST | `/tabularius/design/v1/databases/{database}` | B: explicit file token; no cookie |
 | GET | `/tabularius/design/v1/databases/{database}/history` | B: explicit file token; no cookie |

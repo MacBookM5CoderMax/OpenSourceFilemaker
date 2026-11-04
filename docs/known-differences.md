@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**261 entries in 32 areas.** Unverified: 126. Waiting on: 22 on a sample file, 154 on a FileMaker run or Design Report, 15 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
+**265 entries in 33 areas.** Unverified: 129. Waiting on: 22 on a sample file, 156 on a FileMaker run or Design Report, 15 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -232,6 +232,15 @@ part of it.
 | Revert Transaction clears pending record edits and unlocks records, ends the store transaction, and removes transaction-created records from found sets without undoing variables or queued client actions | A variable and a queued Freeze Window action survive while pending edits are discarded | A FileMaker run that sets a variable, queues a client action, creates a record and reverts | [docs/script-steps-support.md › Partly supported](script-steps-support.md) — “…Whether FileMaker has the same effects is unverified; matching behavior is not claimed. \| \|” |
 | That a trigger does not set itself off again while its own script runs (an OnRecordCommit script that commits) is inferred, not documented | A trigger script that commits does not recurse | A FileMaker run of that script | [docs/script-steps-support.md › Script triggers set off by steps](script-steps-support.md) — “commits, say); that FileMaker behaves the same is inferred, not documented.” |
 | OnWindowOpen following OnFirstWindowOpen, and running for windows a step opens in other files, are inferred from Claris's trigger list, not from a documented rule | The order or the other-file case may differ from FileMaker | A FileMaker run of a file with both triggers | [docs/script-steps-support.md › Script triggers set off by steps](script-steps-support.md) — “step opens in other files, is inferred from the same list.” |
+
+## Security
+
+| What differs or is unknown | How it shows | What would settle it | Where it is written |
+| --- | --- | --- | --- |
+| File Access settings are not imported from .fmp12 | Converted files start with protection off and require fresh authorizations | Decode a synthetic protected file and verify its settings | [docs/guides/running/accounts-and-privilege-sets.md › File Access](guides/running/accounts-and-privilege-sets.md) — “…converted file. The exact encoded settings are unverified.” |
+| File Access client-side error compatibility is unverified | Refused references use existing missing-file results | Compare refusal messages and codes with an authorized synthetic native solution | [docs/guides/running/accounts-and-privilege-sets.md › File Access](guides/running/accounts-and-privilege-sets.md) — “are unverified and are not matched here: a refused reference follows the existing missing-file path (including…” |
+| Native File Access revocation timing is unverified | Existing references are checked on every resolution rather than waiting for reopen | Compare revocation in an already-open native solution | [docs/guides/running/accounts-and-privilege-sets.md › File Access](guides/running/accounts-and-privilege-sets.md) — “the precise Reset All behavior are unverified offline; the hosted identity behavior above is explicit.” |
+| Native Reset All behavior is unverified | Reset changes the file ID and retains its authorization list | Compare identity and list changes after Reset All using synthetic files | [docs/guides/running/accounts-and-privilege-sets.md › File Access](guides/running/accounts-and-privilege-sets.md) — “the precise Reset All behavior are unverified offline; the hosted identity behavior above is explicit.” |
 
 ## Security checks
 

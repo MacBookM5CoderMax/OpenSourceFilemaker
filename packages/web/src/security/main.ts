@@ -3,6 +3,7 @@
 // pages' small DOM helpers and styles. Full access only (the server enforces
 // it); log in through the web client first.
 
+import { fileAccessTab } from '../design/file-access.ts';
 import { SecurityClient, SecurityError, type Change, type Security } from './client.ts';
 import { h, button, toast } from '../design/dom.ts';
 import { AssistantPanel, assistantInfo, type AssistantContext } from '../assistant.ts';
@@ -32,12 +33,13 @@ export function explain(sec: Sec, question: string): HTMLElement[] {
   return sec.ask ? [button('Explain with AI', () => sec.ask!(question), { title: 'Ask the assistant what this allows' })] : [];
 }
 
-type TabId = 'accounts' | 'sets' | 'extended' | 'tokens' | 'signin';
+type TabId = 'accounts' | 'sets' | 'extended' | 'tokens' | 'signin' | 'file-access';
 const TABS: [TabId, string, (s: Sec) => HTMLElement][] = [
   ['accounts', 'Accounts', accountsTab],
   ['sets', 'Privilege sets', privilegeSetsTab],
   ['extended', 'Extended privileges', extendedPrivilegesTab],
   ['tokens', 'API tokens', tokensTab],
+  ['file-access', 'File Access', fileAccessTab],
   ['signin', 'My sign-in', signinTab],
 ];
 

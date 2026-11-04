@@ -136,6 +136,11 @@ The examples below show each call's `arguments` and the text of the result's fir
 | [`audit_log`](#audit-log) | read-only | Who created, changed and deleted which records of a database, and when, oldest first. |
 | [`explain_record_history`](#explain-record-history) | read-only | What changed on one record and why, newest first: changes made together are one event (who, when, each field from and to), each change says how it came about where the design shows it (worked out by an auto-enter calculation from another field changed then, stamped with the modification time or account, looked up from a related record), which automation or data cleanup made it, and what else the same account changed in other tables at that moment. |
 | [`suggest_indexes`](#suggest-indexes) | read-only | Slow finds on this server and what would speed them up: each kind of find (table, fields searched, sort) that took 50 ms or more on average since the server started, with its timings, an index to add where a stored field has none (with why), and plain-English hints where no index helps (unstored calculations, criteria starting with *). |
+| [`get_file_access`](#get-file-access) | read-only | Read File Access protection, the authorized file identities and eligible hosted files. |
+| [`set_file_access`](#set-file-access) | destructive | Set File Access protection and the same-host flag. |
+| [`authorize_file`](#authorize-file) | destructive | Authorize a hosted file to reference this file by its persistent identity. |
+| [`deauthorize_file`](#deauthorize-file) | destructive | Remove an authorized file identity. |
+| [`reset_file_access_id`](#reset-file-access-id) | destructive | Reset this file identity, keeping its authorization list. |
 | [`get_security`](#get-security) | read-only | Accounts and privilege sets, as Manage Security shows them: each account's privilege set, whether it has a password (blankPassword: still the file's empty one), a second factor, is external or inactive; each privilege set's record, layout, value list and script access and extended privileges; the password policy; and API tokens (without their secrets). |
 | [`review_privileges`](#review-privileges) | read-only | A privilege audit in plain English: risky setups among the accounts and privilege sets, worst first, each as a sentence with where it is and what to do: full-access accounts with no password or only a password, guest access, extended privileges (Data API, OData, ODBC, ...) switched on that no recent sign-in uses, record-level limits that are true for every record, and unstored calculations a limited set can see that read records it can't view. |
 | [`check_change_impact`](#check-change-impact) | read-only | Before renaming or deleting a field, table, layout, value list or script: everything that uses it and whether each use breaks. |
@@ -5315,6 +5320,224 @@ Result:
 ```
 
 Read-only: nothing is indexed. With no slow finds the result is {"finds": [], "note": "No slow finds since the server started."}.
+
+<a id="get-file-access"></a>
+
+### `get_file_access`
+
+Read File Access protection, the authorized file identities and eligible hosted files. Requires Full Access.
+
+**Hints:** read-only
+
+**Permissions:** [Full Access] in the file, or the server administrator; any other privilege set (even one that can modify scripts) is refused, and so is a scoped API token.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `database` | string | yes | Hosted database name |
+
+**Example:**
+
+```json
+{
+  "name": "get_file_access",
+  "arguments": {
+    "database": "Invoices"
+  }
+}
+```
+
+Result:
+
+```json
+{
+  "fileId": "protected-file-id",
+  "protect": false,
+  "sameHost": false,
+  "authorized": [],
+  "hosted": [
+    "Invoices",
+    "Reports"
+  ]
+}
+```
+
+<a id="set-file-access"></a>
+
+### `set_file_access`
+
+Set File Access protection and the same-host flag. Requires Full Access. All files on this server meet the same-host condition.
+
+**Hints:** destructive
+
+**Permissions:** [Full Access] in the file, or the server administrator; any other privilege set (even one that can modify scripts) is refused, and so is a scoped API token.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `database` | string | yes | Hosted database name |
+| `protect` | boolean | yes | true refuses references from files that are not authorized |
+| `sameHost` | boolean | yes | Whether the same-host condition is on; every file on this server meets it |
+
+**Example:**
+
+```json
+{
+  "name": "set_file_access",
+  "arguments": {
+    "database": "Invoices",
+    "protect": true,
+    "sameHost": false
+  }
+}
+```
+
+Result:
+
+```json
+{
+  "fileId": "protected-file-id",
+  "protect": false,
+  "sameHost": false,
+  "authorized": [],
+  "hosted": [
+    "Invoices",
+    "Reports"
+  ]
+}
+```
+
+<a id="authorize-file"></a>
+
+### `authorize_file`
+
+Authorize a hosted file to reference this file by its persistent identity. Requires Full Access in both files; record privileges still apply.
+
+**Hints:** destructive
+
+**Permissions:** [Full Access] in the file, or the server administrator; any other privilege set (even one that can modify scripts) is refused, and so is a scoped API token. Authorization also requires Full Access in the referencing file.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `database` | string | yes | Hosted database name |
+| `file` | string | yes | Hosted database name |
+
+**Example:**
+
+```json
+{
+  "name": "authorize_file",
+  "arguments": {
+    "database": "Invoices",
+    "file": "Reports"
+  }
+}
+```
+
+Result:
+
+```json
+{
+  "fileId": "protected-file-id",
+  "protect": false,
+  "sameHost": false,
+  "authorized": [],
+  "hosted": [
+    "Invoices",
+    "Reports"
+  ]
+}
+```
+
+<a id="deauthorize-file"></a>
+
+### `deauthorize_file`
+
+Remove an authorized file identity. Its references are refused on their next resolution when protection is on. Requires Full Access.
+
+**Hints:** destructive
+
+**Permissions:** [Full Access] in the file, or the server administrator; any other privilege set (even one that can modify scripts) is refused, and so is a scoped API token.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `database` | string | yes | Hosted database name |
+| `fileId` | string | yes | The file identity to remove, as get_file_access shows it |
+
+**Example:**
+
+```json
+{
+  "name": "deauthorize_file",
+  "arguments": {
+    "database": "Invoices",
+    "fileId": "referencing-file-id"
+  }
+}
+```
+
+Result:
+
+```json
+{
+  "fileId": "protected-file-id",
+  "protect": false,
+  "sameHost": false,
+  "authorized": [],
+  "hosted": [
+    "Invoices",
+    "Reports"
+  ]
+}
+```
+
+<a id="reset-file-access-id"></a>
+
+### `reset_file_access_id`
+
+Reset this file identity, keeping its authorization list. Other files that authorized its old identity must authorize it again. Requires Full Access.
+
+**Hints:** destructive
+
+**Permissions:** [Full Access] in the file, or the server administrator; any other privilege set (even one that can modify scripts) is refused, and so is a scoped API token.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+| --- | --- | --- | --- |
+| `database` | string | yes | Hosted database name |
+
+**Example:**
+
+```json
+{
+  "name": "reset_file_access_id",
+  "arguments": {
+    "database": "Invoices"
+  }
+}
+```
+
+Result:
+
+```json
+{
+  "fileId": "protected-file-id",
+  "protect": false,
+  "sameHost": false,
+  "authorized": [],
+  "hosted": [
+    "Invoices",
+    "Reports"
+  ]
+}
+```
 
 <a id="get-security"></a>
 

@@ -1,5 +1,10 @@
 // Design mode over HTTP: read a solution's full design and change it.
 //
+//   GET  /tabularius/design/v1/databases/{db}/file-access           File Access settings and eligible hosted files (Full Access).
+//   POST /tabularius/design/v1/databases/{db}/file-access/set       {protect, sameHost}: change protection (Full Access).
+//   POST /tabularius/design/v1/databases/{db}/file-access/authorize {file}: authorize a hosted file (Full Access in both).
+//   POST /tabularius/design/v1/databases/{db}/file-access/remove    {fileId}: remove authorization (Full Access).
+//   POST /tabularius/design/v1/databases/{db}/file-access/reset     reset this file's identity (Full Access).
 //   GET  /tabularius/design/v1/databases/{db}               tables, fields, occurrences, relationships, value lists,
 //                                                          custom functions, layouts, scripts, themes
 //   GET  /tabularius/design/v1/databases/{db}/layouts/{id}  a layout's design, as stored (for the layout editor)
@@ -69,6 +74,7 @@
 // an account with the [Full Access] privilege set, or one set up on the server
 // with `tabularius passwd` that the file itself does not define.
 
+import { manageFileAccess, type FileAccessOperation } from './file-access.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { DesignError, StoreError, speedContext, speedMoveFromIdea, speedPlan, type SpeedIdea, checkStoreFormula, cleanScriptTest, phoneFingerprint, phoneDesign, PHONE_WIDTH, designReport, lintLayout, lintScript, refactorHints, parseScriptText as parseStoreScriptText, type LintStep, fixLayout, storeStats, places, syncPlaced, adaptObjects, tokensFromTheme, imageIds, portableObjects, parseScriptText, type LintIssue, designSnippet, isLayoutSnippet, layoutObjectsFromSnippet, layoutSnippet, snippetChanges, type SnippetPick, type DesignOp, type FormulaContext, type ScriptTest, type ScriptTestExpect, type Store } from '../../store/src/index.ts';
 import { lintScriptText } from './script-check.ts';
@@ -690,7 +696,7 @@ export class DesignApi {
 
   /** Returns false when the request is not for design mode. */
   async handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
-    const m = /^\/tabularius\/design\/v1\/databases\/([^/]+)(?:\/(history|audit|report|ddr|docs|check|preview|restyle|modernize|import-tables|impact|pending(?:\/(?:apply|discard))?|suggest-rules|evaluate|snippet(?:\/copy)?|used|graph|scripts\/lint|scripts\/dry-run|layouts\/(\d+)|deleted(?:\/(\d+))?|themes\/(\d+)|images|layouts\/(\d+)\/(lint|fix|history|phone|speed)|script-tests(?:\/(run|record|[\w-]{1,64}))?|scripts\/(\d+)\/(history|profile|dry-run|refactor|compare|dependencies)|library(?:\/([0-9a-f]{12}))?))?$/.exec(url.pathname);
+    const m = /^\/tabularius\/design\/v1\/databases\/([^/]+)(?:\/(file-access(?:\/(?:set|authorize|remove|reset))?|history|audit|report|ddr|docs|check|preview|restyle|modernize|import-tables|impact|pending(?:\/(?:apply|discard))?|suggest-rules|evaluate|snippet(?:\/copy)?|used|graph|scripts\/lint|scripts\/dry-run|layouts\/(\d+)|deleted(?:\/(\d+))?|themes\/(\d+)|images|layouts\/(\d+)\/(lint|fix|history|phone|speed)|script-tests(?:\/(run|record|[\w-]{1,64}))?|scripts\/(\d+)\/(history|profile|dry-run|refactor|compare|dependencies)|library(?:\/([0-9a-f]{12}))?))?$/.exec(url.pathname);
     if (!m) return false;
     const send = (status: number, body: unknown) => {
       res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
@@ -704,9 +710,21 @@ export class DesignApi {
       const privileges = sessionPrivileges(store, session);
       // Another hosted file's tables, for occurrences into it, only when this account may design that file too.
       const mayDesign = (o: Store) => privileges.in(o).full;
-      const other = (name: string) => { const o = this.host.get(name); return o && mayDesign(o) ? o : undefined; };
+      const other = (name: string) => { const o = store.resolveFile(name); return o && mayDesign(o) ? o : undefined; };
       if (!privileges.full) throw new ApiError(9, `Account "${session.account}" doesn't have full access, which design changes need`, 403);
-      if (req.method === 'GET' && m[2] === 'history') send(200, { history: store.designHistory() });
+      if (m[2]?.startsWith('file-access')) {
+        const operation = (m[2].split('/')[1] ?? 'get') as FileAccessOperation;
+        if (req.method !== (operation === 'get' ? 'GET' : 'POST')) throw new ApiError(960, 'Unsupported File Access method', 405);
+        const body = operation === 'get' ? {} : await readJson(req);
+        const current = this.api.authorize(req, db);
+        if (this.host.get(db) !== store) throw new ApiError(802, 'Unable to open file', 404);
+        try { send(200, manageFileAccess(this.host, store, sessionPrivileges(store, current), operation, body)); }
+        catch (error) {
+          if (error instanceof StoreError && error.code === 9) throw new ApiError(9, error.message, 403);
+          throw error;
+        }
+      }
+      else if (req.method === 'GET' && m[2] === 'history') send(200, { history: store.designHistory() });
       else if (req.method === 'GET' && m[2] === 'ddr') {
         const xml = designReport(store.schema, store.designs(), { fileName: `${db}.fmp12`, records: (t) => recordCount(store, t) ?? undefined });
         res.writeHead(200, { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'no-store', 'content-disposition': `attachment; filename="${encodeURIComponent(db)}_ddr.xml"` });

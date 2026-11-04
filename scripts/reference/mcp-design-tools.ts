@@ -9,6 +9,26 @@ import type { McpToolNotes } from './types.ts';
 const FULL = '[Full Access] in the file, or the server administrator; any other privilege set (even one that can modify scripts) is refused, and so is a scoped API token.';
 
 export const tools: Record<string, McpToolNotes> = {
+  get_file_access: {
+    permissions: FULL,
+    example: { arguments: {"database": "Invoices"}, response: JSON.stringify({ fileId: 'protected-file-id', protect: false, sameHost: false, authorized: [], hosted: ['Invoices', 'Reports'] }, null, 2) },
+  },
+  set_file_access: {
+    permissions: FULL,
+    example: { arguments: {"database": "Invoices", "protect": true, "sameHost": false}, response: JSON.stringify({ fileId: 'protected-file-id', protect: false, sameHost: false, authorized: [], hosted: ['Invoices', 'Reports'] }, null, 2) },
+  },
+  authorize_file: {
+    permissions: FULL + ' Authorization also requires Full Access in the referencing file.',
+    example: { arguments: {"database": "Invoices", "file": "Reports"}, response: JSON.stringify({ fileId: 'protected-file-id', protect: false, sameHost: false, authorized: [], hosted: ['Invoices', 'Reports'] }, null, 2), skipReason: 'Needs a second hosted file; packages/server/test/ covers authorizing one file from another.' },
+  },
+  deauthorize_file: {
+    permissions: FULL,
+    example: { arguments: {"database": "Invoices", "fileId": "referencing-file-id"}, response: JSON.stringify({ fileId: 'protected-file-id', protect: false, sameHost: false, authorized: [], hosted: ['Invoices', 'Reports'] }, null, 2) },
+  },
+  reset_file_access_id: {
+    permissions: FULL,
+    example: { arguments: {"database": "Invoices"}, response: JSON.stringify({ fileId: 'protected-file-id', protect: false, sameHost: false, authorized: [], hosted: ['Invoices', 'Reports'] }, null, 2) },
+  },
   get_design: {
     permissions: FULL,
     example: {

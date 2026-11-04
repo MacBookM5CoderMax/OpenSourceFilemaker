@@ -38,3 +38,30 @@ Sign out of Full Access and sign in as the new account. Try the normal task, the
 
 - [Security defaults](../../security-defaults.md) · [Data API compatibility](../../data-api-compatibility.md) · [Known differences](../../known-differences.md)
 - Tabularius permission checks are described here from this repository's implementation. FileMaker privilege semantics beyond statements documented by Claris are **inferred** and need a FileMaker comparison. <!-- known-difference: Privileges and security ;; FileMaker privilege semantics beyond what Claris documents are inferred, not verified ;; A privilege check may differ from FileMaker's in a case Claris does not document ;; A FileMaker comparison run of the privilege case -->
+
+## File Access
+
+In design mode, open **Security → File Access** to require authorization before another hosted file can use this file’s
+tables, layouts, scripts or value lists through a data source. Full Access is required to read or change these settings,
+and authorizing a file requires Full Access in both files. Authorization never grants record access: accounts and record
+privileges in the data file still apply. Turning protection off removes the reference restriction.
+
+Authorizations identify files by their stored ID, with the names seen, authorization time and acting account. Renaming a
+hosted file adds its new name without losing authorization. A copied store keeps its ID and authorization list; a new
+store starts with only itself authorized. Removing the self-entry also blocks explicit data sources pointing at the same
+file, while ordinary local access continues. Design exports do not include File Access metadata. **Reset All** assigns a
+new ID and keeps this file’s list; files that authorized the old identity must authorize the new identity.
+
+The reader cannot decode File Access from a `.fmp12`, so converted files start with protection off. Turn it on again and
+authorize the files that use the converted file. The exact encoded settings are unverified.
+<!-- known-difference: Security ;; File Access settings are not imported from .fmp12 ;; Converted files start with protection off and require fresh authorizations ;; Decode a synthetic protected file and verify its settings -->
+
+The same-host flag is stored; all files hosted on this server meet it. FileMaker’s client-side refusal message and code
+are unverified and are not matched here: a refused reference follows the existing missing-file path (including error 100
+for Open File and Perform Script), without revealing another file’s design.
+<!-- known-difference: Security ;; File Access client-side error compatibility is unverified ;; Refused references use existing missing-file results ;; Compare refusal messages and codes with an authorized synthetic native solution -->
+
+Revocation takes effect at the next reference resolution here, including already-open solutions. Native reopen timing and
+the precise Reset All behavior are unverified offline; the hosted identity behavior above is explicit.
+<!-- known-difference: Security ;; Native File Access revocation timing is unverified ;; Existing references are checked on every resolution rather than waiting for reopen ;; Compare revocation in an already-open native solution -->
+<!-- known-difference: Security ;; Native Reset All behavior is unverified ;; Reset changes the file ID and retains its authorization list ;; Compare identity and list changes after Reset All using synthetic files -->

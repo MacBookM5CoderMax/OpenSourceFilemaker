@@ -1,3 +1,4 @@
+import { sameSecret } from './same-secret.ts';
 import { Privileges, type Level, type PrivilegeDefinition, type TablePrivileges } from './privileges.ts';
 import type { Store } from './store.ts';
 
@@ -42,7 +43,7 @@ function readOnly(set: PrivilegeDefinition): void {
 }
 
 /** The account's privileges in `store`, narrowed to the token's scope. */
-export function narrowPrivileges(store: Store, p: Privileges, scope: TokenScope | undefined, fileId = store.fileId): Privileges {
+export function narrowPrivileges(store: Store, p: Privileges, scope: TokenScope | undefined, fileId = store.tokenScopeId): Privileges {
   if (!scoped(scope)) return p;
   const fixed = structuredClone(scope!);
   const credential: CredentialCeiling = { fileId, ...(fixed.readOnly ? { readOnly: true } : {}), ...(fixed.layouts?.length ? { layouts: [...fixed.layouts] } : {}) };
@@ -52,7 +53,7 @@ export function narrowPrivileges(store: Store, p: Privileges, scope: TokenScope 
     const cached = cache.get(p);
     if (cached) return cached;
     const file = p.file as Store;
-    const origin = fileId ? file.fileId === fileId : p.file === store;
+    const origin = fileId ? sameSecret(file.tokenScopeId, fileId) : p.file === store;
     // Layout names belong to the token's file; the read-only ceiling follows into every file.
     if (!origin && !fixed.readOnly) {
       const other = p.withCeiling(ceiling, credential);

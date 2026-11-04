@@ -34,6 +34,7 @@ export const SECURITY_EVENT_KINDS = [
   'file-restored', 'sessions-ended',
   'script-network-on', 'script-network-off',
   'file-approved',
+  'file-access-changed', 'file-access-authorized', 'file-access-deauthorized', 'file-access-reset', 'file-access-name-updated',
   'sql-privilege-required', 'sql-privilege-not-required',
   'web-viewer-hosts-changed',
   'standby-takeover',
@@ -73,6 +74,7 @@ export const SECURITY_EVENT_CATEGORIES: Record<string, readonly SecurityEventKin
   'Plug-ins': ['plugin-installed', 'plugin-install-refused'],
   'Restore and sessions': ['file-restored', 'sessions-ended'],
   'Script network access': ['script-network-on', 'script-network-off'],
+  'File Access': ['file-access-changed', 'file-access-authorized', 'file-access-deauthorized', 'file-access-reset', 'file-access-name-updated'],
   'Held files': ['file-approved'],
   'SQL access': ['sql-privilege-required', 'sql-privilege-not-required'],
   'Web viewer hosts': ['web-viewer-hosts-changed'],
@@ -104,6 +106,7 @@ export type SecurityEventSeverity = 'alert' | 'notice' | 'info';
 
 const ALERT = new Set<string>(['sign-in-failed', 'locked-out', 'accounts-import-rejected', 'plugin-install-refused', 'data-export-refused']);
 const NOTICE = new Set<string>([
+  'file-access-changed', 'file-access-authorized', 'file-access-reset',
   'account-removed', 'account-disabled', 'account-local-only-cleared',
   'lockout-cleared', 'file-restored',
   'account-require-2fa-cleared', 'require-2fa-cleared',
@@ -188,6 +191,11 @@ export function describeSecurityEvent(e: AuditEntry): string {
       const kept = d.keptTokens === true;
       return `Taken over from a standby of ${str(d.standbyOf) ?? 'another server'}; its copy was last updated ${str(d.lastChange) ?? 'at an unknown time'}. ${kept ? 'API tokens kept' : `${num(d.tokensEnded) ?? 0} API token${num(d.tokensEnded) === 1 ? '' : 's'} ended`}. Accounts, passwords and privileges changed on the main server after that are not here: review them`;
     }
+    case 'file-access-changed': return `File Access protection ${d.protect ? 'enabled' : 'disabled'}; same-host requirement ${d.sameHost ? 'enabled' : 'disabled'}`;
+    case 'file-access-authorized': return `Authorized file${t} to use references to this file`;
+    case 'file-access-deauthorized': return `Removed File Access authorization for${t}`;
+    case 'file-access-name-updated': return `Recorded another name for an authorized file:${t}`;
+    case 'file-access-reset': return 'Reset this file’s identity; other files must authorize its new identity';
     case 'file-approved': return `This file was approved to run its scripts, schedules, automations, digests, hooks and connections${str(d.reason) ? ` (it was held: ${str(d.reason)})` : ''}`;
     case 'file-restored': return str(d.mode) === 'replace'
       ? `${str(d.source) ?? 'This file'} was put back as it was at ${str(d.asOf) ?? '?'}, over the live file`

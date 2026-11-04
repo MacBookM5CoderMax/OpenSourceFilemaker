@@ -1,3 +1,4 @@
+import { validFileAccess, type FileAccess } from './file-access.ts';
 import { narrowPrivileges, type CredentialCeiling } from './token-scope.ts';
 import { sortProgress } from './cooperative.ts';
 // An imported solution, opened for reading and writing. Values cross this
@@ -133,6 +134,8 @@ export interface LayoutPlan {
 export type PortalPaging = Record<string, { offset?: number; limit?: number; ids?: number[] }>;
 
 export interface LayoutInfo {
+  /** Preserve the data-source boundary when a caller retains this resolved layout/occurrence. */
+  reference?: { from: Store; file: string };
   name: string;
   table: string;
   occurrence: string;
@@ -979,7 +982,13 @@ export class Store {
   set onDiskTrouble(fn: ((trouble: DiskTrouble) => void) | undefined) { this.damageWatch.onDiskTrouble = fn; }
   readonly path: string;
   readonly name: string;
-  readonly fileId: string;
+  private initialFileId: string;
+  /** Token ceilings must keep their original file boundary when File Access resets its identity. */
+  readonly tokenScopeId: string;
+  private fileAccessReady = false;
+  private fileAccessVersionQuery?: StatementSync;
+  private fileAccessCache?: { version: string; id: string; state: FileAccess; ids: Set<string> };
+  get fileId(): string { return this.fileAccessReady ? this.referenceSecurity().id : this.initialFileId; }
   /** Whether `fileId` is stored in the file, so a later open of the same path can be checked against it. */
   private readonly fileIdSaved: boolean;
   held?: { reason: string; since: string };
@@ -1058,7 +1067,110 @@ export class Store {
   private layoutDesignCache = new PreparedCache(new Map<number, LayoutDesign>(), (value) => new Map(value));
   private themesCache = new PreparedCache<LayoutDesigns['themes'] | undefined>(undefined);
   /** Finds another hosted file by name, for layouts whose table lives there (set by the host). */
-  resolveFile: (name: string) => Store | undefined = () => undefined;
+  private fileResolver: (name: string) => Store | undefined = () => undefined;
+  /** Every assignment (host, CLI, or scratch copy) retains the File Access boundary. */
+  set resolveFile(resolve: (name: string) => Store | undefined) {
+    this.fileResolver = (name) => {
+      const target = resolve(name);
+      if (!target || target.allowsReferenceFrom(this)) return target;
+      this.onReferenceRefused?.(target);
+      return undefined;
+    };
+  }
+  get resolveFile(): (name: string) => Store | undefined { return this.fileResolver; }
+  onReferenceRefused?: (target: Store) => void;
+
+  private referenceSecurity() {
+    const { fileAccess: version } = (this.fileAccessVersionQuery ??= this.sql.prepare('SELECT fileAccess FROM _fm_metadata_versions WHERE id = 1')).get() as { fileAccess: string };
+    if (this.fileAccessCache?.version === version) return this.fileAccessCache;
+    const state: unknown = this.meta('fileAccess');
+    const id: unknown = this.meta('fileId');
+    if (!validFileAccess(state) || typeof id !== 'string') throw new StoreError(960, 'File Access metadata is invalid; restore the file from a verified backup');
+    return this.fileAccessCache = { version, id, state, ids: new Set(state.authorized.map((a) => a.fileId)) };
+  }
+
+  private requireFileAccess(account: string | Privileges): void {
+    if (!(typeof account === 'string' ? this.privileges(account) : account.in(this)).full) throw new StoreError(9, 'File Access settings require Full Access');
+  }
+
+  /** Internal readers omit the account; public surfaces must supply their authenticated account. */
+  fileAccess(account?: string | Privileges): FileAccess {
+    if (account !== undefined) this.requireFileAccess(account);
+    return structuredClone(this.referenceSecurity().state);
+  }
+
+  private writeFileAccess(state: FileAccess): void {
+    this.sql.prepare("UPDATE _fm_meta SET json = ? WHERE key = 'fileAccess'").run(JSON.stringify(state));
+  }
+
+  setFileAccess(settings: { protect: boolean; sameHost: boolean }, account: string | Privileges): void {
+    this.securityChange(() => {
+      this.requireFileAccess(account);
+      if (typeof settings.protect !== 'boolean' || typeof settings.sameHost !== 'boolean') throw new StoreError(960, 'File Access options must be booleans');
+      this.writeFileAccess({ ...this.fileAccess(), protect: settings.protect, sameHost: settings.sameHost });
+      this.logSecurity('file-access-changed', { account: typeof account === 'string' ? account : account.account, detail: settings });
+    });
+  }
+
+  authorizeFile(other: Store, account: string | Privileges): void {
+    this.securityChange(() => {
+      this.requireFileAccess(account);
+      other.requireFileAccess(account);
+      const state = this.fileAccess();
+      const entry = state.authorized.find((a) => a.fileId === other.fileId);
+      if (entry) {
+        if (!entry.names.includes(other.name)) entry.names.push(other.name);
+      } else {
+        state.authorized.push({ fileId: other.fileId, names: [other.name], at: new Date().toISOString(), by: typeof account === 'string' ? account : account.account });
+      }
+      this.writeFileAccess(state);
+      this.logSecurity('file-access-authorized', { account: typeof account === 'string' ? account : account.account, target: other.name });
+    });
+  }
+
+  deauthorizeFile(fileId: string, account: string | Privileges): void {
+    this.securityChange(() => {
+      this.requireFileAccess(account);
+      const state = this.fileAccess();
+      state.authorized = state.authorized.filter((a) => a.fileId !== fileId);
+      this.writeFileAccess(state);
+      this.logSecurity('file-access-deauthorized', { account: typeof account === 'string' ? account : account.account, target: fileId });
+    });
+  }
+
+  resetFileAccessId(account: string | Privileges): void {
+    this.securityChange(() => {
+      this.requireFileAccess(account);
+      // Preserve existing token and pending-change ceilings across this identity rotation and subsequent opens.
+      this.sql.prepare('INSERT OR IGNORE INTO _fm_meta (key, json) VALUES (?, ?)').run('tokenScopeId', JSON.stringify(this.tokenScopeId));
+      // The authorization list survives a clone/reset. Exact native reset behavior is unverified offline.
+      this.sql.prepare("UPDATE _fm_meta SET json = ? WHERE key = 'fileId'").run(JSON.stringify(randomUUID()));
+      this.logSecurity('file-access-reset', { account: typeof account === 'string' ? account : account.account });
+    });
+  }
+
+  allowsReferenceFrom(other: Store): boolean {
+    const access = this.referenceSecurity();
+    // Explicit self data sources use this path too; ordinary local table access does not.
+    // All stores hosted by this server meet sameHost; multi-host enforcement is not implemented.
+    return !access.state.protect || access.ids.has(other.fileId);
+  }
+
+  /** A hosted rename/copy learns a display name without changing the identity or grant. */
+  rememberFileAccessName(other: Store): void {
+    if (other === this) return;
+    const entry = this.referenceSecurity().state.authorized.find((a) => a.fileId === other.fileId);
+    if (!entry || entry.names.includes(other.name)) return;
+    this.securityChange(() => {
+      const state = this.fileAccess();
+      const current = state.authorized.find((a) => a.fileId === other.fileId);
+      if (current && !current.names.includes(other.name)) {
+        current.names.push(other.name);
+        this.writeFileAccess(state);
+        this.logSecurity('file-access-name-updated', { account: '[host]', target: other.name });
+      }
+    });
+  }
 
   /**
    * The tables and value lists of the hosted file a data source points at, for a design change that uses an occurrence
@@ -1191,7 +1303,8 @@ export class Store {
       }
       fileIdSaved = true;
     } catch { /* no new failure for a read-only or damaged older file */ }
-    this.fileId = fileId ?? randomUUID();
+    this.initialFileId = fileId ?? randomUUID();
+    this.tokenScopeId = this.meta('tokenScopeId') ?? this.initialFileId;
     this.fileIdSaved = fileIdSaved;
     // WAL: readers (finds, MCP SQL, backups, other processes) don't wait on writers.
     // synchronous NORMAL syncs the log at checkpoints rather than on every save: the
@@ -1236,6 +1349,13 @@ export class Store {
     registerFindFunctions(this.sql);
     this.words = new WordIndexes(this.sql);
     ensureCacheVersions(this.sql);
+    if (this.meta('fileAccess') === undefined) {
+      this.sql.prepare('INSERT OR IGNORE INTO _fm_meta (key, json) VALUES (?, ?)').run('fileAccess', JSON.stringify({
+        protect: false, sameHost: false,
+        authorized: [{ fileId: this.initialFileId, names: [this.name], at: new Date().toISOString(), by: '[creation]' }],
+      } satisfies FileAccess));
+    }
+    this.fileAccessReady = true;
     const initialDesignVersion = this.metadataVersions().design;
     this.currentSchema = this.meta('schema');
     this.fileMode = this.meta('fileMode') === 'native' ? 'native' : 'compat';
@@ -7311,7 +7431,10 @@ export class Store {
       this.layoutCache.value.delete(name);
       cached = undefined;
     }
-    if (cached) return cached;
+    if (cached) {
+      this.checkLayoutReference(cached);
+      return cached;
+    }
     const row = this.sql.prepare('SELECT layout_id, table_name, occurrence, file, file_table_id FROM _fm_layouts WHERE name = ?').get(name) as
       | { layout_id: number; table_name: string | null; occurrence: string; file: string | null; file_table_id: number | null } | undefined;
     if (!row) throw new StoreError(105, `Layout "${name}" is missing`);
@@ -7337,6 +7460,7 @@ export class Store {
       owner,
       home: this,
       layoutId: Number(row.layout_id),
+      ...(row.file ? { reference: { from: this, file: row.file } } : {}),
     };
     const plan = this.plan(info);
     if (plan) info.plan = plan;
@@ -7537,8 +7661,14 @@ export class Store {
     };
   }
 
+  private checkLayoutReference(layout: LayoutInfo): void {
+    const ref = layout.reference;
+    if (ref && ref.from.resolvedFile(ref.file) !== layout.owner) throw new StoreError(100, `File "${ref.file}" is not hosted`);
+  }
+
   private layoutInfo(layout: string | LayoutInfo): LayoutInfo {
     if (typeof layout === 'string') return this.layout(layout);
+    this.checkLayoutReference(layout);
     if (layout.home?.layoutSchemas.has(layout)) return layout.home.layout(layout.name);
     // Synthetic layouts still need the owner's current design.
     this.refreshDesign();
@@ -10861,7 +10991,7 @@ export class Store {
   externalFieldNames(formula: string): string {
     if (!formula.includes('⟨field:')) return formula;
     const done = this.externalNamed.value.get(formula);
-    if (done !== undefined) return done;
+    if (done !== undefined && this.schema.dataSources.every((source) => this.resolveFile(dataSourceFile(source.paths) ?? source.name))) return done;
     const out = externalFieldNames(formula, (toId, fieldId) => {
       const to = this.schema.tableOccurrences.find((t) => t.id === toId);
       if (!to) return undefined;
@@ -10882,7 +11012,7 @@ export class Store {
   occurrence(name: string): LayoutInfo {
     const key = `\u0000to:${name.toLowerCase()}`;
     const cached = this.layoutCache.value.get(key);
-    if (cached) return cached;
+    if (cached) { this.checkLayoutReference(cached); return cached; }
     const to = this.schema.tableOccurrences.find((t) => t.name.toLowerCase() === name.toLowerCase());
     if (!to) throw new StoreError(102, `Table occurrence "${name}" is missing`);
     let owner: Store = this;
@@ -10901,6 +11031,7 @@ export class Store {
       occurrence: to.name,
       fields: table.fields.filter((f) => f.kind !== 'summary').map((f) => ({ name: f.name, type: f.type, indexLanguage: f.options?.indexLanguage, calculated: f.kind === 'calculation', ...((f.options?.repetitions ?? 1) > 1 ? { repetitions: f.options!.repetitions } : {}) })),
       owner,
+      ...(to.dataSourceId ? { reference: { from: this, file: dataSourceFile(this.schema.dataSources.find((d) => d.id === to.dataSourceId)?.paths ?? [])! } } : {}),
     };
     this.layoutCache.value.set(key, info);
     return info;

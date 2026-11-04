@@ -24,6 +24,10 @@ One page: what Tabularius is built to defend, against whom, and what it does not
 | Someone who gets a backup or a copy of the files | Has the bytes, not the server | Passwords are hashes; backups carry checksums; encrypted backups and encryption at rest are available and **off by default** |
 | Another person on the same computer | Can run programs as another user | **Only partly defended.** `/mcp` needs a token that only the server's user can read (the file `.openhbam-mcp-token` in the hosted folder), but the console trusts a request that comes from this computer until it has a password. On a shared machine, set a console password (`tabularius admin-password <folder>`). See the "Owner decisions" in the defaults page |
 
+Cross-file references also pass the protected file’s File Access identity allow-list on every resolution. This is separate
+from account and record privileges; imported files start with this protection off until a Full Access account configures it.
+Token layout limits retain a separate stable identity when File Access resets its ID.
+
 ## What it relies on
 
 - The operating system keeps the data folder to the user Tabularius runs as.

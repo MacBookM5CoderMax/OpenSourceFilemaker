@@ -1471,3 +1471,11 @@ actor/file, plus 60 requests per minute per IP/file before authentication. Four
 import requests may run concurrently per serving process. Throttling returns `429`
 with `Retry-After: 60`. Preview does not write accounts or audit events; HTTP rate
 counters are updated. See the [REST reference](docs/reference/rest.md) for examples.
+
+### File Access security events
+
+`file-access-changed` records protection and same-host option changes. `file-access-authorized` records an authorization,
+`file-access-deauthorized` records a removal, and `file-access-reset` records a new file identity. Each event records the acting account.
+`file-access-name-updated` records a newly observed name for an existing authorized identity, attributed to `[host]`.
+Manage these settings in design mode’s Security area, under File Access; Full Access is required in the protected file and,
+when authorizing, in the file being authorized.

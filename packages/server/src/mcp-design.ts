@@ -1,6 +1,7 @@
 // MCP tools for design mode: AI assistants read and change a solution's
 // tables, fields, relationships, layouts and scripts, or start a new one.
 
+import { manageFileAccess, fileAccessAdministrator } from './file-access.ts';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { callerText } from './fault-log.ts';
 import { z } from 'zod';
@@ -542,6 +543,28 @@ export function registerDesignTools(server: McpServer, host: Host, guard: (s: St
     const finds = findAdvice((n) => host.get(n), p.findReport(200), { file: s.name });
     return { finds, note: finds.length ? 'Slowest in total first.' : 'No slow finds since the server started.' };
   }));
+
+  const fileAccessActor = (s: Store) => guard(s) ?? fileAccessAdministrator(s);
+  server.registerTool('get_file_access', {
+    description: 'Read File Access protection, the authorized file identities and eligible hosted files. Requires Full Access.',
+    inputSchema: { database: db }, annotations: { readOnlyHint: true },
+  }, async ({ database }) => withStore(database, (s) => manageFileAccess(host, s, fileAccessActor(s), 'get', {}, visible)));
+  server.registerTool('set_file_access', {
+    description: 'Set File Access protection and the same-host flag. Requires Full Access. All files on this server meet the same-host condition.',
+    inputSchema: { database: db, protect: z.boolean().describe('true refuses references from files that are not authorized'), sameHost: z.boolean().describe('Whether the same-host condition is on; every file on this server meets it') }, annotations: { destructiveHint: true },
+  }, async ({ database, ...body }) => withStore(database, (s) => manageFileAccess(host, s, fileAccessActor(s), 'set', body, visible)));
+  server.registerTool('authorize_file', {
+    description: 'Authorize a hosted file to reference this file by its persistent identity. Requires Full Access in both files; record privileges still apply.',
+    inputSchema: { database: db, file: db }, annotations: { destructiveHint: true },
+  }, async ({ database, file }) => withStore(database, (s) => manageFileAccess(host, s, fileAccessActor(s), 'authorize', { file }, visible)));
+  server.registerTool('deauthorize_file', {
+    description: 'Remove an authorized file identity. Its references are refused on their next resolution when protection is on. Requires Full Access.',
+    inputSchema: { database: db, fileId: z.string().describe('The file identity to remove, as get_file_access shows it') }, annotations: { destructiveHint: true },
+  }, async ({ database, fileId }) => withStore(database, (s) => manageFileAccess(host, s, fileAccessActor(s), 'remove', { fileId }, visible)));
+  server.registerTool('reset_file_access_id', {
+    description: 'Reset this file identity, keeping its authorization list. Other files that authorized its old identity must authorize it again. Requires Full Access.',
+    inputSchema: { database: db }, annotations: { destructiveHint: true },
+  }, async ({ database }) => withStore(database, (s) => manageFileAccess(host, s, fileAccessActor(s), 'reset', {}, visible)));
 
   server.registerTool('get_security', {
     description: 'Accounts and privilege sets, as Manage Security shows them: each account\'s privilege set, whether it has a password ' +

@@ -146,7 +146,7 @@ export function convertedAt(store: Store): string | undefined {
 export function conversionGuide(store: Store, hosted: string[] = [], report: ConversionReport = conversionReport(store, hosted)): ConversionGuide {
   const breaks: GuideItem[] = [];
   const differs: GuideItem[] = [];
-  const todo: string[] = [];
+  const todo: string[] = ['If the original file required full access privileges to use references to it, turn File Access protection on again and authorize the files that use it.'];
 
   // Plug-ins: each one with the built-in steps and functions that replace its calls.
   const plan = migrationPlan(store);
