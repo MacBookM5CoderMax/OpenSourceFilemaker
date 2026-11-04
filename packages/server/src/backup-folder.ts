@@ -27,23 +27,25 @@ function realish(path: string): string {
 }
 
 /** The destination rules alone, answered without touching the disk beyond looking: is it a full path, and not the hosted files themselves. */
-function checkBackupRules(folder: string, hosted: string): string {
+function checkBackupRules(folder: string, hosted: string, platform: NodeJS.Platform = process.platform): string {
   if (!isAbsolute(folder)) throw new BackupFolderError('the backup folder is a full path, like /Volumes/Backup/tabularius');
   const at = resolve(folder);
   const real = realish(at);
   const home = realish(hosted);
-  if (real === home) throw new BackupFolderError("the backup folder can't be the hosted folder itself: pick another, or one inside it");
+  // Windows folders (and a Mac's usually) are the same folder in any case, and resolving links does not change the case a path was written in.
+  const fold = platform === 'win32' || platform === 'darwin' ? (p: string) => p.toLowerCase() : (p: string) => p;
+  if (fold(real) === fold(home)) throw new BackupFolderError("the backup folder can't be the hosted folder itself: pick another, or one inside it");
   for (const inner of ['Files', 'RC_Data_FMS']) {
     const guarded = join(home, inner);
-    if (real === guarded || real.startsWith(guarded + sep)) throw new BackupFolderError(`the backup folder can't be inside ${join(hosted, inner)}: its files are backed up`);
+    if (fold(real) === fold(guarded) || fold(real).startsWith(fold(guarded) + sep)) throw new BackupFolderError(`the backup folder can't be inside ${join(hosted, inner)}: its files are backed up`);
   }
   return at;
 }
 
 /** Whether a configured destination still looks usable, for listings: the rules, and that the folder is there. Never creates or writes anything. */
-export function backupFolderProblem(folder: string, hosted: string): string | undefined {
+export function backupFolderProblem(folder: string, hosted: string, platform: NodeJS.Platform = process.platform): string | undefined {
   try {
-    const at = checkBackupRules(folder, hosted);
+    const at = checkBackupRules(folder, hosted, platform);
     if (!existsSync(at)) return `${folder} isn't there: is the drive connected?`;
     if (!statSync(at).isDirectory()) return `${folder} is a file, not a folder`;
     return undefined;
@@ -53,8 +55,8 @@ export function backupFolderProblem(folder: string, hosted: string): string | un
 }
 
 /** Apply the same destination rules wherever a backup destination is configured, and make sure it can be written to. */
-export function checkBackupFolder(folder: string, hosted: string): string {
-  const at = checkBackupRules(folder, hosted);
+export function checkBackupFolder(folder: string, hosted: string, platform: NodeJS.Platform = process.platform): string {
+  const at = checkBackupRules(folder, hosted, platform);
   try {
     if (existsSync(at) && !statSync(at).isDirectory()) throw new BackupFolderError(`${folder} is a file, not a folder`);
     if (!existsSync(at)) {
