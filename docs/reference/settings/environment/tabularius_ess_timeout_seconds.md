@@ -8,6 +8,6 @@ Deadline for each outside SQL driver call.
 | Accepted values | Whole number of seconds, 1 or more, digits only |
 | Restart needed | Read on each call. |
 | Explained in | [docs/guides/running/external-sql-sources.md](../../../guides/running/external-sql-sources.md) |
-| Code | [packages/store/src/ess/bridge.ts:103](../../../../packages/store/src/ess/bridge.ts#L103) |
+| Code | [packages/store/src/ess/bridge.ts:128](../../../../packages/store/src/ess/bridge.ts#L128) |
 
 [All environment variables](../../../environment-variables.md)

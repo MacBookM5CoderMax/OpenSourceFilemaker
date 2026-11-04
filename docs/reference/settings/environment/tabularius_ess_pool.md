@@ -8,6 +8,6 @@ Maximum connections per named outside SQL source; the core SQLite driver current
 | Accepted values | Whole number from 1 to 64, digits only |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/guides/running/external-sql-sources.md](../../../guides/running/external-sql-sources.md) |
-| Code | [packages/store/src/ess/bridge.ts:60](../../../../packages/store/src/ess/bridge.ts#L60) |
+| Code | [packages/store/src/ess/bridge.ts:79](../../../../packages/store/src/ess/bridge.ts#L79) |
 
 [All environment variables](../../../environment-variables.md)
