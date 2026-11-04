@@ -168,7 +168,7 @@ function holdsLead(tail: string): boolean {
  * SQLite's own are UTC) and `x + INTERVAL n UNIT`, written the way SQLite reads them.
  */
 export function fileMakerSqlSyntax(sql: string, columnKind?: (name: string) => 'string' | 'date' | undefined): string {
-  if (!/[{+\-^]|\*\*|\b(?:DATE|TIME|TIMESTAMP|ROWMODID|EXTRACT|POSITION|SUBSTR|SUBSTRING|TRIM|STRVAL|CURRENT_DATE|CURRENT_TIME|CURRENT_TIMESTAMP|INTERVAL)\b/i.test(sql)) return sql;
+  if (!/[{+\-^]|\*\*|\|\||\b(?:DATE|TIME|TIMESTAMP|ROWMODID|EXTRACT|POSITION|SUBSTR|SUBSTRING|TRIM|STRVAL|CURRENT_DATE|CURRENT_TIME|CURRENT_TIMESTAMP|INTERVAL|LENGTH|LTRIM|RTRIM|REPLACE|INSTR|CONCAT|CONCAT_WS|GROUP_CONCAT)\b/i.test(sql)) return sql;
   if (sql.includes('?') && hasStandardTrim(sql)) sql = numberSqlParameters(sql);
   sql = withBooleanStrval(withOperators(withPower(sql), columnKind));
   const parts = pieces(sql);
@@ -273,7 +273,7 @@ export function fileMakerSqlSyntax(sql: string, columnKind?: (name: string) => '
     // Revisit the arguments: they may contain another call in either spelling.
     from = at;
   }
-  return out;
+  return withNumberText(withConcatenation(out));
 }
 
 /** CURRENT_DATE, CURRENT_TIME and CURRENT_TIMESTAMP as the local-time functions (outside strings and names). */
@@ -314,7 +314,14 @@ export function operandStart(sql: string, end: number): number {
   if (last === ')') {
     let depth = 0;
     for (let j = i - 1; j >= 0; j--) {
-      if (sql[j] === ')') depth++;
+      if (sql[j] === "'" || sql[j] === '"') {
+        // A bracket inside a quoted run does not count: step back to the run's opening quote.
+        const quote = sql[j];
+        let k = j - 1;
+        for (; k >= 0; k--) if (sql[k] === quote) { if (sql[k - 1] === quote) k--; else break; }
+        if (k < 0) return -1;
+        j = k;
+      } else if (sql[j] === ')') depth++;
       else if (sql[j] === '(' && --depth === 0) {
         let k = j;
         while (k > 0 && /[\w.]/.test(sql[k - 1])) k--;
@@ -619,6 +626,89 @@ function withOperators(sql: string, columnKind?: (name: string) => 'string' | 'd
   }, budget));
 }
 
+/** Rewrite `||` with the same operand limits as the other infix rewrites. */
+function withConcatenation(sql: string): string {
+  if (!sql.includes('||') || sql.length > MAX_OPERATOR_QUERY) return sql;
+  // PostgreSQL spellings (E'..' strings, `::` casts) are not operands this rewrite can bound; those queries keep SQLite's own `||`.
+  if (pieces(sql).some(([text, isCode]) => isCode && /(?:^|[^\w$])[Ee]$|::/.test(text) )) return sql;
+  const budget = { left: MAX_REWRITES };
+  return untilSteady(sql, (text) => rewriteInfix(text, (q, i) => (q[i] === '|' && q[i + 1] === '|' ? 2 : 0), (_width, before, q, opEnd) => {
+    const right = rightOperand(q, opEnd, true);
+    const left = right && leftOperand(before);
+    if (!left || !right) return undefined;
+    let start = left.start;
+    const sign = /(?:^|[(,=<>*/%+-]|\b(?:SELECT|DISTINCT|WHERE|AND|OR|WHEN|THEN|ELSE|ON|BY|HAVING|NOT))\s*([+-])\s*$/i.exec(before.slice(0, start));
+    if (sign) start = before.slice(0, start).lastIndexOf(sign[1]);
+    return { cut: start, end: right.end, call: `fm_concat(${before.slice(start).trim()}, ${right.text.trim()})` };
+  }, budget));
+}
+
+/** Split call arguments only at commas outside strings, comments and nested calls. */
+function splitArguments(inner: string): string[] {
+  const args: string[] = [];
+  let from = 0;
+  for (let i = 0, depth = 0; i < inner.length;) {
+    const c = inner[i];
+    if (c === "'" || c === '"') i += quoted(inner, i).length;
+    else if (inner.startsWith('--', i) || inner.startsWith('/*', i)) {
+      const line = inner[i + 1] === '-';
+      const end = line ? inner.indexOf('\n', i + 2) : inner.indexOf('*/', i + 2);
+      i = end < 0 ? inner.length : end + (line ? 0 : 2);
+    } else if (c === '(') depth++, i++;
+    else if (c === ')') depth--, i++;
+    else if (c === ',' && depth === 0) {
+      args.push(inner.slice(from, i));
+      from = ++i;
+    } else i++;
+  }
+  args.push(inner.slice(from));
+  return args;
+}
+
+const NUMBER_TEXT_CALL = /\b(?:LENGTH|LTRIM|RTRIM|TRIM|REPLACE|INSTR|CONCAT|CONCAT_WS|GROUP_CONCAT)\s*\(/i;
+const MAX_TEXT_CALLS = 200;
+
+/** Wrap arguments of SQLite text functions so whole REAL values print as their digits. */
+export function withNumberText(sql: string): string {
+  if (!NUMBER_TEXT_CALL.test(sql) || sql.length > MAX_OPERATOR_QUERY) return sql;
+  let out = sql;
+  let from = 0;
+  for (let round = 0; round < MAX_TEXT_CALLS; round++) {
+    let at = -1;
+    let length = 0;
+    let pos = 0;
+    for (const [text, isCode] of pieces(out)) {
+      if (isCode && at < 0) {
+        const start = Math.max(0, from - pos);
+        const found = NUMBER_TEXT_CALL.exec(text.slice(start));
+        if (found) {
+          at = pos + start + found.index;
+          length = found[0].length;
+        }
+      }
+      pos += text.length;
+    }
+    if (at < 0) break;
+    const open = at + length;
+    const end = closing(out, open);
+    from = open;
+    if (end < 0) continue;
+    const args = splitArguments(out.slice(open, end)).map((arg) => {
+      const lead = /^\s*(?:DISTINCT\s+)?/i.exec(arg)![0];
+      let body = arg.slice(lead.length);
+      // `group_concat(x, ',' ORDER BY y)`: the ORDER BY tail is not a value.
+      const orderAt = /\bORDER\s+BY\b/i.exec(body);
+      const tail = orderAt && splitArguments(body.slice(0, orderAt.index)).length === 1 ? body.slice(orderAt.index) : '';
+      if (tail) body = body.slice(0, orderAt!.index);
+      const trimmed = body.trim();
+      return !trimmed || (trimmed[0] === "'" && quoted(trimmed, 0).length === trimmed.length)
+        ? arg : `${lead}fm_text(${body.replace(/\s+$/, '')})${tail ? ' ' : ''}${tail}`;
+    });
+    out = `${out.slice(0, open)}${args.join(',')}${out.slice(end)}`;
+  }
+  return out;
+}
+
 /**
  * `a ^ b` and `a ** b` (exponentiation) as power(a, b). A minus sign in front of the base belongs to it, as
  * the Claris precedence list puts the unary minus above the exponent: -2 ^ 2 is 4.
@@ -835,6 +925,11 @@ function roundSqlNumber(x: number, n: number, maxDigits = 30): number {
   return Math.sign(x) * (/e/i.test(String(rounded)) ? rounded / 10 ** n : Number(`${rounded}e${-n}`));
 }
 
+/** Text for `||`, with numbers in decimal and blobs decoded as UTF-8. */
+function plainText(v: SQLOutputValue): string {
+  return v instanceof Uint8Array ? Buffer.from(v).toString('utf8') : decimalText(v);
+}
+
 /** Expands a number's shortest round-tripping text into plain decimal digits. Vendor text at these magnitudes is unverified offline. */
 export function decimalText(v: SQLOutputValue): string {
   const text = String(v);
@@ -978,6 +1073,8 @@ export const sqlDateFunctions = (now: () => Date = () => new Date()): Record<str
   },
   // `+` and `-` on strings (see withOperators); a missing operand gives a missing result.
   fm_cat: (a, b) => (a === null || b === null ? null : String(a) + String(b)),
+  fm_concat: (a, b) => (a === null || b === null ? null : plainText(a) + plainText(b)),
+  fm_text: (v) => (typeof v === 'number' ? decimalText(v) : v),
   fm_catb: (a, b) => {
     if (a === null || b === null) return null;
     const first = String(a);

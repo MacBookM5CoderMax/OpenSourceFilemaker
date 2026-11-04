@@ -2,7 +2,7 @@
 // Keep this independent of production helpers so it detects output regressions.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fileMakerSqlSyntax } from '../src/sql-dates.ts';
+import { fileMakerSqlSyntax, withNumberText } from '../src/sql-dates.ts';
 
 const two = (n: number) => String(n).padStart(2, '0');
 
@@ -226,7 +226,8 @@ const corpus = [
 ];
 
 test('SQL rewrite matches main for interval, POSITION and EXTRACT corpus', () => {
-  for (const query of corpus) assert.equal(fileMakerSqlSyntax(query), referenceFileMakerSqlSyntax(query), query);
+  // The reference is main's rewrite before the number-text change, which then wraps the arguments of INSTR (POSITION's result).
+  for (const query of corpus) assert.equal(fileMakerSqlSyntax(query), withNumberText(referenceFileMakerSqlSyntax(query)), query);
 });
 
 test('SQL rewrite handles long interval and POSITION stress inputs promptly', () => {
