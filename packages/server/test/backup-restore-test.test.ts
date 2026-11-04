@@ -4,7 +4,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { copyFileSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { Server } from 'node:http';
 import { Host, STORE_EXT, backupFolder, serve } from '../src/index.ts';
 import { lastRestore, restoreTestDue, testRestore } from '../src/backup-verify.ts';
@@ -62,10 +62,11 @@ test('the admin console runs a test restore and lists the outcome with each set'
       assert.equal(r.status, 200, text);
       return JSON.parse(text);
     });
-    await post('/backup');
-    // The backup is checked in the background; let that finish first.
-    for (let i = 0; i < 100 && !(await status()).backups.sets[0]?.check; i++) await new Promise((ok) => setTimeout(ok, 50));
-    const name = (await status()).backups.sets[0].name;
+    const made = await post('/backup');
+    const name = basename(String(made.dir));
+    // The set is checked in the background after it is published (making it checked it once already, so a check shows at once).
+    // Checks of one set run one at a time: asking for one now returns when the running one has ended.
+    assert.equal((await post(`/backups/${name}/verify`)).ok, true);
     const r = await post(`/backups/${name}/test-restore`);
     assert.equal(r.ok, true);
     assert.equal((await status()).backups.sets[0].restored.ok, true);

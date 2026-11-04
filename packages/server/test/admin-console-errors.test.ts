@@ -2,7 +2,7 @@ import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { IncomingMessage } from 'node:http';
 import { createStore, Store } from '../../store/src/index.ts';
 import { serve, Host, Schedules } from '../src/index.ts';
@@ -38,19 +38,17 @@ async function setup(t: TestContext) {
 }
 
 /**
- * Takes a backup and waits for the check the server starts on it in the background. The check opens each copy in the set and
- * removes the -wal and -shm files that leaves (on Windows a just-closed file can stay busy for a moment); a restore that looks
- * at the set meanwhile finds them and refuses with "not listed in the backup set", and answers 500.
+ * Takes a backup and waits for the checks the server runs on it in the background. Making the set already checks it before it
+ * is published, so the set shows a check at once; the server then checks the published set again, opening each copy in place,
+ * which makes -wal and -shm files that are removed again (on Windows a just-closed file can stay busy for a moment). A restore
+ * that looks at the set meanwhile finds them and refuses with "not listed in the backup set", and answers 500. Checks of one
+ * set run one at a time, so asking for a check of it now returns once the one already running has ended.
  */
 async function backUp(call: Awaited<ReturnType<typeof setup>>['call']) {
   const made = await call('/backup', {});
   assert.equal(made.status, 200, JSON.stringify(made));
-  for (let i = 0; i < 600; i++) {
-    const status = await call('/status');
-    if (status.body.backups?.sets?.[0]?.check) return;
-    await new Promise((done) => setTimeout(done, 50));
-  }
-  assert.fail('the check of the backup did not finish');
+  const again = await call(`/backups/${encodeURIComponent(basename(String(made.body.dir)))}/verify`, {});
+  assert.equal(again.status, 200, JSON.stringify(again));
 }
 
 test('#33 missing reconvert source is actionable on both routes', async (t) => {
