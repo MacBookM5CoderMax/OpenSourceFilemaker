@@ -214,7 +214,7 @@ export function describeSecurityEvent(e: AuditEntry): string {
     case 'pii-field-marked': return `${e.target ?? 'A field'} ${d.pii === true ? 'marked as personal data' : d.pii === false ? 'marked as not personal data' : 'back to the worked-out setting'}`;
     case 'ai-data-masked': return `Personal data kept from AI${str(d.via) ? ` (${str(d.via)})` : ''}: ${maskedCounts(d.masked)}${d.blocked ? '; a tool was refused' : ''}`;
     case 'audit-settings-changed': return `Audit log settings changed${str(d.summary) ? `: ${str(d.summary)}` : ''}`;
-    case 'audit-pruned': return `${num(d.removed) ?? 0} audit entries up to #${num(d.through) ?? '?'} removed by the retention setting (${num(d.days) ?? '?'} days)`;
+    case 'audit-pruned': return `${num(d.removed) ?? 0} ${d.chain === 'security' ? 'security events' : 'audit entries'} up to #${str(d.through) ?? num(d.through) ?? '?'} removed by the retention setting (${num(d.days) ?? '?'} days)`;
     case 'blank-password-lan-allowed': return 'An empty-password account allowed to sign in from this LAN';
     case 'plugin-installed': return `Plug-in ${str(d.id) ?? '?'} ${str(d.version) ?? ''} installed by a script${str(d.script) ? ` (${str(d.script)})` : ''}, signed by ${str(d.signer) ?? 'nobody'}`.replace('  ', ' ');
     case 'plugin-install-refused': return `A script's plug-in install was refused${str(d.script) ? ` (${str(d.script)})` : ''}: ${str(d.why) ?? 'no reason given'}`;

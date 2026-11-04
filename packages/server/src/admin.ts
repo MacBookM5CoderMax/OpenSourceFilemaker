@@ -1632,16 +1632,17 @@ export class Admin {
         if (!store) send(400, { error: 'name a hosted database with ?database=' });
         else if (req.method === 'GET') send(200, { database: name, ...store.auditSettings(), suggested: store.auditSuggestedExclusions() });
         else {
-          const b = await readJson(req) as { redactSensitive?: unknown; excludeFields?: unknown; retentionDays?: unknown; logReads?: unknown };
+          const b = await readJson(req) as { redactSensitive?: unknown; excludeFields?: unknown; retentionDays?: unknown; securityRetentionDays?: unknown; logReads?: unknown };
           const ex = b.excludeFields;
           if ((b.retentionDays !== undefined && (typeof b.retentionDays !== 'number' || !Number.isInteger(b.retentionDays)))
+            || (b.securityRetentionDays !== undefined && (typeof b.securityRetentionDays !== 'number' || !Number.isInteger(b.securityRetentionDays)))
             || (b.redactSensitive !== undefined && typeof b.redactSensitive !== 'boolean') || (b.logReads !== undefined && typeof b.logReads !== 'boolean')
             || (ex !== undefined && (typeof ex !== 'object' || ex === null || Array.isArray(ex) || Object.values(ex).some((v) => !Array.isArray(v) || v.some((x) => typeof x !== 'string'))))) {
-            send(400, { error: 'give redactSensitive and/or logReads (true or false), excludeFields ({ "Table": ["Field"] }) and/or retentionDays (a whole number, 0 to keep every entry)' });
+            send(400, { error: 'give redactSensitive and/or logReads (true or false), excludeFields ({ "Table": ["Field"] }) and/or retentionDays (a whole number, 0 to keep every entry), securityRetentionDays (30 to 36500 whole days, 0 to keep every security event)' });
           } else {
             try {
-              const next = store.setAuditSettings({ ...(b.redactSensitive !== undefined ? { redactSensitive: b.redactSensitive as boolean } : {}), ...(ex !== undefined ? { excludeFields: ex as Record<string, string[]> } : {}), ...(b.retentionDays !== undefined ? { retentionDays: b.retentionDays as number } : {}), ...(b.logReads !== undefined ? { logReads: b.logReads as boolean } : {}) });
-              this.log(`${store.name}: audit log settings changed (${next.redactSensitive ? 'sensitive names redacted' : 'sensitive names logged'}; ${Object.values(next.excludeFields).flat().length} excluded fields; ${next.retentionDays ? `kept ${next.retentionDays} days` : 'kept forever'})`);
+              const next = store.setAuditSettings({ ...(b.redactSensitive !== undefined ? { redactSensitive: b.redactSensitive as boolean } : {}), ...(ex !== undefined ? { excludeFields: ex as Record<string, string[]> } : {}), ...(b.retentionDays !== undefined ? { retentionDays: b.retentionDays as number } : {}), ...(b.securityRetentionDays !== undefined ? { securityRetentionDays: b.securityRetentionDays as number } : {}), ...(b.logReads !== undefined ? { logReads: b.logReads as boolean } : {}) });
+              this.log(`${store.name}: audit log settings changed (${next.redactSensitive ? 'sensitive names redacted' : 'sensitive names logged'}; ${Object.values(next.excludeFields).flat().length} excluded fields; ${next.retentionDays ? `kept ${next.retentionDays} days` : 'kept forever'}; ${next.securityRetentionDays ? `security events kept ${next.securityRetentionDays} days` : 'security events kept forever'})`);
               send(200, { database: name, ...next });
             } catch (e) {
               send(400, { error: adminErrorText(e, this.host) });

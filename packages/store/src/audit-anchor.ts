@@ -65,7 +65,8 @@ export function checkAnchor(path: string, anchor: unknown, key: Buffer): AnchorC
   if (!now.ok) return { ok: false, status: 'log-broken', reason: `the log fails its own check (${now.reason ?? now.status})` };
   const sql = new DatabaseSync(path, { readOnly: true });
   try {
-    sql.exec('PRAGMA busy_timeout = 5000');
+    // Retention can advance between reads: compare the pruning boundary and its retained rows in one snapshot.
+    sql.exec('PRAGMA busy_timeout = 5000; BEGIN');
     const at = BigInt(a.chainSeq!);
     if (a.chain === 'records') {
       const state = sql.prepare('SELECT pruned_seq, pruned_hash, genesis_hash FROM _fm_record_chain_state').get() as { pruned_seq: number; pruned_hash: string | null; genesis_hash: string };
@@ -74,14 +75,19 @@ export function checkAnchor(path: string, anchor: unknown, key: Buffer): AnchorC
       const stored = at === BigInt(state.pruned_seq) ? state.pruned_hash : (sql.prepare('SELECT rhash FROM _fm_audit WHERE rchain_seq = ?').get(Number(at)) as { rhash: string } | undefined)?.rhash;
       return compare(stored, a.hash!);
     }
-    if (at === 0n) {
-      const state = sql.prepare('SELECT genesis_hash FROM _fm_security_chain_state WHERE id = 1').get();
-      return a.auditSeq === '0' ? compare(state?.genesis_hash as string | undefined, a.hash!) : compare('', a.hash!);
-    }
-    const row = sql.prepare('SELECT event_hash FROM _fm_audit WHERE chain_seq = ?').get(Number(at)) as { event_hash: unknown } | undefined;
+    // SELECT * also accepts v1 files that have not yet gained the pruning columns.
+    const stateQuery = sql.prepare('SELECT * FROM _fm_security_chain_state WHERE id = 1');
+    stateQuery.setReadBigInts(true);
+    const state = stateQuery.get()!;
+    const pruned = (state.pruned_seq as bigint | undefined) ?? 0n;
+    if (at < pruned) return { ok: false, status: 'older-than-log', reason: 'the anchor is older than the pruned start, so it can no longer be compared' };
+    if (at === 0n) return a.auditSeq === '0' ? compare(state.genesis_hash as string, a.hash!) : compare('', a.hash!);
+    if (at === pruned) return compare(state.pruned_hash as string, a.hash!);
+    const row = sql.prepare('SELECT event_hash FROM _fm_audit WHERE chain_seq = ?').get(at) as { event_hash: unknown } | undefined;
     const stored = row && (row.event_hash instanceof Uint8Array ? Buffer.from(row.event_hash).toString('utf8') : String(row.event_hash));
     return compare(stored, a.hash!);
   } finally {
+    if (sql.isTransaction) sql.exec('ROLLBACK');
     sql.close();
   }
 }

@@ -270,7 +270,21 @@ edited, removed, added behind its back or cut off the end. `retentionDays` in
 the same settings removes record entries older than that, hourly (400 days
 unless set; 0 keeps every entry), and the chain records where it now starts and
 the removal is logged as a security event. Security events (sign-ins, lockouts,
-account and privilege changes) are not removed.
+account and privilege changes) are kept without limit by default. The separate
+`securityRetentionDays` setting is `0` to keep every security event, or 30 to
+36500 whole days to prune an old prefix hourly. The console exposes both
+retention settings. Security pruning always retains the head event and stores
+the last removed link as an anchor; the verifier starts from that anchor,
+checks every retained event, and reports `pruned: { throughSeq, at }` (the audit
+sequence is decimal text). A clock change can leave older events behind a newer
+one; those wait until the whole prefix is old enough. The removal is logged as
+`audit-pruned` with `chain: "security"`; record-prune event details stay as before.
+An externally held operator anchor older than the pruned start reports
+`older-than-log`: it can no longer be compared, which is not evidence of
+tampering. An anchor exactly at the pruning boundary can still be checked.
+Hashes establish local consistency, not authenticity: someone able to rewrite
+the whole store can also rewrite the pruning anchor. Keep anchors and any
+required full history outside the server's write authority.
 Read it with `npm run tabularius -- audit ~/FileMakerFiles Contacts --table
 Invoices --record 42`, the `audit_log` AI tool, or `GET
 /tabularius/design/v1/databases/{db}/audit`; the last two need [Full Access].

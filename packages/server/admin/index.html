@@ -3673,6 +3673,7 @@ async function loadAuditSettings() {
   const suggested = Object.entries(s.suggested ?? {}).map(([t, fs]) => `${t}: ${fs.join(', ')}`).join('; ');
   body.innerHTML = `<div class="controls">
       <label>Keep entries for <input id="audit-retention" type="number" min="0" max="36500" step="1" value="${esc(s.retentionDays)}" style="width:6em"> days (0 keeps them all)</label>
+      <label>Keep security events for <input id="audit-security-retention" type="number" min="0" max="36500" step="1" value="${esc(s.securityRetentionDays)}" style="width:6em"> days (0 keeps them all; otherwise 30 to 36500)</label>
       <label><input type="checkbox" id="audit-reads" ${s.logReads ? 'checked' : ''}> Also log who reads records (one entry per request, never the values)</label>
       <label><input type="checkbox" id="audit-redact" ${s.redactSensitive ? 'checked' : ''}> Never log values of fields named like a password, secret, token, API key or card number</label>
     </div>
@@ -3694,7 +3695,7 @@ $('audit-settings-body').addEventListener('click', async (e) => {
   }
   try {
     await call('PUT', '/tabularius/admin/v1/audit/settings?' + new URLSearchParams({ database: $('audit-db').value }), {
-      retentionDays: Number($('audit-retention').value) || 0, redactSensitive: $('audit-redact').checked, logReads: $('audit-reads').checked, excludeFields,
+      retentionDays: Number($('audit-retention').value) || 0, securityRetentionDays: Number($('audit-security-retention').value), redactSensitive: $('audit-redact').checked, logReads: $('audit-reads').checked, excludeFields,
     });
     note.textContent = 'Saved.';
     void loadAuditSettings();

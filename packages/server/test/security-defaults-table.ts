@@ -541,7 +541,7 @@ export const ROWS: Row[] = [
   {
     id: 'audit', section: 'Data at rest', setting: 'Audit trail',
     default: 'On: every record created, changed, deleted or duplicated is logged; reads are not logged; record entries are kept 400 days, then removed (security events are kept without limit)',
-    changedBy: '`logReads`, `redactSensitive`, `excludeFields` and `retentionDays` in the file\'s audit settings (console)',
+    changedBy: '`logReads`, `redactSensitive`, `excludeFields`, `retentionDays` and `securityRetentionDays` (0 by default; otherwise 30 to 36500 days) in the file\'s audit settings (console)',
     risk: 'Logging reads grows the log fast; a retention limit deletes history, so 0 (keep every entry) is the choice for anyone who must keep a complete trail; there is no switch to turn record logging off',
     how: 'probed', expect: 'writes logged, reads not, kept 400 days',
     observe: async (c) => c.auditShape(),

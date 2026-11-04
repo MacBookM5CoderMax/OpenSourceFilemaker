@@ -49,3 +49,30 @@ test('actual audit, security and history renderers escape hostile fields and bou
   assertSafe($('audit').innerHTML);
   assert.ok($('audit').innerHTML.includes('data-restore-seq="1"'), 'restore actions remain usable');
 });
+
+test('audit settings render and submit security retention separately from record retention', async () => {
+  const load = parsed.statements.find(statement => ts.isFunctionDeclaration(statement) && statement.name?.text === 'loadAuditSettings')!;
+  const save = parsed.statements.find(statement => statement.getText(parsed).startsWith("$('audit-settings-body').addEventListener('click'"))!;
+  const nodes = new Map<string, { value: string; checked: boolean; innerHTML: string; textContent: string; addEventListener(type: string, listener: unknown): void }>();
+  let listener: (event: unknown) => Promise<void>;
+  const $ = (id: string) => {
+    if (!nodes.has(id)) nodes.set(id, { value: '', checked: false, innerHTML: '', textContent: '', addEventListener: (_type, fn) => { listener = fn as typeof listener; } });
+    return nodes.get(id)!;
+  };
+  $('audit-db').value = 'Test';
+  const saved: unknown[] = [];
+  const context = vm.createContext({ $, URLSearchParams, call: async (method: string, _url: string, body: unknown) => {
+    if (method === 'PUT') saved.push(body);
+    return { retentionDays: 400, securityRetentionDays: 0, excludeFields: {} };
+  } });
+  vm.runInContext(code + '\n' + load.getText(parsed) + '\n' + save.getText(parsed), context);
+  await vm.runInContext('loadAuditSettings()', context);
+  assert.match($('audit-settings-body').innerHTML, /id="audit-security-retention"[^>]*value="0"/);
+  assert.match($('audit-settings-body').innerHTML, /30[^<]*36500/);
+  $('audit-retention').value = '90';
+  for (const value of ['30', '0']) {
+    $('audit-security-retention').value = value;
+    await listener!({ target: { id: 'audit-settings-save' } });
+    assert.deepEqual(JSON.parse(JSON.stringify(saved.at(-1))), { retentionDays: 90, securityRetentionDays: Number(value), redactSensitive: false, logReads: false, excludeFields: {} });
+  }
+});

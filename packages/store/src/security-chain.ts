@@ -10,8 +10,14 @@ const storedText = (name: string) => `CASE WHEN typeof(${name}) IN ('text', 'nul
 const FIELDS = ['seq', storedText('at'), storedText('account'), storedText('kind'), storedText('tbl'),
   'record_id', storedText('changes'), 'security', 'agent'].join(', ');
 const LINKS = ['chain_seq', storedText('prev_hash'), storedText('event_hash')].join(', ');
-const STATE = ['id', 'version', storedText('chain_id'), storedText('created_at'), 'legacy_through', 'legacy_count',
+const PRUNING_COLUMNS = [
+  ['pruned_seq', 'INTEGER NOT NULL DEFAULT 0'], ['pruned_audit_seq', 'INTEGER NOT NULL DEFAULT 0'],
+  ['pruned_hash', 'TEXT'], ['pruned_at', 'TEXT'], ['pruned_legacy', 'INTEGER NOT NULL DEFAULT 0'],
+] as const;
+const BASE_STATE = ['id', 'version', storedText('chain_id'), storedText('created_at'), 'legacy_through', 'legacy_count',
   storedText('genesis_hash'), 'head_seq', 'head_audit_seq', storedText('head_hash')].join(', ');
+const STATE = [BASE_STATE, 'pruned_seq', 'pruned_audit_seq',
+  storedText('pruned_hash'), storedText('pruned_at'), 'pruned_legacy'].join(', ');
 const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 export interface SecurityAuditVerification {
@@ -23,6 +29,8 @@ export interface SecurityAuditVerification {
   checked: number;
   legacyThroughSeq: string | null;
   head: { chainSeq: string; auditSeq: string; hash: string } | null;
+  /** Older events removed by retention, and when; audit seq is decimal text. */
+  pruned?: { throughSeq: string; at: string };
 }
 
 function integers(st: StatementSync): StatementSync {
@@ -98,6 +106,10 @@ export function ensureSecurityChain(sql: DatabaseSync): void {
       version INTEGER NOT NULL, chain_id TEXT NOT NULL, created_at TEXT NOT NULL,
       legacy_through INTEGER NOT NULL, legacy_count INTEGER NOT NULL, genesis_hash TEXT NOT NULL,
       head_seq INTEGER NOT NULL, head_audit_seq INTEGER NOT NULL, head_hash TEXT NOT NULL)`);
+    const stateColumns = sql.prepare('PRAGMA table_info(_fm_security_chain_state)').all() as { name: string }[];
+    for (const [name, type] of PRUNING_COLUMNS) {
+      if (!stateColumns.some((c) => c.name === name)) sql.exec(`ALTER TABLE _fm_security_chain_state ADD COLUMN ${name} ${type}`);
+    }
     sql.exec(`CREATE INDEX IF NOT EXISTS _fm_security_audit_chain ON _fm_audit(seq) WHERE ${INCLUDED}`);
     if (sql.prepare('SELECT 1 FROM _fm_security_chain_state').get()) return;
     if (sql.prepare(`SELECT 1 FROM _fm_audit WHERE chain_seq IS NOT NULL OR prev_hash IS NOT NULL OR event_hash IS NOT NULL LIMIT 1`).get()) {
@@ -119,7 +131,7 @@ export function ensureSecurityChain(sql: DatabaseSync): void {
       prev = next;
       auditSeq = row.seq as bigint;
     }
-    sql.prepare('INSERT INTO _fm_security_chain_state VALUES (1, 1, ?, ?, ?, ?, ?, ?, ?, ?)')
+    sql.prepare('INSERT INTO _fm_security_chain_state (id, version, chain_id, created_at, legacy_through, legacy_count, genesis_hash, head_seq, head_audit_seq, head_hash) VALUES (1, 1, ?, ?, ?, ?, ?, ?, ?, ?)')
       .run(state.chain_id as string, state.created_at as string, boundary.seq as bigint, count.n as bigint, start, position, auditSeq, prev);
   });
 }
@@ -146,6 +158,29 @@ export function appendSecurityEvent(sql: DatabaseSync, at: string, account: stri
   });
 }
 
+/** Removes a security prefix under the writer lock, retaining the head and recording the last removed link. */
+export function pruneSecurityEntries(sql: DatabaseSync, throughAuditSeq: number | bigint, now = new Date().toISOString()): number {
+  return securityWrite(sql, () => {
+    const locked = sql.prepare('UPDATE _fm_security_chain_state SET head_seq = head_seq WHERE id = 1').run();
+    if (locked.changes !== 1) throw new Error('security chain metadata is missing');
+    const state = integers(sql.prepare(`SELECT ${STATE} FROM _fm_security_chain_state WHERE id = 1`)).get() as Row;
+    if (state.version !== 1n) throw new Error('unsupported security chain version');
+    if (typeof throughAuditSeq === 'number' && !Number.isSafeInteger(throughAuditSeq)) throw new Error('invalid integer');
+    const head = BigInt(decimal(state.head_audit_seq));
+    const through = BigInt(throughAuditSeq) < head ? BigInt(throughAuditSeq) : head - 1n;
+    const last = integers(sql.prepare(`SELECT seq, chain_seq, ${storedText('event_hash')} FROM _fm_audit
+      WHERE security = 1 AND chain_seq IS NOT NULL AND seq <= ? ORDER BY seq DESC LIMIT 1`)).get(through) as Row | undefined;
+    if (!last) return 0;
+    const position = BigInt(decimal(last.chain_seq)), auditSeq = BigInt(decimal(last.seq)), anchor = hashText(last.event_hash);
+    const legacy = integers(sql.prepare('SELECT COUNT(*) AS n FROM _fm_audit WHERE security = 1 AND seq <= ? AND seq <= ?'))
+      .get(auditSeq, state.legacy_through as bigint) as { n: bigint };
+    const removed = sql.prepare('DELETE FROM _fm_audit WHERE security = 1 AND seq <= ?').run(auditSeq);
+    sql.prepare(`UPDATE _fm_security_chain_state SET pruned_seq = ?, pruned_audit_seq = ?, pruned_hash = ?, pruned_at = ?,
+      pruned_legacy = pruned_legacy + ? WHERE id = 1`).run(position, auditSeq, anchor, now, legacy.n);
+    return Number(removed.changes);
+  });
+}
+
 /** A separate read-only snapshot, with no Store construction, migration, filtering or result cap. */
 export function verifySecurityAudit(path: string): SecurityAuditVerification {
   const sql = new DatabaseSync(path, { readOnly: true });
@@ -164,7 +199,12 @@ export function verifySecurityAudit(path: string): SecurityAuditVerification {
       result.reason = 'security chain is not initialized';
       return result;
     }
-    const state = integers(sql.prepare(`SELECT ${STATE} FROM _fm_security_chain_state`)).all() as Row[];
+    // A read-only check of an older v1 file must not require opening a Store to migrate it first.
+    const columns = sql.prepare('PRAGMA table_info(_fm_security_chain_state)').all() as { name: string }[];
+    const hasPruning = columns.some((c) => c.name === 'pruned_seq');
+    const selection = hasPruning ? STATE : BASE_STATE +
+      ', 0 AS pruned_seq, 0 AS pruned_audit_seq, NULL AS pruned_hash, NULL AS pruned_at, 0 AS pruned_legacy';
+    const state = integers(sql.prepare(`SELECT ${selection} FROM _fm_security_chain_state`)).all() as Row[];
     if (state.length !== 1 || state[0].id !== 1n) return broken(null, 'missing or invalid chain state');
     const s = state[0];
     if (s.version !== 1n) return broken(null, 'unsupported security chain version');
@@ -172,6 +212,12 @@ export function verifySecurityAudit(path: string): SecurityAuditVerification {
     result.head = { chainSeq: decimal(s.head_seq), auditSeq: decimal(s.head_audit_seq), hash: hashText(s.head_hash) };
     let prev = genesis(s), position = 0n, auditSeq = 0n, legacyCount = 0n;
     if (prev !== text(s.genesis_hash)) return broken(null, 'genesis hash mismatch');
+    position = BigInt(decimal(s.pruned_seq));
+    const prunedLegacy = BigInt(decimal(s.pruned_legacy));
+    if (position > 0n) {
+      prev = hashText(s.pruned_hash);
+      result.pruned = { throughSeq: decimal(s.pruned_audit_seq), at: text(s.pruned_at)! };
+    }
     // Include linked rows whose security flag was altered, as well as unlinked security rows.
     const rows = integers(sql.prepare(`SELECT ${FIELDS}, ${LINKS} FROM _fm_audit
       WHERE ${INCLUDED} ORDER BY seq`));
@@ -191,7 +237,7 @@ export function verifySecurityAudit(path: string): SecurityAuditVerification {
     if (position !== s.head_seq || auditSeq !== s.head_audit_seq || prev !== hashText(s.head_hash)) {
       return broken(result.head.auditSeq, 'stored head mismatch (possible tail truncation)');
     }
-    if (legacyCount !== s.legacy_count) return broken(null, 'legacy baseline count mismatch');
+    if (legacyCount !== BigInt(decimal(s.legacy_count)) - prunedLegacy) return broken(null, 'legacy baseline count mismatch');
     // Tail deletion with a rewritten head, a fully recomputed history or an older valid
     // backup can pass: a local chain has no independently retained checkpoint.
     result.ok = true;

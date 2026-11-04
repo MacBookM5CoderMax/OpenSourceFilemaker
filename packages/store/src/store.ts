@@ -52,7 +52,7 @@ import { verifyRegistration, verifyAssertion, type RegisteredCredential } from '
 import { existingDirectoryLinks, safeExistingPath, safeWritePath } from './safe-path.ts';
 import { ensureRecordChain, linkRecordEntry, pruneRecordEntries, verifyRecordAudit, type RecordAuditVerification } from './record-chain.ts';
 import { inLife, lifeRanges, type LifeRange } from './record-life.ts';
-import { ensureSecurityChain, appendSecurityEvent, securityWrite, verifySecurityAudit, type SecurityAuditVerification } from './security-chain.ts';
+import { ensureSecurityChain, appendSecurityEvent, pruneSecurityEntries, securityWrite, verifySecurityAudit, type SecurityAuditVerification } from './security-chain.ts';
 
 export { FindError, type FindRequest };
 
@@ -182,6 +182,8 @@ export interface AuditSettings {
   logReads: boolean;
   /** Record entries older than this many days are removed (the chain records that they were); 0 keeps them all. */
   retentionDays: number;
+  /** Security events are kept without limit (0) unless set to 30–36500 whole days; pruning retains the head. */
+  securityRetentionDays: number;
 }
 
 /** Stands in for a value the audit log doesn't keep. */
@@ -2781,6 +2783,7 @@ export class Store {
     const now = performance.now();
     if (!this.auditConfig || now - this.auditConfig.at > 2000) {
       const stored = this.meta('auditSettings') as Partial<AuditSettings> | undefined;
+      const securityDays = stored?.securityRetentionDays ?? 0;
       this.auditConfig = { at: now, value: {
         redactSensitive: stored?.redactSensitive === true,
         excludeFields: Object.fromEntries(Object.entries(stored?.excludeFields ?? {}).map(([t, fs]) => [t, [...new Set((fs ?? []).map(String))]])),
@@ -2788,6 +2791,7 @@ export class Store {
         // No saved choice: the default. A saved 0 is the choice to keep every entry.
         retentionDays: stored?.retentionDays === undefined || stored.retentionDays === null ? AUDIT_RETENTION_DEFAULT_DAYS
           : Number.isFinite(stored.retentionDays) && stored.retentionDays > 0 ? Math.floor(stored.retentionDays) : 0,
+        securityRetentionDays: Number.isInteger(securityDays) && securityDays >= 30 && securityDays <= 36_500 ? securityDays : 0,
       } };
     }
     return this.auditConfig.value;
@@ -2801,8 +2805,10 @@ export class Store {
       excludeFields: change.excludeFields ?? current.excludeFields,
       logReads: change.logReads ?? current.logReads,
       retentionDays: change.retentionDays ?? current.retentionDays,
+      securityRetentionDays: change.securityRetentionDays ?? current.securityRetentionDays,
     };
     if (!Number.isInteger(next.retentionDays) || next.retentionDays < 0 || next.retentionDays > 36_500) throw new StoreError(960, 'Retention is a whole number of days, 0 to keep every entry');
+    if (!Number.isInteger(next.securityRetentionDays) || (next.securityRetentionDays !== 0 && (next.securityRetentionDays < 30 || next.securityRetentionDays > 36_500))) throw new StoreError(960, 'Security retention is a whole number of days from 30 to 36500, 0 to keep every security event');
     const tables = new Map((this.schema?.tables ?? []).map((t) => [t.name.toLowerCase(), t]));
     const clean: Record<string, string[]> = {};
     for (const [name, fields] of Object.entries(change.excludeFields === undefined ? {} : next.excludeFields)) {
@@ -2831,6 +2837,7 @@ export class Store {
         JSON.stringify(next.excludeFields) !== JSON.stringify(current.excludeFields) ? `${Object.values(next.excludeFields).flat().length} field${Object.values(next.excludeFields).flat().length === 1 ? '' : 's'} left out` : '',
         next.logReads !== current.logReads ? `reads ${next.logReads ? 'logged' : 'not logged'}` : '',
         next.retentionDays !== current.retentionDays ? (next.retentionDays ? `entries kept ${next.retentionDays} days` : 'entries kept forever') : '',
+        next.securityRetentionDays !== current.securityRetentionDays ? (next.securityRetentionDays ? `security events kept ${next.securityRetentionDays} days` : 'security events kept forever') : '',
       ].filter(Boolean);
       this.logSecurity('audit-settings-changed', { account: writer.getStore()?.account ?? null, detail: { summary: parts.join('; ') } });
     }
@@ -2842,15 +2849,41 @@ export class Store {
     return verifyRecordAudit(this.path);
   }
 
-  /** Removes record entries older than the retention setting (or `days`), recording in the chain that they were; returns how many went. */
+  /** Removes old audit prefixes per chain's retention setting; `days` overrides record retention only. */
   pruneAudit(days = this.auditSettings().retentionDays, now = Date.now()): number {
-    if (!(days > 0) || this.sql.isTransaction) return 0;
-    const cutoff = new Date(now - days * 86_400_000).toISOString();
-    const through = (this.sql.prepare('SELECT COALESCE(MAX(seq), 0) AS n FROM _fm_audit WHERE security = 0 AND at < ?').get(cutoff) as { n: number }).n;
-    if (!through) return 0;
-    const removed = pruneRecordEntries(this.sql, Number(through));
-    if (removed) this.logSecurity('audit-pruned', { detail: { removed, through: Number(through), days } });
-    return removed;
+    if (this.sql.isTransaction) return 0;
+    const securityDays = this.auditSettings().securityRetentionDays;
+    if (!(days > 0) && !(securityDays > 0)) return 0;
+    return securityWrite(this.sql, () => {
+      let total = 0;
+      const at = new Date(now).toISOString();
+      if (days > 0) {
+        const cutoff = new Date(now - days * 86_400_000).toISOString();
+        const through = (this.sql.prepare('SELECT COALESCE(MAX(seq), 0) AS n FROM _fm_audit WHERE security = 0 AND at < ?').get(cutoff) as { n: number }).n;
+        if (through) {
+          const removed = pruneRecordEntries(this.sql, Number(through), at);
+          if (removed) this.logSecurity('audit-pruned', { detail: { removed, through: Number(through), days } });
+          total += removed;
+        }
+      }
+      if (securityDays > 0) {
+        const cutoff = new Date(now - securityDays * 86_400_000).toISOString();
+        // Only a prefix can be removed. A clock moving backwards must not delete newer events in that prefix.
+        const query = this.sql.prepare(`SELECT COALESCE(MAX(seq), 0) AS n FROM _fm_audit WHERE security = 1 AND at < ?
+          AND seq < (SELECT COALESCE(MIN(seq), 9223372036854775807) FROM _fm_audit WHERE security = 1 AND at >= ?)`);
+        query.setReadBigInts(true);
+        const through = (query.get(cutoff, cutoff) as { n: bigint }).n;
+        if (through) {
+          const removed = pruneSecurityEntries(this.sql, through, at);
+          if (removed) {
+            const anchor = this.sql.prepare('SELECT CAST(pruned_audit_seq AS TEXT) AS seq FROM _fm_security_chain_state WHERE id = 1').get()!;
+            this.logSecurity('audit-pruned', { detail: { chain: 'security', removed, through: anchor.seq, days: securityDays } });
+          }
+          total += removed;
+        }
+      }
+      return total;
+    });
   }
 
   /** Fields whose names look sensitive (password, secret, token, API key, card number) that the audit log still records values of, by table. */

@@ -1465,6 +1465,14 @@
  },
  {
   "file": "packages/store/src/security-chain.ts",
+  "within": "pruneSecurityEntries",
+  "api": "sql.prepare",
+  "count": 2,
+  "gate": "store-internal",
+  "why": "Audit hash-chain bookkeeping: links, verifies and prunes entries and returns hashes and verdicts, not values."
+ },
+ {
+  "file": "packages/store/src/security-chain.ts",
   "within": "verifySecurityAudit",
   "api": "sql.prepare",
   "count": 1,
@@ -2179,7 +2187,7 @@
   "file": "packages/store/src/store.ts",
   "within": "Store.pruneAudit",
   "api": "sql.prepare",
-  "count": 1,
+  "count": 2,
   "gate": "trusted-process",
   "why": "Audit retention maintenance; returns number of entries removed."
  },

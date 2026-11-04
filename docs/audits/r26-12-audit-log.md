@@ -40,6 +40,18 @@ Primary source locations: `packages/store/src/store.ts` (`logSecurity`, `audit`,
 
 ## Integrity
 
+Security-event retention remains opt-in: `securityRetentionDays: 0` keeps every event;
+30 to 36500 whole days enables prefix pruning. The security chain now records the
+last removed chain position, audit sequence, hash and time, plus the number of
+removed legacy-baseline events. It retains the head row and verifies the remaining
+links from that anchor without changing v1 hash inputs. Verification reports the
+pruned audit sequence and time; removed history cannot be verified. A held operator
+anchor older than the pruned start returns `older-than-log`, not a tampering verdict;
+one exactly at the pruning boundary is compared with the stored pruning hash.
+The anchor is local state and can be rewritten along with the store: externally
+held anchors and separately retained history remain necessary for that threat.
+Compatibility with another product's security-event retention is **unverified**. <!-- known-difference: Privileges and security ;; How another product retains or prunes its security events is not known, so the pruning anchor and the opt-in retention window follow this project's own design ;; Nothing shows by default (retention is unlimited); an operator who turns retention on prunes the way this project does ;; A run of the same pruning cases against a Claris server -->
+
 The existing operator command remains:
 
 <!-- docs-example: illustrative -->
