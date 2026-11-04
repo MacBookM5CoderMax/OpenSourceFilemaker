@@ -10649,6 +10649,22 @@ export class Store {
       };
       return { p, occ, rinfo: this.occurrenceInfo(occ), related };
     };
+    // A row may set only the fields placed in its portal, as a record's own fields must be on its layout. Checked for
+    // every row before any is written, so a refused key leaves the record and its portals as they were.
+    for (const [name, rows] of Object.entries(portalData)) {
+      const { p } = portal(name);
+      for (const r of rows) {
+        for (const k of Object.keys(r)) {
+          if (k === 'recordId' || k === 'modId') continue;
+          const to = k.includes('::') ? k.slice(0, k.indexOf('::')) : p.occurrence;
+          const field = (k.includes('::') ? k.slice(k.indexOf('::') + 2) : k).replace(/\(\d+\)$/, '');
+          // A portal that names none of its own fields (one on the layout's own occurrence, or with nothing placed) shows
+          // them all when read, so it takes them all too.
+          const placed = to === p.occurrence ? (p.fields.length ? p.fields : undefined) : p.related?.find((x) => x.occurrence === to)?.fields ?? [];
+          if (placed && !placed.includes(field)) throw new StoreError(102, `Field "${k}" is missing: it is not in portal "${name}"`);
+        }
+      }
+    }
     return this.writeAtomically(() => {
     for (const [name, rows] of Object.entries(portalData)) {
       const { p, occ, rinfo, related } = portal(name);

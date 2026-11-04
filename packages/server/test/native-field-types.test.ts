@@ -152,7 +152,7 @@ test('native field values round trip through Data API and OData with typed shape
     live.applyDesign([{ op: 'updateLayout', layout: 'Items', design: { objects: [field('Payload', 501), field('Amount', 504), field('Count', 505), {
       id: 502, kind: 'portal', type: 9, anchors: { left: true, top: true, right: false, bottom: false }, style: {},
       bounds: { left: 10, top: 40, right: 200, bottom: 140 },
-      portal: { tableOccurrenceId: occ.id, tableOccurrence: 'Links', rows: 2, initialRow: 1 }, children: [field('Flag', 503), field('Amount', 506), field('Count', 507)],
+      portal: { tableOccurrenceId: occ.id, tableOccurrence: 'Links', rows: 2, initialRow: 1 }, children: [field('Flag', 503), field('Payload', 508), field('Amount', 506), field('Count', 507)],
     }] as any, tableView: [] } }]);
     const relatedResponse = await fetch(`${api}/layouts/Items/records/1`, { headers });
     const relatedText = await relatedResponse.text();
