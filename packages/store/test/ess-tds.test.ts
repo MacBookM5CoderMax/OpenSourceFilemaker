@@ -91,8 +91,18 @@ test('PRELOGIN offsets and LOGIN7 password follow the specified byte layouts', a
       socket.write(packet(4, Buffer.concat([loginAck(), done()])));
     }
   }));
-  const client = await TdsClient.connect({ ...credentials, port, encryption: 'optional' });
+  const client = await TdsClient.connect({ ...credentials, port, encryption: 'optional', allowUnencrypted: true });
   await client.close();
+});
+
+test('optional encryption refuses ENCRYPT_NOT_SUP unless allowUnencrypted is set, and never sends the login', async (t) => {
+  let sawLogin = false;
+  const port = await fake(t, (socket) => messages(socket, (type) => {
+    if (type === 0x12) socket.write(packet(4, prelogin(2)));
+    else if (type === 0x10) sawLogin = true;
+  }));
+  await assert.rejects(TdsClient.connect({ ...credentials, port, encryption: 'optional' }), (e: Error) => /does not support encryption/.test(e.message) && /allowUnencrypted/.test(e.message) && !e.message.includes(credentials.password) && !e.message.includes(credentials.user));
+  assert.equal(sawLogin, false, 'the login packet was never sent');
 });
 
 test('mandatory encryption refuses ENCRYPT_NOT_SUP', async (t) => {
@@ -231,7 +241,7 @@ async function plain(t: TestContext, reply: (body: Buffer, socket: Socket) => vo
     else if (type === 0x10) socket.write(packet(4, Buffer.concat([loginAck(), environment, done()])));
     else { assert.equal(type, 1); reply(body, socket); }
   }));
-  const client = await TdsClient.connect({ ...credentials, port, encryption: 'optional', timeoutMs: 2000 });
+  const client = await TdsClient.connect({ ...credentials, port, encryption: 'optional', allowUnencrypted: true, timeoutMs: 2000 });
   t.after(() => client.close()); return client;
 }
 
@@ -257,7 +267,7 @@ test('ENVCHANGE renegotiates packet size and SQLBatch carries ALL_HEADERS and tr
       }
     }, (type, length) => { if (type === 1) { maxLength = Math.max(maxLength, length); packets++; } });
   });
-  const client = await TdsClient.connect({ ...credentials, port, encryption: 'optional' });
+  const client = await TdsClient.connect({ ...credentials, port, encryption: 'optional', allowUnencrypted: true });
   const result = await client.batch('x'.repeat(2000));
   assert.equal(result[0].rows[0][0], 'z'.repeat(1000)); assert.equal(result[0].affected, 1);
   assert.equal(maxLength, 512); assert.ok(packets > 1);
@@ -417,7 +427,7 @@ test('LOGINACK is required and must announce TDS 7.4', async (t) => {
     const port = await fake(t, (socket) => messages(socket, (type) => {
       socket.write(packet(4, type === 0x12 ? prelogin(2) : Buffer.concat([ack, done()])));
     }));
-    await assert.rejects(TdsClient.connect({ ...credentials, port, encryption: 'optional' }), /acknowledge|invalid/);
+    await assert.rejects(TdsClient.connect({ ...credentials, port, encryption: 'optional', allowUnencrypted: true }), /acknowledge|invalid/);
   }
 });
 
@@ -458,7 +468,7 @@ test('batch deadline closes a stalled connection and concurrent batches are refu
     else if (type === 0x10) socket.write(packet(4, Buffer.concat([loginAck(), done()])));
     else received();
   }));
-  const client = await TdsClient.connect({ ...credentials, port, encryption: 'optional', timeoutMs: 150 });
+  const client = await TdsClient.connect({ ...credentials, port, encryption: 'optional', allowUnencrypted: true, timeoutMs: 150 });
   const pending = assert.rejects(client.batch('stalled'), /timed out/);
   await observed;
   await assert.rejects(client.batch('overlap'), /already running/);

@@ -11,7 +11,7 @@
 import { connect as netConnect, isIP, type Socket } from 'node:net';
 import { connect as tlsConnect, checkServerIdentity, type TLSSocket } from 'node:tls';
 import { Duplex } from 'node:stream';
-import { hostRefusal, socketLookup } from '../../../scripts/src/net-guard.ts';
+import { hostRefusal, socketLookup } from '../outbound-address.ts';
 
 export type SqlValue = string | number | bigint | boolean | null | Uint8Array | Date;
 export interface SqlResult { columns: { name: string; type: string }[]; rows: SqlValue[][]; affected?: number }
@@ -404,6 +404,11 @@ export class TdsClient {
         await this.send(0x12, prelogin(mode === 'mandatory' ? 1 : 0));
         const answer = encryptionAnswer(await message(this.input!, this.packetSize));
         if (mode === 'mandatory' && answer !== 1 && answer !== 3) throw new Error('The SQL database did not agree to mandatory encryption. Enable encryption on the server.');
+        // ENCRYPT_NOT_SUP would send the login (and its password) in the clear: only when the caller said that is acceptable.
+        if (answer === 2 && options.allowUnencrypted !== true) {
+          payload.fill(0);
+          throw new Error('The SQL database does not support encryption, so the login would travel unencrypted. Enable encryption on the server, or set allowUnencrypted: true to accept an unencrypted login.');
+        }
         // ENCRYPT_OFF still encrypts LOGIN7; ENCRYPT_NOT_SUP is the sole
         // plaintext-login case. ENCRYPT_ON/REQ always protects the session.
         const loginOnly = answer === 0;
