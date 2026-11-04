@@ -237,6 +237,13 @@ const TYPES: Record<number, string> = {
   0x7a: 'SMALLMONEY', 0x6e: 'MONEYN', 0x24: 'UNIQUEIDENTIFIER', 0xa5: 'VARBINARY', 0xad: 'BINARY',
   0xf1: 'XML', 0x62: 'sql_variant', 0x2b: 'DATETIMEOFFSET', 0x23: 'TEXT', 0x63: 'NTEXT', 0x22: 'IMAGE',
 };
+// WHATWG windows-1252: 0x80-0x9F differ from latin1. Decoded by table, because some Node 22 releases
+// (22.20 among them) decode TextDecoder('windows-1252') as latin1.
+const CP1252_HIGH = '\u20ac\u0081\u201a\u0192\u201e\u2026\u2020\u2021\u02c6\u2030\u0160\u2039\u0152\u008d\u017d\u008f'
+  + '\u0090\u2018\u2019\u201c\u201d\u2022\u2013\u2014\u02dc\u2122\u0161\u203a\u0153\u009d\u017e\u0178';
+function windows1252(b: Buffer): string {
+  return b.toString('latin1').replace(/[\x80-\x9f]/g, (c) => CP1252_HIGH[c.charCodeAt(0) - 0x80]);
+}
 interface Column { name: string; type: string; id: number; size: number; scale: number; precision: number; cp1252: boolean }
 const fixed: Record<number, number> = { 0x30: 1, 0x34: 2, 0x38: 4, 0x7f: 8, 0x32: 1, 0x3b: 4, 0x3e: 8, 0x3d: 8, 0x3a: 4, 0x3c: 8, 0x7a: 4 };
 const wide = new Set([0xe7, 0xef, 0xa7, 0xaf, 0xa5, 0xad]);
@@ -304,7 +311,7 @@ function value(c: Cursor, col: Column): SqlValue {
   if ([0x3b, 0x3e, 0x6d].includes(id)) return n === 4 ? b.readFloatLE() : b.readDoubleLE();
   if (strings.has(id)) {
     if (id === 0xe7 || id === 0xef) { if (n % 2) throw protocol(); return b.toString('utf16le'); }
-    return col.cp1252 ? new TextDecoder('windows-1252').decode(b) : b.toString('latin1');
+    return col.cp1252 ? windows1252(b) : b.toString('latin1');
   }
   if (id === 0xa5 || id === 0xad) return Uint8Array.from(b);
   if (id === 0x6a || id === 0x6c) {
