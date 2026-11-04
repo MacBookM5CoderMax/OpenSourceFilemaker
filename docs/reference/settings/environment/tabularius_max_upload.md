@@ -8,6 +8,6 @@ Largest file accepted by the server upload route, in bytes.
 | Accepted values | Whole number of bytes, 0 or more, digits only; 0 removes the per-file cap |
 | Restart needed | Yes for a running server. |
 | Explained in | [ADMIN.md](../../../../ADMIN.md) |
-| Code | [packages/server/src/admin.ts:1325](../../../../packages/server/src/admin.ts#L1325) |
+| Code | [packages/server/src/admin.ts:1333](../../../../packages/server/src/admin.ts#L1333) |
 
 [All environment variables](../../../environment-variables.md)
