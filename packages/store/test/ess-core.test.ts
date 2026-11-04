@@ -281,3 +281,28 @@ test('a refresh that fails halfway (a repeated key after new rows) leaves the ol
     assert.equal(store.findIds('orders').length, 3);
   } finally { store.close(); await outside.close(); }
 });
+
+test('a shadow field is a SQL column: it cannot be renamed, so reads keep working; other fields can', async () => {
+  const { store, outside } = await setup('rename');
+  try {
+    store.applyDesign([{ op: 'createShadowTable', dataSource: 'Sales', table: 'customers' }]);
+    store.applyDesign([{ op: 'createField', table: 'customers', name: 'label', kind: 'calculation', calculation: 'name & "!"' }]);
+    const before = store.findIds('customers');
+    const refused = (error: unknown) => error instanceof StoreError && /SQL column/.test(error.message) && /customers::name/.test(error.message);
+    // An ordinary column: the later SELECT would ask the source for a column it does not have.
+    assert.throws(() => store.applyDesign([{ op: 'updateField', table: 'customers', field: 'name', name: 'fullname' }]), refused);
+    // The key column: the later key match would not find it in the source.
+    assert.throws(() => store.applyDesign([{ op: 'updateField', table: 'customers', field: 'id', name: 'cid' }]), (error: unknown) => error instanceof StoreError && /SQL column/.test(error.message));
+    // Nothing changed, and the table still reads.
+    assert.deepEqual(store.schema.tables.find((t) => t.name === 'customers')!.fields.map((f) => f.name), ['id', 'name', 'since', 'balance', 'label']);
+    assert.deepEqual(store.findIds('customers'), before);
+    assert.equal(store.get('customers', before[0]).fieldData.name, 'Ada');
+    // A different letter case is the same column, and a field of FileMaker's own is not a column at all.
+    store.applyDesign([{ op: 'updateField', table: 'customers', field: 'name', name: 'Name' }]);
+    store.applyDesign([{ op: 'updateField', table: 'customers', field: 'label', name: 'caption' }]);
+    assert.deepEqual(store.findIds('customers'), before);
+    const row = store.get('customers', before[0]).fieldData;
+    assert.equal(row.Name, 'Ada');
+    assert.ok('caption' in row && !('label' in row));
+  } finally { store.close(); await outside.close(); }
+});

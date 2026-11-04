@@ -1608,6 +1608,7 @@ function applyOneOp(st: DesignState, op: DesignOp, deleted?: DeletedLookup): { o
         if (field.externalColumn && name !== field.name) throw invalid(`The SQL column field "${field.name}" cannot be renamed; sync the shadow table with its SQL source instead`);
         if (st.fileMode === 'native' && name.toLowerCase() === '_fm_uuid') throw invalid('Native record identity reserves _fm_uuid');
         unique(table.fields.map((f) => f.name), name, `Field ${table.name}::`, field.name);
+        if (field.externalColumn && name.toLowerCase() !== field.name.toLowerCase()) throw invalid(`Field ${table.name}::${field.name} is a SQL column: its name is the column's name, so it cannot be renamed`);
         if (name !== field.name) {
           propagate(st, { kind: 'field', tableId: table.id, from: field.name, to: name });
           rekeyField(st, table.name, field.name, name);
