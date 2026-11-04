@@ -50,6 +50,10 @@ test('a connection that did not answer in time rests: the next calls to it fail 
     assert.throws(() => requestFor(file.schema, file.sqlConnection, file.schema.tables[0], 'query', [slow, [], { maxRows: 100000000 }]), (e: unknown) => e instanceof StoreError && e.code === ESS_ERROR && /did not answer within 1 second/.test(e.message));
     assert.throws(() => requestFor(file.schema, file.sqlConnection, file.schema.tables[0], 'query', ['SELECT 1', []]),
       (e: unknown) => e instanceof StoreError && e.code === ESS_ERROR && /did not answer in time a moment ago and is asked again in 60 seconds/.test(e.message));
+    // A write in that time is refused at once and reaches neither the source nor the mirror.
+    assert.throws(() => file.create('customers', { id: 9, name: 'New' }),
+      (e: unknown) => e instanceof StoreError && e.code === ESS_ERROR && /asked again in \d+ seconds; nothing was written/.test(e.message));
+    assert.equal(file.query('SELECT count(*) AS n FROM customers')[0].n, 0);
   } finally { delete process.env.TABULARIUS_ESS_TIMEOUT_SECONDS; }
 });
 
