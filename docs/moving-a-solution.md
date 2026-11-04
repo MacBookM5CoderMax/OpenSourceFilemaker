@@ -184,16 +184,6 @@ It lists what in the file won't work yet: script steps, functions,
 plug-ins, other files, accounts. The admin console shows the same after each
 upload. Two more checks are useful for a solution with a lot of logic:
 
-Tables from external SQL sources (ESS over ODBC) are a blocker: Tabularius does
-not connect to those databases, so their layouts, portals and scripts find no
-records. Import the tables from a CSV export, or keep them in SQL and reach
-Tabularius through the Data API or OData. The conversion guide flags these tables.
-
-Tables from external SQL sources (ESS over ODBC) are a blocker: Tabularius does
-not connect to those databases, so their layouts, portals and scripts find no
-records. Import the tables from a CSV export, or keep them in SQL and reach
-Tabularius through the Data API or OData. The conversion guide flags these tables.
-
 <!-- docs-example: run -->
 ```sh
 tabularius test-scripts ~/Databases Invoices          # run each script offline; list the ones that stall, crash or error
@@ -217,6 +207,12 @@ only, never records or the names of your scripts and fields. Only the admin
 sign-in opens it. A call whose MBS function is named while the calculation runs is
 listed as "Can't tell", because the file does not say which function it is.
 The AI tool `migration_plan` reads the same list and proposes the rewrites.
+
+Tables from external SQL sources (ESS over ODBC) are a blocker: Tabularius does
+not connect to those databases, so their layouts, portals and scripts find no
+records. The report above does not flag them yet, so look for them in Manage
+External Data Sources (Design › Data sources), where they appear as ODBC
+entries. To bring the data over, import the tables from a CSV export.
 
 ### Making the file smaller and faster
 
