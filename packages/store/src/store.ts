@@ -7642,9 +7642,7 @@ export class Store {
       const t0 = performance.now();
       const ran = statements;
       const computed = f.kind === 'calculation' && f.options?.unstored;
-      // A related row has no found-set summary context; like a missing value,
-      // its summary is displayed empty. The main record computes its own summaries.
-      // Compatibility of this empty display with FileMaker is unverified.
+      // The caller supplies relationship summaries; found-set portals keep their existing empty row value.
       let v = f.kind === 'summary' ? null
         : f.options?.global
         ? occ.store.calc.globalValue(occ.table, f) as SqlValue
@@ -7720,10 +7718,38 @@ export class Store {
     const t0 = traced ? performance.now() : 0;
     const ran0 = statements;
     const stamps = new Map<Store, string>();
+    const parentSummaries = new Map<string, string | number>();
+    const summaries = (fromId: number, source: Record<string, SqlValue>, targetId: number, fields: string[], parent = false): Record<string, string | number> => {
+      const out: Record<string, string | number> = {};
+      const from = occurrence(this, fromId);
+      const target = occurrence(this, targetId);
+      if (!from || !target) return out;
+      const pass = this.calc.newPass(p?.account, p);
+      const current: Rec = { store: from.store, table: from.table, row: source as Row };
+      for (const name of fields) {
+        const def = target.table.fields.find((f) => f.name === name && f.kind === 'summary');
+        if (!def) continue;
+        const key = `${targetId}\0${name}`;
+        let shown = parent ? parentSummaries.get(key) : undefined;
+        if (shown === undefined) {
+          // The same relationship and privilege-aware aggregate used by a formula reference.
+          const value = target.store.calc.summary(this.calc.relatedRecs(current, fromId, targetId, pass), target.table, def, pass);
+          const type = summaryType(target.table, def);
+          shown = target.store.present(toStored(value, type, target.store.dateOrder), type, fmt, p?.linkPrincipal);
+          const mask = target.store.local(p)?.mask(target.table.name, name);
+          if (mask) shown = maskValue(shown, target.store.maskFor(def, mask));
+          if (parent) parentSummaries.set(key, shown);
+        }
+        out[`${target.to.name}::${name}`] = shown;
+      }
+      return out;
+    };
     for (const r of plan.related) {
       const res = relatedRows(this, plan.occurrenceId, row, r.occurrenceId, { limit: 1, cols: this.shownColumns(r.occurrenceId, r.fields, p) });
       const seen = res?.rows[0] && visible(res.occurrence, res.rows[0]);
-      const values = seen ? this.relatedValues(res.occurrence, res.rows[0], shown(res.occurrence, r.fields), fmt, p, stamps) : {};
+      const fields = res ? shown(res.occurrence, r.fields) : listed(r.occurrence, r.fields);
+      const values = seen ? this.relatedValues(res.occurrence, res.rows[0], fields, fmt, p, stamps) : {};
+      Object.assign(values, summaries(plan.occurrenceId, row, r.occurrenceId, fields, true));
       this.copyRelatedValues(rec.fieldData, values, r.occurrence, listed(r.occurrence, r.fields));
       const styled = seen ? this.relatedStyles(res.occurrence, res.rows[0], styleable(res.occurrence, r.fields)) : undefined;
       if (styled) rec.styles = { ...rec.styles, ...styled };
@@ -7763,12 +7789,15 @@ export class Store {
       }
       const rows = (res?.rows ?? []).map((r) => foundSetPortal ? this.previewRows?.get(Number(r._fm_record_id)) ?? r : r).filter((r) => visible(res!.occurrence, r));
       const ran1 = statements;
+      const portalSummaries = res && !foundSetPortal ? summaries(plan.occurrenceId, row, portal.occurrenceId,
+        shown(res.occurrence, portal.fields.length ? portal.fields : res.occurrence.table.fields.map((f) => f.name)), true) : {};
       const out = rows.map((r) => {
         const fields = shown(res!.occurrence, portal.fields.length ? portal.fields : res!.occurrence.table.fields.map((f) => f.name));
         const o = {
           ...(res!.occurrence.store.fileMode === 'native' ? { id: String(r._fm_uuid) } : {}),
           recordId: String(r._fm_record_id), modId: String(r._fm_mod_id),
           ...this.relatedValues(res!.occurrence, r, fields, fmt, p, stamps),
+          ...portalSummaries,
         } as PortalRow;
         const styled = this.relatedStyles(res!.occurrence, r, fields.filter((f) => styleable(res!.occurrence, [f]).length));
         if (styled) ((rec.portalStyles ??= Object.create(null))[portal.name] ??= {})[o.recordId] = styled;
@@ -7782,6 +7811,7 @@ export class Store {
         out.forEach((o, i) => {
           const one = each?.firsts[i];
           const values = one && visible(each!.occurrence, one) ? this.relatedValues(each!.occurrence, one, shown(each!.occurrence, rel.fields), fmt, p, stamps) : {};
+          Object.assign(values, summaries(portal.occurrenceId, rows[i], rel.occurrenceId, relFields));
           this.copyRelatedValues(o, values, rel.occurrence, relFields);
         });
       }

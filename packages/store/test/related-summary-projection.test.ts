@@ -56,15 +56,15 @@ function setup(t: TestContext) {
 test('a portal and related fields with ordinary and dotted summaries read records', (t) => {
   const { store, parentIds } = setup(t);
   const check = (record: ReturnType<Store['get']>) => {
-    assert.equal(record.fieldData['Kids::Total'], '');
-    assert.equal(record.fieldData['Kids::sum.Total'], '');
+    assert.equal(record.fieldData['Kids::Total'], 7);
+    assert.equal(record.fieldData['Kids::sum.Total'], 7);
     const row = record.portalData!.Kids[0];
     assert.equal(row['Kids::amount.value'], 7);
-    assert.equal(row['Kids::Total'], '');
-    assert.equal(row['Kids::sum.Total'], '');
+    assert.equal(row['Kids::Total'], 7);
+    assert.equal(row['Kids::sum.Total'], 7);
     assert.equal(row['Kids::Double'], 2);
     assert.equal(record.portalData!.Items[0]['Items::label.text'], 'first');
-    assert.equal(record.portalData!.Items[0]['Items::sum.Total'], '');
+    assert.equal(record.portalData!.Items[0]['Items::sum.Total'], 1);
   };
   check(store.get('Parents', parentIds[0]));
   check(store.getMany('Parents', [parentIds[0]], parentIds, { layoutOnly: true })[0]);
