@@ -2912,6 +2912,7 @@ export class Store {
    * id, a record made since deleted. Logged and announced like any change.
    */
   restoreRecord(table: string, recordId: number, seq: number, opts: WriteOptions = {}): { action: 'updated' | 'created' | 'deleted' | 'unchanged'; fields: string[] } {
+    this.refuseShadowRestore(table);
     // A table with a foreign key puts the record back like any write: its keys checked, under one write lock.
     const named = table.toLowerCase();
     const keyed = this.foreignKeys().some((k) => k.parent.table.name.toLowerCase() === named || k.child.table.name.toLowerCase() === named);
@@ -9274,6 +9275,14 @@ export class Store {
    * Throws what setContainer would throw for this account, record and field, without changing anything: a caller turns
    * an upload away with it before reading the file's bytes.
    */
+  /** A file into a field mapped to an outside SQL column is not written through yet: refuse it before anything changes (otherwise the mirror and the outside table disagree for good). */
+  private refuseShadowContainer(table: string, field: string): void {
+    const t = this.schema.tables.find((x) => x.name.toLowerCase() === table.toLowerCase());
+    if (t?.external && t.fields.some((f) => f.name === field && f.externalColumn)) {
+      throw new StoreError(ESS_ERROR, `Changing the container field "${field}" of the SQL table "${t.external.table}" is not built yet`);
+    }
+  }
+
   checkContainerWrite(layout: string | LayoutInfo, recordId: number, field: string, repetition: number, opts: WriteOptions = {}): void {
     const info = this.layoutInfo(layout);
     this.checkLayout(info, opts.privileges);
@@ -9284,6 +9293,7 @@ export class Store {
     const f = info.fields.find((x) => x.name === field);
     if (!f) throw new StoreError(102, `Field "${field}" is missing`);
     if (f.type !== 'container') throw new StoreError(102, `Field "${field}" is not a container`);
+    this.refuseShadowContainer(info.table, field);
     const reps = Math.max(1, this.schema.tables.find((t) => t.name === info.table)?.fields.find((x) => x.name === field)?.options?.repetitions ?? 1);
     if (!Number.isInteger(repetition) || repetition < 1 || repetition > reps) throw new StoreError(111, `Field "${field}" has no repetition ${repetition}`);
     this.checkLock(info.table, recordId);
@@ -9295,6 +9305,7 @@ export class Store {
     file: ContainerFile | null, opts: WriteOptions = {}): { modId: number } {
     const info = this.layoutInfo(layout);
     if (info.owner !== this) return info.owner.setContainer(info, recordId, field, repetition, file, opts);
+    this.refuseShadowContainer(info.table, field);
     const external = this.table(info).fields.find((f) => f.name === field)?.options?.externalStorage;
     if (file && external && !external.secure && this.sql.isTransaction && !this.heldBy && !this.writePublications) {
       throw new StoreError(102, 'External container write requires a managed transaction');
@@ -10888,8 +10899,15 @@ export class Store {
    * row as it was read before the delete. Fails when its id has been used again since.
    */
   restoreDeletedRow(table: string, row: Record<string, SqlValue>, opts: WriteOptions = {}): void {
+    this.refuseShadowRestore(table);
     this.joinTransaction();
     this.withWriteTransaction(() => this.keyStep(() => this.restoreDeletedRowLocked(table, row, opts)));
+  }
+
+  /** A raw local insert would put back a row the outside table does not have, and the next refresh would delete it again without a word: refuse it on a shadow table. */
+  private refuseShadowRestore(table: string): void {
+    const t = this.schema.tables.find((x) => x.name.toLowerCase() === table.toLowerCase());
+    if (t?.external) throw new StoreError(ESS_ERROR, `Putting back a record of the SQL table "${t.external.table}" is not built yet`);
   }
 
   private restoreDeletedRowLocked(table: string, row: Record<string, SqlValue>, opts: WriteOptions): void {

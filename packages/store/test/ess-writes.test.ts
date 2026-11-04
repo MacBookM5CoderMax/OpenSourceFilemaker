@@ -154,3 +154,35 @@ test('a batch calls BEGIN and COMMIT once, or BEGIN and ROLLBACK once on failure
     assert.deepEqual((await outside.query('SELECT name FROM rows ORDER BY id', [])).rows, [['first'], ['second']]);
   } finally { await outside.close(); }
 });
+
+test('a file into a mapped BLOB column is refused before anything is written, and later edits still work', async () => {
+  const { store, outside } = await setup('container', 'id INTEGER PRIMARY KEY, name TEXT, doc BLOB');
+  try {
+    const id = store.create('items', { name: 'with doc' }).recordId;
+    const file = { filename: 'a.txt', mime: 'text/plain', data: new TextEncoder().encode('hello') };
+    assert.throws(() => store.setContainer('items', id, 'doc', 1, file), (e: unknown) => e instanceof StoreError && e.code === ESS_ERROR);
+    assert.throws(() => store.checkContainerWrite('items', id, 'doc', 1), (e: unknown) => e instanceof StoreError && e.code === ESS_ERROR);
+    assert.deepEqual((await outside.query('SELECT doc FROM items', [])).rows, [[null]]);
+    // The mirror is unchanged, so the next ordinary edit does not hit a permanent conflict.
+    store.update('items', id, { name: 'renamed' });
+    assert.deepEqual((await outside.query('SELECT name FROM items', [])).rows, [['renamed']]);
+  } finally { store.close(); await outside.close(); }
+});
+
+test('a deleted shadow row is not restored by a raw local insert: revert, undo and point-in-time restore are refused', async () => {
+  const { store, outside } = await setup('restore');
+  try {
+    const id = store.create('items', { name: 'doomed' }).recordId;
+    store.delete('items', id);
+    assert.deepEqual((await outside.query('SELECT id FROM items', [])).rows, []);
+    const entries = store.auditLog({ limit: 50 }).filter((e) => e.table === 'items' && e.recordId === id);
+    const deleted = entries.find((e) => e.kind === 'delete')!;
+    const created = entries.find((e) => e.kind === 'create')!;
+    assert.throws(() => store.revertAuditEntry('items', id, deleted.seq), (e: unknown) => e instanceof StoreError && e.code === ESS_ERROR);
+    assert.throws(() => store.restoreDeletedRow('items', { _fm_record_id: id, _fm_mod_id: 0, id: 1, name: 'doomed' }), (e: unknown) => e instanceof StoreError && e.code === ESS_ERROR);
+    assert.throws(() => store.restoreRecord('items', id, created.seq), (e: unknown) => e instanceof StoreError && e.code === ESS_ERROR);
+    // Nothing came back locally, so a refresh cannot delete a row that was never in the outside table.
+    assert.equal(store.query('SELECT count(*) AS n FROM items')[0].n, 0);
+    assert.deepEqual((await outside.query('SELECT id FROM items', [])).rows, []);
+  } finally { store.close(); await outside.close(); }
+});
