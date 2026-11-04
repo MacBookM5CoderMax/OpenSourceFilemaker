@@ -9,7 +9,7 @@ import { connect as tlsConnect, checkServerIdentity, type TLSSocket } from 'node
 import { createHash, createHmac, pbkdf2, randomBytes, timingSafeEqual } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { SqlColumn, SqlDriver, SqlResult, SqlValue } from './driver.ts';
-import { hostRefusal, socketLookup } from '../../../scripts/src/net-guard.ts';
+import { hostRefusal, socketLookup } from '../outbound-address.ts';
 
 export interface PostgresOptions {
   host: string;
@@ -17,8 +17,10 @@ export interface PostgresOptions {
   user: string;
   database: string;
   password: string;
+  /** Default verify-full: TLS with the certificate and host name checked. `require` encrypts without checking who answers. */
   sslmode?: 'disable' | 'require' | 'verify-ca' | 'verify-full';
   ca?: string | Buffer;
+  /** Off by default. Accept a cleartext or MD5 password request without verified TLS (a lab server, an unencrypted link you trust). */
   allowPlaintextPassword?: boolean;
   /** Default 30 seconds; also bounds startup/authentication, not just TCP. */
   connectTimeoutMs?: number;
@@ -109,9 +111,11 @@ const hmac = (key: Buffer, value: string) => createHmac('sha256', key).update(va
 /** RFC 5802 / RFC 7677. PostgreSQL uses an empty SCRAM username. This pure
  * exchange also accepts the RFC test-vector username. Passwords outside ASCII
  * use UTF-8 NFKC; full SASLprep prohibited/unassigned handling is unverified. */
-export function scramSha256(user: string, password: string, nonce = randomBytes(24).toString('base64'), binding?: Buffer) {
+export function scramSha256(user: string, password: string, nonce = randomBytes(24).toString('base64'), binding?: Buffer, supportsBinding = false) {
   if (!/^[\x21-\x2b\x2d-\x7e]+$/.test(nonce)) throw new Error('Invalid SCRAM client nonce');
-  const header = binding ? 'p=tls-server-end-point,,' : 'n,,';
+  // RFC 5802 section 7 (gs2-cbind-flag): p= when binding is used; y when this client could bind but the server did not offer
+  // the -PLUS mechanism (so a downgrade by someone in the middle is detected by the server); n when this client cannot bind.
+  const header = binding ? 'p=tls-server-end-point,,' : supportsBinding ? 'y,,' : 'n,,';
   const bare = `n=${user.replace(/=/g, '=3D').replace(/,/g, '=2C')},r=${nonce}`;
   let expected: Buffer | undefined;
   let continued = false;
@@ -219,6 +223,8 @@ export class PostgresClient implements SqlDriver {
   private context = new AsyncLocalStorage<{ active: boolean }>();
   private serial = 0;
   private readonly options: PostgresOptions;
+  /** Whether the TLS certificate is checked (sslmode verify-ca or verify-full). */
+  tlsVerified = false;
   private constructor(options: PostgresOptions) {
     this.options = options;
     this.socket = connect({ host: options.host, port: options.port ?? 5432, lookup: socketLookup({ private: true }) });
@@ -264,9 +270,10 @@ export class PostgresClient implements SqlDriver {
     // The server is one an administrator chose, on the network or not; the metadata range is never reached, and a name is checked on the lookup the connection uses.
     const refused = hostRefusal({ private: true }, options.host);
     if (refused) throw new Error(`PostgreSQL: ${refused}`);
-    const mode = options.sslmode ?? (options.ca ? 'verify-full' : 'require');
+    const mode = options.sslmode ?? 'verify-full';
     if (!['disable', 'require', 'verify-ca', 'verify-full'].includes(mode)) throw new Error('Invalid PostgreSQL sslmode');
     const client = new PostgresClient({ ...options });
+    client.tlsVerified = mode === 'verify-ca' || mode === 'verify-full';
     const timer = setTimeout(() => client.fail(new Error('PostgreSQL connect timeout')), timeout);
     try {
       if (mode !== 'disable') {
@@ -318,7 +325,11 @@ export class PostgresClient implements SqlDriver {
       if (kind === 3 || kind === 5) {
         if (phase !== 'initial') protocol();
         let response = this.options.password;
-        if (kind === 3 && !(this.socket as TLSSocket).encrypted && !this.options.allowPlaintextPassword) throw new Error('PostgreSQL cleartext password requires TLS or allowPlaintextPassword');
+        // A password the server asks for in the clear (or as an MD5 hash, which is the password in all but name) goes only over TLS
+        // whose certificate was checked, unless the caller said otherwise. The message names the way out and holds no secret.
+        if (!(this.socket as TLSSocket).encrypted || !this.tlsVerified) {
+          if (!this.options.allowPlaintextPassword) throw new Error(`PostgreSQL asked for a ${kind === 3 ? 'cleartext' : 'MD5'} password without verified TLS; use sslmode verify-full (or verify-ca), SCRAM, or set allowPlaintextPassword to accept this`);
+        }
         if (kind === 5) {
           const salt = c.bytes(4);
           const inner = createHash('md5').update(this.options.password + this.options.user).digest('hex');
@@ -334,7 +345,7 @@ export class PostgresClient implements SqlDriver {
         const plus = !!(this.socket as TLSSocket).encrypted && methods.includes('SCRAM-SHA-256-PLUS');
         const selected = plus ? 'SCRAM-SHA-256-PLUS' : 'SCRAM-SHA-256';
         if (!methods.includes(selected)) throw new Error('PostgreSQL server offered no supported SCRAM mechanism');
-        scram = scramSha256('', this.options.password, undefined, plus ? channelBinding(this.socket as TLSSocket) : undefined);
+        scram = scramSha256('', this.options.password, undefined, plus ? channelBinding(this.socket as TLSSocket) : undefined, !!(this.socket as TLSSocket).encrypted);
         this.send('p', cstr(selected), i32(Buffer.byteLength(scram.first)), Buffer.from(scram.first)); phase = 'continue'; continue;
       }
       if (kind === 11 && phase === 'continue' && scram) {

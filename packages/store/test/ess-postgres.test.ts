@@ -103,7 +103,29 @@ test('MD5 exact password response and startup fields', async (t) => {
     assert.deepEqual(p.body, str('md5' + createHash('md5').update(inner).update(salt).digest('hex')));
     w.write(ok());
   });
-  await opened(t, options);
+  await opened(t, { ...options, allowPlaintextPassword: true });
+});
+
+test('RFC 5802 gs2 flag: n without TLS, y when the client could bind but the server did not offer -PLUS, p= when binding', async () => {
+  const nonce = 'rOprNGfwEbeRWgbNEkqO';
+  const reply = `r=${nonce}%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096`;
+  const none = scramSha256('', 'pencil', nonce, undefined, false);
+  assert.ok(none.first.startsWith('n,,n='));
+  assert.match(await none.continue(reply), new RegExp(`^c=${Buffer.from('n,,').toString('base64')},`));
+  const could = scramSha256('', 'pencil', nonce, undefined, true);
+  assert.ok(could.first.startsWith('y,,n='));
+  assert.match(await could.continue(reply), new RegExp(`^c=${Buffer.from('y,,').toString('base64')},`));
+  const bound = scramSha256('', 'pencil', nonce, Buffer.from('cb-data'), true);
+  assert.ok(bound.first.startsWith('p=tls-server-end-point,,n='));
+});
+
+test('a cleartext or MD5 password request is refused without verified TLS, with an error that holds no password', async (t) => {
+  for (const kind of [3, 5]) {
+    let answered = false;
+    const options = await fake(t, async (w) => { await startup(w); w.write(auth(kind, kind === 5 ? Buffer.from([1, 2, 3, 4]) : undefined)); answered = (await w.read().catch(() => undefined)) !== undefined; });
+    await assert.rejects(PostgresClient.connect({ ...options, sslmode: 'disable' }), (e: Error) => /without verified TLS/.test(e.message) && !e.message.includes('pencil'));
+    assert.equal(answered, false, 'no password response was sent');
+  }
 });
 
 async function scramServer(w: Wire, binding?: Buffer, wrong = false) {
@@ -259,7 +281,7 @@ test('TLS require, CA and hostname verification, default modes, and SCRAM-PLUS b
   const binding = createHash('sha256').update(new X509Certificate(cert.cert).raw).digest();
   // Cleanup is registered last below, after every fake server's close hook.
   for (const mode of ['require', 'verify-ca', 'verify-full', 'default-ca', 'default', 'untrusted'] as const) {
-    const refuses = mode === 'verify-full' || mode === 'default-ca' || mode === 'untrusted';
+    const refuses = mode === 'verify-full' || mode === 'default-ca' || mode === 'default' || mode === 'untrusted';
     const options = await fake(t, async (w) => {
       assert.equal((await w.startup()).readInt32BE(), 80877103); w.write(Buffer.from('S'));
       const secure = new TLSSocket(w.socket, { isServer: true, secureContext: context });
