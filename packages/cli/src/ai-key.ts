@@ -7,6 +7,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { notPlainText, plainSecretText } from './secret-file.ts';
 
 export interface AiKey {
   apiKey: string;
@@ -38,7 +39,9 @@ export function resolveAiKey(env: NodeJS.ProcessEnv, file?: string, workspaceId?
   if (platform !== 'win32' && statSync(path).mode & 0o077) {
     throw new Error(`serve: ${path} can be read by other users; run: chmod 600 ${path}`);
   }
-  const apiKey = readFileSync(path, 'utf8').trim();
+  const text = plainSecretText(readFileSync(path));
+  if (text === undefined) throw notPlainText('serve', path);
+  const apiKey = text.trim();
   if (!apiKey) throw new Error(`serve: ${path} is empty`);
   return { apiKey, source: 'file', keyFile: path, ...workspace };
 }

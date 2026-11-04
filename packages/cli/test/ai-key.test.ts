@@ -69,3 +69,19 @@ test('serve refuses an --ai-run-tokens that would switch the budget off or is no
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a key file saved as UTF-16 is refused by name and never read as a key', () => {
+  const key = ['not', 'a', 'real', 'key'].join('-');
+  for (const bytes of [Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(key, 'utf16le')]), Buffer.from(`${key}\r\n`, 'utf16le')]) {
+    withKeyFile('', 0o600, (file) => {
+      writeFileSync(file, bytes);
+      chmodSync(file, 0o600);
+      assert.throws(() => resolveAiKey({}, file), (e: Error) => e.message === `serve: ${file} is not plain UTF-8 text (a file saved as UTF-16, which Windows PowerShell's > and Out-File write, is the usual cause); save it again as UTF-8`);
+    });
+  }
+  withKeyFile('', 0o600, (file) => {
+    writeFileSync(file, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(`${key}\r\n`)]));
+    chmodSync(file, 0o600);
+    assert.equal(resolveAiKey({}, file).apiKey, key);
+  });
+});

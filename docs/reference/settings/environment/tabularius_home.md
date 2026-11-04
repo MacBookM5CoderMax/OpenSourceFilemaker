@@ -8,6 +8,6 @@ The folder holding per-user settings (`~/.openhbam` by default): the AI key file
 | Accepted values | file or directory path |
 | Restart needed | Yes for a running server; new CLI invocations read the changed value. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/ai-key.ts:21](../../../../packages/cli/src/ai-key.ts#L21) |
+| Code | [packages/cli/src/ai-key.ts:22](../../../../packages/cli/src/ai-key.ts#L22) |
 
 [All environment variables](../../../environment-variables.md)
