@@ -1,4 +1,6 @@
 import { withXmlWorkBudget } from './work-budget.ts';
+import { decodeImage } from './image-decode.ts';
+import { readQrCode } from './qr-read.ts';
 // FileMaker's built-in calculation functions.
 //
 // Each takes its arguments unevaluated, so If, Case, Choose, Let and the
@@ -1258,6 +1260,21 @@ eager('BE_PDFGetPages', 3, 4, (v, env) => {
 });
 // No image scaling on the server: the container itself stands in for its thumbnail.
 eager('GetThumbnail', 3, 3, (v) => v[0]);
+// Unverified compatibility choices for absent or unreadable QR images are documented in known differences.
+eager('ReadQRCode', 1, 1, (v, env) => {
+  const c = v[0];
+  if (c.type !== 'container' || !c.data?.length) return EMPTY;
+  env.checkWorkBudget(Math.ceil(c.data.length / 1024));
+  const info = imageInfo(c.data);
+  if (!info || info.width * info.height > 60_000_000) return EMPTY;
+  const jpeg = c.data[0] === 0xff && c.data[1] === 0xd8;
+  env.checkWorkBudget(Math.ceil(info.width * info.height * (jpeg ? 1 : 1 / 8)));
+  let pic: ReturnType<typeof decodeImage>;
+  try { pic = decodeImage(c.data, true); } catch { return EMPTY; }
+  if (!pic) return EMPTY;
+  env.checkWorkBudget(Math.ceil(pic.width * pic.height / 16));
+  return text(readQrCode(pic, () => env.checkWorkBudget(1024)));
+});
 // 1 unless a file stored outside the database is missing or was changed there; "?" for a value that isn't a
 // container. An empty field reads as empty text, so it counts as 1 (nothing stored has changed; inferred).
 eager('VerifyContainer', 1, 1, (v) => {
