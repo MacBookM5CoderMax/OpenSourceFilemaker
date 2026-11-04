@@ -1605,7 +1605,6 @@ function applyOneOp(st: DesignState, op: DesignOp, deleted?: DeletedLookup): { o
       const before = { ...field, options: field.options && structuredClone(field.options) };
       if (op.name !== undefined) {
         const name = checkName(op.name, 'A field');
-        if (field.externalColumn && name !== field.name) throw invalid(`The SQL column field "${field.name}" cannot be renamed; sync the shadow table with its SQL source instead`);
         if (st.fileMode === 'native' && name.toLowerCase() === '_fm_uuid') throw invalid('Native record identity reserves _fm_uuid');
         unique(table.fields.map((f) => f.name), name, `Field ${table.name}::`, field.name);
         if (field.externalColumn && name !== field.name) throw invalid(`Field ${table.name}::${field.name} is a SQL column: its name is the column's name, so it cannot be renamed, not even to change its letter case`);
