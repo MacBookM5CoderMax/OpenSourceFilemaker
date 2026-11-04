@@ -804,7 +804,8 @@ function secureExisting(file: string): Stats | undefined {
   let st;
   try { st = lstatSync(file); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return; throw e; }
   const uid = process.getuid?.();
-  if (!st.isFile() || (uid !== undefined && st.uid !== uid) || (process.platform !== 'win32' && (st.mode & 0o077) !== 0)) throw new Error(`Unsafe OIDC storage file: ${file}`);
+  // A second name (nlink > 1) is refused as well: the main file's boundary open checks that only at creation, and the sidecars not at all.
+  if (!st.isFile() || st.nlink > 1 || (uid !== undefined && st.uid !== uid) || (process.platform !== 'win32' && (st.mode & 0o077) !== 0)) throw new Error(`Unsafe OIDC storage file: ${file}`);
   return st;
 }
 

@@ -405,6 +405,11 @@ test('OIDC storage refuses symlinks and permissive main files and sidecars', { s
   writeFileSync(`${path}-wal`, '');
   chmodSync(`${path}-wal`, 0o644);
   assert.throws(create);
+  // A sidecar with a second name is refused too: the main file's boundary open does not cover it.
+  chmodSync(`${path}-wal`, 0o600);
+  linkSync(`${path}-wal`, join(testDir, 'wal-second-name'));
+  assert.throws(create, /Unsafe OIDC storage file/);
+  rmSync(join(testDir, 'wal-second-name'));
   rmSync(`${path}-wal`, { force: true });
   rmSync(path, { force: true });
   rmSync(testDir, { recursive: true, force: true });
