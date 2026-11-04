@@ -56,7 +56,12 @@ test('the admin console runs a test restore and lists the outcome with each set'
   const s = await serve({ dir: folder, port: 0, log: () => {} });
   try {
     const post = (path: string) => fetch(`${s.url}/tabularius/admin/v1${path}`, { method: 'POST', headers: { 'x-tabularius-admin': '1' } }).then((r) => r.json());
-    const status = () => fetch(`${s.url}/tabularius/admin/v1/status`).then((r) => r.json());
+    // A status answer that is not the status says why (the body), instead of a TypeError on a missing field.
+    const status = () => fetch(`${s.url}/tabularius/admin/v1/status`).then(async (r) => {
+      const text = await r.text();
+      assert.equal(r.status, 200, text);
+      return JSON.parse(text);
+    });
     await post('/backup');
     // The backup is checked in the background; let that finish first.
     for (let i = 0; i < 100 && !(await status()).backups.sets[0]?.check; i++) await new Promise((ok) => setTimeout(ok, 50));
@@ -65,7 +70,10 @@ test('the admin console runs a test restore and lists the outcome with each set'
     assert.equal(r.ok, true);
     assert.equal((await status()).backups.sets[0].restored.ok, true);
   } finally {
-    (s.server as Server).close();
-    rmSync(folder, { recursive: true });
+    // Closed (files released, background work stopped) before the folder goes; a backup set the check was still touching
+    // made the removal fail with ENOTEMPTY on a slow macOS runner.
+    (s.server as Server).closeAllConnections();
+    await new Promise<void>((done) => (s.server as Server).close(() => done()));
+    rmSync(folder, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });

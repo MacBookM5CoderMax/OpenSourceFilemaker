@@ -387,7 +387,7 @@ function size(path: string): number {
 type BackupSummary = { name: string; bytes: number; check?: SetCheck; restored?: RestoreTest };
 
 /** One cache per console; pruning or changing destination drops obsolete entries. */
-class BackupStatusCache {
+export class BackupStatusCache {
   private dest = '';
   private entries = new Map<string, { version: string; files: Map<string, number>; check?: SetCheck; restored?: RestoreTest }>();
   private result: BackupSummary[] = [];
@@ -406,13 +406,21 @@ class BackupStatusCache {
       if (this.entries.get(name)?.version === version) continue;
       changed = true;
       const files = new Map<string, number>();
+      // A set is still being worked on while it is listed (its check opens the copy, which makes and removes a -wal file), so a
+      // file or folder may be gone by the time it is read. That is not an error: the manifest changes when the work ends, and
+      // the set is read again then.
+      const gone = (e: unknown) => (e as NodeJS.ErrnoException)?.code === 'ENOENT';
       const walk = (dir: string) => {
-        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        let entries;
+        try { entries = readdirSync(dir, { withFileTypes: true }); } catch (e) { if (gone(e)) return; throw e; }
+        for (const entry of entries) {
           const file = join(dir, entry.name);
           if (entry.isDirectory()) walk(file);
           else if (entry.isFile()) {
-            const st = statSync(file);
-            files.set(`${st.dev}:${st.ino}`, st.size);
+            try {
+              const st = statSync(file);
+              files.set(`${st.dev}:${st.ino}`, st.size);
+            } catch (e) { if (!gone(e)) throw e; }
           }
         }
       };
