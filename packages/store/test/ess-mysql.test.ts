@@ -80,7 +80,7 @@ const options = (port: number, pw = password) => ({ host: '127.0.0.1', port, dat
 async function auth(peer: Peer, expected = native(password, nonce)): Promise<void> {
   const reply = (await peer.read()).data;
   const at = 32 + 2;
-  assert.equal(reply.readUInt32LE(4), 1024 ** 3);
+  assert.equal(reply.readUInt32LE(4), 64 * 1024 ** 2);
   assert.equal(reply.subarray(32, 34).toString(), 'u\0');
   assert.deepEqual(reply.subarray(at + 1, at + 1 + reply[at]), expected);
   peer.send(ok, 2);
@@ -140,6 +140,61 @@ test('full authentication without TLS requests RSA key and encrypts the password
     p.send(ok, 6); await p.read();
   }, 'caching_sha2_password');
   try { const d = await MysqlDriver.connect(options(f.port)); await d.close(); } finally { await f.close(); }
+});
+
+test('caching_sha2 full authentication over unverified TLS does not fetch the server RSA key unless allowInsecure is set', async () => {
+  const context = createSecureContext({ key: tlsKey, cert: tlsCert });
+  let askedForKey = false;
+  const f = await fake(async (p) => {
+    assert.equal((await p.read()).seq, 1);
+    p.detach();
+    const secure = new TLSSocket(p.socket, { isServer: true, secureContext: context });
+    secure.on('error', () => {});
+    const peer = new Peer(secure);
+    const response = (await peer.read()).data;
+    assert.deepEqual(response.subarray(35, 35 + response[34]), caching(password, nonce));
+    peer.send(Buffer.from([1, 4]), 3);
+    const next = await peer.read().catch(() => undefined);
+    if (next) askedForKey = Buffer.from(next.data).equals(Buffer.from([2])) || Buffer.from(next.data).includes(Buffer.from(password));
+    await new Promise<void>((resolve) => secure.once('close', resolve));
+  }, 'caching_sha2_password');
+  try {
+    await assert.rejects(MysqlDriver.connect({ ...options(f.port), tls: 'require', allowInsecure: false, connectTimeoutMs: 2000 }), (e: Error) => /verified TLS/.test(e.message) && /serverPublicKey/.test(e.message) && !e.message.includes(password));
+    assert.equal(askedForKey, false, 'the client asked for the RSA key or sent the password');
+  } finally { await f.close(); }
+});
+
+test('a pinned serverPublicKey encrypts the password without asking the server for a key', async () => {
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const f = await fake(async (p) => {
+    const reply = (await p.read()).data;
+    assert.deepEqual(reply.subarray(35, 35 + reply[34]), caching(password, nonce));
+    p.send(Buffer.from([1, 4]), 2);
+    const encrypted = (await p.read()).data;
+    assert.notDeepEqual(encrypted, Buffer.from([2]), 'the client asked for the key');
+    const plain = privateDecrypt({ key: privateKey, padding: constants.RSA_PKCS1_OAEP_PADDING }, encrypted);
+    assert.deepEqual(plain, xor(str(password), nonce));
+    p.send(ok, 4); await p.read();
+  }, 'caching_sha2_password');
+  try {
+    const d = await MysqlDriver.connect({ ...options(f.port), allowInsecure: true, tls: 'disable', serverPublicKey: publicKey.export({ type: 'spki', format: 'pem' }) as string });
+    await d.close();
+  } finally { await f.close(); }
+});
+
+test('a packet that arrives in plaintext before the TLS upgrade fails the connection', async () => {
+  const context = createSecureContext({ key: tlsKey, cert: tlsCert });
+  let upgraded = false;
+  const f = await fake(async (p) => {
+    p.send(ok, 2); // forged OK, sent in plaintext right behind the handshake
+    const request = await p.read().catch(() => undefined);
+    if (request) upgraded = true;
+    await new Promise<void>((resolve) => p.socket.once('close', resolve));
+  }, 'caching_sha2_password');
+  try {
+    await assert.rejects(MysqlDriver.connect({ ...options(f.port), tls: 'require', allowInsecure: false, connectTimeoutMs: 2000 }), /before the TLS upgrade/);
+    void upgraded; void context;
+  } finally { await f.close(); }
 });
 
 test('clear-password plugin is refused without TLS', async () => {
@@ -251,13 +306,13 @@ test('16 MiB packet is split and joined, and an absurd declared length is refuse
     p.send(payload.subarray(0, 0xffffff), 5); p.send(payload.subarray(0xffffff), 6); p.send(eof, 7);
     assert.equal((await p.message())[0], 3);
     p.send(Buffer.from([1]), 1); p.send(col('v', 253), 2); p.send(eof, 3);
-    const absurd = Buffer.alloc(9); absurd[0] = 0xfe; absurd.writeBigUInt64LE(BigInt(1024 ** 3 + 1), 1);
+    const absurd = Buffer.alloc(9); absurd[0] = 0xfe; absurd.writeBigUInt64LE(BigInt(64 * 1024 ** 2 + 1), 1);
     p.send(absurd, 4);
   });
   try {
     driver = await MysqlDriver.connect(options(f.port));
     const r = await driver.query(huge, []); assert.equal((r.rows[0][0] as string).length, huge.length);
-    await assert.rejects(driver.query('again', []), /exceeds 1 GiB/);
+    await assert.rejects(driver.query('again', []), /exceeds 64 MiB/);
     await assert.rejects(driver.query('after failure', []), /connection closed/);
   } finally { await driver?.close(); await f.close(); }
 });

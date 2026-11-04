@@ -9,7 +9,8 @@ import { hostRefusal, socketLookup } from '../outbound-address.ts';
 // Connection Phase, Authentication, COM_QUERY, COM_STMT_PREPARE and COM_STMT_EXECUTE.
 // Protocol behavior is unverified against a real MySQL or MariaDB server.
 const MAX_PART = 0xffffff;
-const MAX_MESSAGE = 1024 * 1024 * 1024;
+// One connection buffers at most this much from the server (times TABULARIUS_ESS_POOL connections): 64 MiB, not the protocol's 1 GiB.
+const MAX_MESSAGE = 64 * 1024 * 1024;
 const CAP = { LONG_PASSWORD: 1, CONNECT_DB: 8, PROTOCOL_41: 0x200, SSL: 0x800,
   TRANSACTIONS: 0x2000, SECURE: 0x8000, MULTI_RESULTS: 0x20000,
   PLUGIN_AUTH: 0x80000, LENENC_AUTH: 0x200000, DEPRECATE_EOF: 0x1000000 };
@@ -34,7 +35,7 @@ function lnum(b: Buffer, pos: { at: number }): number {
   if (n < 251) return n;
   if (n === 0xfc) { const v = b.readUInt16LE(pos.at); pos.at += 2; return v; }
   if (n === 0xfd) { const v = b.readUIntLE(pos.at, 3); pos.at += 3; return v; }
-  if (n === 0xfe) { const v = Number(b.readBigUInt64LE(pos.at)); pos.at += 8; if (v > MAX_MESSAGE) throw Error('SQL value exceeds 1 GiB'); return v; }
+  if (n === 0xfe) { const v = Number(b.readBigUInt64LE(pos.at)); pos.at += 8; if (v > MAX_MESSAGE) throw Error('SQL value exceeds 64 MiB'); return v; }
   throw Error('Invalid SQL length');
 }
 function lbytes(b: Buffer, pos: { at: number }): Buffer {
@@ -48,7 +49,7 @@ function cstr(b: Buffer, p: { at: number }): string {
   const s = b.toString('utf8', p.at, end); p.at = end + 1; return s;
 }
 
-/** A bounded packet reader. Each physical packet may be 16 MiB; a logical message may be 1 GiB. */
+/** A bounded packet reader. Each physical packet may be 16 MiB; a logical message may be 64 MiB. */
 class Packets {
   private buffer: Buffer = Buffer.alloc(0);
   private queue: { payload: Buffer; seq: number }[] = [];
@@ -58,7 +59,7 @@ class Packets {
   private socket: Socket | TLSSocket;
   constructor(socket: Socket | TLSSocket) { this.socket = socket; this.attach(socket); }
   private onData = (data: Buffer): void => {
-    if (this.buffer.length + data.length > MAX_MESSAGE + MAX_PART + 4) return this.fail(Error('SQL packet exceeds 1 GiB'));
+    if (this.buffer.length + data.length > MAX_MESSAGE + MAX_PART + 4) return this.fail(Error('SQL packet exceeds 64 MiB'));
     this.buffer = this.buffer.length ? Buffer.concat([this.buffer, data]) : data;
     while (this.buffer.length >= 4) {
       const n = this.buffer.readUIntLE(0, 3);
@@ -68,7 +69,7 @@ class Packets {
       if (this.waiting) { const w = this.waiting; this.waiting = undefined; w.resolve(packet); }
       else {
         this.queuedBytes += packet.payload.length;
-        if (this.queuedBytes > MAX_MESSAGE) return this.fail(Error('SQL packet exceeds 1 GiB'));
+        if (this.queuedBytes > MAX_MESSAGE) return this.fail(Error('SQL packet exceeds 64 MiB'));
         this.queue.push(packet);
       }
     }
@@ -82,9 +83,12 @@ class Packets {
   private attach(socket: Socket | TLSSocket): void {
     socket.on('data', this.onData); socket.on('error', this.onError); socket.on('close', this.onError);
   }
+  /** Before a TLS upgrade: bytes or packets already received in plaintext were not sent by the server over TLS, so they fail the connection (CVE-2021-23222 class). */
   detach(): void {
+    const stray = this.buffer.length > 0 || this.queue.length > 0 || this.socket.readableLength > 0;
     this.socket.off('data', this.onData); this.socket.off('error', this.onError); this.socket.off('close', this.onError);
-    this.buffer = Buffer.alloc(0);
+    this.buffer = Buffer.alloc(0); this.queue = []; this.queuedBytes = 0;
+    if (stray) { this.socket.destroy(); throw Error('SQL server sent data before the TLS upgrade; the connection was refused'); }
   }
   replace(socket: TLSSocket): void { this.socket = socket; this.attach(socket); }
   async read(): Promise<{ payload: Buffer; seq: number }> {
@@ -99,7 +103,7 @@ class Packets {
       if (p.seq !== seq.value) throw Error('SQL packet sequence mismatch');
       seq.value = (seq.value + 1) & 255;
       total += p.payload.length;
-      if (total > MAX_MESSAGE) throw Error('SQL packet exceeds 1 GiB');
+      if (total > MAX_MESSAGE) throw Error('SQL packet exceeds 64 MiB');
       parts.push(p.payload);
       if (p.payload.length !== MAX_PART) return Buffer.concat(parts, total);
     }
@@ -110,6 +114,8 @@ export type MysqlTlsMode = 'disable' | 'require' | 'verify-ca' | 'verify-full';
 export interface MysqlOptions {
   host: string; port?: number; user: string; password: string; database: string;
   connectionName?: string; tls?: MysqlTlsMode; ca?: string | Buffer; allowInsecure?: boolean; connectTimeoutMs?: number;
+  /** The server's RSA public key (PEM), pinned: caching_sha2 full authentication then encrypts the password with it and never asks the server for a key. */
+  serverPublicKey?: string | Buffer;
 }
 function scramble(plugin: string, password: string, nonce: Buffer): Buffer {
   if (!password) return Buffer.alloc(0);
@@ -248,7 +254,7 @@ export class MysqlDriver implements SqlDriver {
   }
   private async send(payload: Buffer): Promise<void> {
     if (!this.socket || this.socket.destroyed) throw Error('SQL connection closed');
-    if (payload.length > MAX_MESSAGE) throw Error('SQL packet exceeds 1 GiB');
+    if (payload.length > MAX_MESSAGE) throw Error('SQL packet exceeds 64 MiB');
     for (let at = 0; at <= payload.length; at += MAX_PART) {
       const part = payload.subarray(at, Math.min(at + MAX_PART, payload.length));
       const header = Buffer.alloc(4); header.writeUIntLE(part.length, 0, 3); header[3] = this.seq.value;
@@ -337,7 +343,12 @@ export class MysqlDriver implements SqlDriver {
         if (reply[0] === 1 && reply[1] === 4) {
           if (plugin !== 'caching_sha2_password') throw Error('Unexpected SQL full authentication');
           if (this.tlsVerified || (this.tls && this.options.allowInsecure)) await this.send(nul(this.options.password));
-          else {
+          else if (this.options.serverPublicKey) {
+            // A pinned key: nothing is asked of the server, so there is no key a middleman could substitute.
+            await this.send(publicEncrypt({ key: this.options.serverPublicKey, padding: constants.RSA_PKCS1_OAEP_PADDING }, xor(nul(this.options.password), nonce)));
+          } else if (!this.options.allowInsecure) {
+            throw Error('caching_sha2_password full authentication needs verified TLS (tls verify-full or verify-ca), a pinned serverPublicKey, or allowInsecure to fetch the server key');
+          } else {
             await this.send(Buffer.from([2])); // Authentication: request server RSA public key.
             const key = checked(await this.receive(), [this.options.password]);
             if (key[0] !== 1) throw Error('SQL server did not send an RSA public key');
