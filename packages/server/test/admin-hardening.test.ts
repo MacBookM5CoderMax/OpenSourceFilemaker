@@ -11,6 +11,7 @@ import { Host } from '../src/host.ts';
 import type { DataApi } from '../src/dataapi.ts';
 import { createStore } from '../../store/src/index.ts';
 import { makeAuthenticator, forgeRegistration, forgeAssertion } from '../../store/test/forge-webauthn.ts';
+import { whyNot } from './why-not.ts';
 
 // The admin console's open doors (sign-in, passkey sign-in) and what every answer carries.
 
@@ -620,7 +621,7 @@ for (const flood of ['one address', 'rotating IPv6 /64s within a /48', 'the same
           assert.equal(r.status, 200);
           pending.push((await r.json()).challenge);
         } else {
-          assert.equal(r.status, 429, await r.clone().text());
+          assert.equal(r.status, 429, await whyNot(r, 429));
           assert.equal((await r.json()).challenge, undefined, 'refusal issues no challenge');
         }
       }

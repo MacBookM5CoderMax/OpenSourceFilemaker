@@ -13,6 +13,7 @@ import { encryptFileSync, decryptFileSync, encryptFile, decryptFile, sealRecord,
 import { signV4 } from '../src/s3.ts';
 import { sameSecret } from '../src/secrets.ts';
 import { expiryClock } from '../../store/src/clock.ts';
+import { whyNot } from './why-not.ts';
 
 function fresh() {
   const dir = mkdtempSync(join(tmpdir(), 'openhbam-crypto-'));
@@ -76,14 +77,14 @@ test('RFC 7636, a racing refresh across workers and replay revocation survive a 
       const fields = Object.fromEntries([...html.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)].map((m) => [m[1], m[2].replace(/&amp;/g, '&')]));
       const res = await fetch(base + '/oauth/authorize', { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: page.headers.get('set-cookie')?.split(';')[0] ?? '' },
         body: new URLSearchParams({ ...fields, database: 'Local', account: 'Admin', password: 'generated-password' }) });
-      assert.equal(res.status, 302, await res.clone().text());
+      assert.equal(res.status, 302, await whyNot(res, 302));
       return new URL(res.headers.get('location')!).searchParams.get('code')!;
     };
     const exchange = (code: string, code_verifier = verifier) => post('/oauth/token', { grant_type: 'authorization_code', code, code_verifier, client_id, redirect_uri: redirect });
     for (const bad of ['short', 'a'.repeat(129), '!'.repeat(43), 'a'.repeat(43)]) assert.equal((await exchange(await authorize(), bad)).status, 400);
     const code = await authorize();
     assert.equal((await post('/oauth/token', { grant_type: 'authorization_code', code, code_verifier: verifier, client_id: other.client_id, redirect_uri: redirect })).status, 400);
-    const tokenResponse = await exchange(code); assert.equal(tokenResponse.status, 200, await tokenResponse.clone().text());
+    const tokenResponse = await exchange(code); assert.equal(tokenResponse.status, 200, await whyNot(tokenResponse, 200));
     const first = await tokenResponse.json() as { refresh_token: string; access_token: string };
     assert.equal((await exchange(code)).status, 400);
     const rotate = (refresh_token: string) => post('/oauth/token', { grant_type: 'refresh_token', refresh_token, client_id });

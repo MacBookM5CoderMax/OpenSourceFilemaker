@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { Server } from 'node:http';
 import { serve } from '../src/index.ts';
 import { createStore, Store } from '../../store/src/index.ts';
+import { whyNot } from './why-not.ts';
 
 // The web client's per-row layout state (hide conditions of objects in a portal) is keyed by portal name, and a layout, an
 // imported file's too, may name a portal __proto__: that must stay a key of the answer, not reach Object.prototype.
@@ -88,7 +89,7 @@ test('Refresh Portal answers with the rows of a found-set portal named __proto__
     method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify({ step: 'Refresh Portal', objectId: 910, ids: [1], recordId: 1 }),
   });
-  assert.equal(res.status, 200, await res.clone().text());
+  assert.equal(res.status, 200, await whyNot(res, 200));
   const body = await res.json();
   assert.deepEqual(Object.keys(body.foundRows), ['__proto__']);
   assert.equal(body.foundRows['__proto__'].rows.length, 1);

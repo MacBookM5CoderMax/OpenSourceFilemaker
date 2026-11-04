@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { Assistant } from '../src/assistant.ts';
 import { serve, setAdminPassword } from '../src/index.ts';
 import { makeAuthenticator, forgeRegistration } from '../../store/test/forge-webauthn.ts';
+import { whyNot } from './why-not.ts';
 
 let app: Awaited<ReturnType<typeof serve>>;
 let dir: string;
@@ -190,7 +191,7 @@ for (const [path, method] of [
   const r = await fetch(app.url + path, { method, headers: { authorization: fullBearer, 'content-type': 'application/json' },
     body: JSON.stringify({ fieldData: { Title: 'x'.repeat(80 * 1024) } }),
   });
-  assert.equal(r.status, 500, await r.clone().text()); // Data API maps record-denied code 200 to HTTP 500.
+  assert.equal(r.status, 500, await whyNot(r, 500)); // Data API maps record-denied code 200 to HTTP 500.
   assert.equal((await r.json()).messages[0].code, '200');
   assert.equal(app.host.get('Other')!.find('Items').records[0].fieldData.Title, 'foreign');
 });

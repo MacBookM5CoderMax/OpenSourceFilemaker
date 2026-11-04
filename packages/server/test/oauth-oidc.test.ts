@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Store } from '../../store/src/index.ts';
 import { serve } from '../src/index.ts';
+import { whyNot } from './why-not.ts';
 
 const fetch = oidcBrowser();
 
@@ -108,7 +109,7 @@ test('sign in through the provider: the app gets a token for the mapped account,
   assert.match(page, /<strong>Claude<\/strong> wants to use Tabularius as <strong>alex@example\.com<\/strong>/);
   assert.match(page, /sent back to <strong>claude\.ai<\/strong>/);
   const back = await allow(page);
-  assert.equal(back.status, 302, await back.clone().text());
+  assert.equal(back.status, 302, await whyNot(back, 302));
   const to = new URL(back.headers.get('location')!);
   assert.equal(to.origin + to.pathname, REDIRECT);
   assert.equal(to.searchParams.get('state'), 's9');
@@ -314,7 +315,7 @@ test('another open of the file between the approval page and the click does not 
     const page = await consent.text();
     new Store(store.path, 'Test').close();
     const back = await allow(page);
-    assert.equal(back.status, 302, `the approval still stands: ${await back.clone().text()}`);
+    assert.equal(back.status, 302, await whyNot(back, 302)); // the approval still stands
     const code = new URL(back.headers.get('location')!).searchParams.get('code')!;
     const t = await post('/oauth/token', form({ grant_type: 'authorization_code', code, code_verifier: verifier, client_id, redirect_uri: REDIRECT }));
     assert.equal(t.status, 200);
@@ -344,7 +345,7 @@ for (const change of ['inactive', 'no fmmcp', 'second factor', 'file AI off']) {
       const consent = await throughProvider(params);
       assert.equal(consent.status, 200);
       const back = await allow(await consent.text());
-      assert.equal(back.status, 302, await back.clone().text()); // a refusal's reason is in its body
+      assert.equal(back.status, 302, await whyNot(back, 302)); // a refusal's reason is in its body
       const code = new URL(back.headers.get('location')!).searchParams.get('code')!;
       const retained = db.prepare('SELECT identity FROM codes WHERE client_id = ?').get(client_id) as { identity: string };
       assert.deepEqual(JSON.parse(retained.identity), { issuer, sub: 'u1', person: 'pat@example.test', mapping: '@example.test' });

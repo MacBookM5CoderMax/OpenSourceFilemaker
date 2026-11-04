@@ -13,6 +13,7 @@ import { totpCode } from '../../store/src/index.ts';
 import { serve } from '../src/index.ts';
 import { OAuthServer } from '../src/oauth.ts';
 import { expiryClock, ExpiryClock } from '../../store/src/clock.ts';
+import { whyNot } from './why-not.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -57,7 +58,7 @@ const mcp = (bearer?: string) => fetch(`${base}/mcp`, {
 
 async function register(extra: Record<string, unknown> = {}): Promise<{ client_id: string; client_secret?: string }> {
   const r = await post('/oauth/register', JSON.stringify({ client_name: 'Claude', redirect_uris: [REDIRECT], ...extra }), 'application/json');
-  assert.equal(r.status, 201, await r.clone().text());
+  assert.equal(r.status, 201, await whyNot(r, 201));
   return r.json();
 }
 
@@ -87,7 +88,7 @@ async function connect(account = 'ann', password = 'ann-pw', existing?: string) 
 
 async function refresh(previous: { client_id: string; access_token: string; refresh_token: string }) {
   const response = await post('/oauth/token', form({ grant_type: 'refresh_token', refresh_token: previous.refresh_token, client_id: previous.client_id }));
-  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(response.status, 200, await whyNot(response, 200));
   const next = await response.json();
   assert.match(next.access_token, /^ohbt_/);
   assert.match(next.refresh_token, /^ohrt_/);
@@ -450,7 +451,7 @@ test('blocking new users stops AI app sign-ins; an app already signed in refresh
     assert.notEqual(r.status, 302);
     assert.match(await r.text(), /The server isn(?:'|&#39;|&#x27;)t accepting new users right now/);
     const t = await post('/oauth/token', form({ grant_type: 'refresh_token', refresh_token: first.refresh_token, client_id: first.client_id }));
-    assert.equal(t.status, 200, await t.clone().text());
+    assert.equal(t.status, 200, await whyNot(t, 200));
   } finally {
     host.config.setBlockNewUsers(false);
   }

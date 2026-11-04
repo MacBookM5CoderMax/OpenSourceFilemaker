@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createStore, Store } from '../../store/src/index.ts';
 import { serve } from '../src/index.ts';
 import { unzip } from '../../scripts/src/xlsx.ts';
+import { whyNot } from './why-not.ts';
 
 test('native field values round trip through Data API and OData with typed shapes', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-native-surfaces-'));
@@ -91,18 +92,18 @@ test('native field values round trip through Data API and OData with typed shape
     const compatibleCount = await fetch(`${odata}/Items?$count=true&$top=0`, { headers: { ...auth, accept: 'application/json;IEEE754Compatible=true' } });
     assert.equal(typeof (await compatibleCount.json() as { '@odata.count': unknown })['@odata.count'], 'string');
     const integerApply = await fetch(`${odata}/Items?$apply=${encodeURIComponent('aggregate(Count with sum as NS,Count with average as NA)')}`, { headers: auth });
-    assert.equal(integerApply.status, 200, await integerApply.clone().text());
+    assert.equal(integerApply.status, 200, await whyNot(integerApply, 200));
     assert.deepEqual((await integerApply.json() as { value: { NS: number; NA: number }[] }).value[0], { '@odata.id': null, NS: -9, NA: -4.5 });
     const badDecimalFilter = await fetch(`${odata}/Items?$filter=${encodeURIComponent("Price eq 'abc'")}`, { headers: auth });
     assert.deepEqual((await badDecimalFilter.json() as { value?: unknown[] }).value ?? [], []);
     const notNine = await fetch(`${odata}/Items?$filter=${encodeURIComponent('Price ne 9')}`, { headers: auth });
-    assert.equal(notNine.status, 200, await notNine.clone().text());
+    assert.equal(notNine.status, 200, await whyNot(notNine, 200));
     assert.ok((await notNine.json() as { value: { Price: string | null }[] }).value.some((row) => row.Price === null));
     const applied = await fetch(`${odata}/Items?$apply=${encodeURIComponent('filter(Price lt 1)/aggregate(Price with sum as Total,Price with average as Mean,Price with min as Low,Price with max as High)')}`, { headers: auth });
-    assert.equal(applied.status, 200, await applied.clone().text());
+    assert.equal(applied.status, 200, await whyNot(applied, 200));
     assert.deepEqual((await applied.json() as { value: { Total: string; Mean: string; Low: string; High: string }[] }).value[0], { '@odata.id': null, Total: '0.1', Mean: '0.1', Low: '0.1', High: '0.1' });
     const sql = await fetch(`${hosted.url}/tabularius/sql/v1/databases/Native`, { method: 'POST', headers, body: JSON.stringify({ sql: 'SELECT Price FROM Items WHERE Price > 1 ORDER BY Price' }) });
-    assert.equal(sql.status, 200, await sql.clone().text());
+    assert.equal(sql.status, 200, await whyNot(sql, 200));
     assert.deepEqual((await sql.json() as { rows: number[][] }).rows, [[Number(fields.Price)]]);
     const filtered = await fetch(`${odata}/Items?$filter=${encodeURIComponent('Price gt 900719925474099312345.00')}`, { headers: auth });
     assert.equal(filtered.status, 200);

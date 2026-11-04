@@ -10,6 +10,7 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { createServer, request, type Server } from 'node:http';
 import { serve } from '../src/index.ts';
 import type { Store } from '../../store/src/index.ts';
+import { whyNot } from './why-not.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -91,7 +92,7 @@ async function restartWithCurrentPolicy(): Promise<void> {
 
 async function pendingAppSignIn(returnUrl: string): Promise<{ requestId: string; state: string; code: string }> {
   const r = await fetch(`${base}/oauth/getoauthurl?trackingID=t-revoked&provider=Test%20IdP`, { headers: fmsHeaders(returnUrl) });
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   const auth = new URL(await r.text());
   const state = auth.searchParams.get('state')!;
   const code = Math.random().toString(36).slice(2);
@@ -102,7 +103,7 @@ async function pendingAppSignIn(returnUrl: string): Promise<{ requestId: string;
 /** getoauthurl, then the person signing in at the provider; returns the request id and where the browser is sent back. */
 async function appSignIn(returnUrl = 'http://127.0.0.1:5000/', provider = 'Test IdP'): Promise<{ requestId: string; back: URL }> {
   const r = await fetch(`${base}/oauth/getoauthurl?trackingID=t-42&provider=${encodeURIComponent(provider)}&address=127.0.0.1&X-FMS-OAuth-AuthType=2`, { headers: fmsHeaders(returnUrl) });
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   const requestId = r.headers.get('x-fms-request-id')!;
   assert.ok(requestId);
   const auth = new URL(await r.text());

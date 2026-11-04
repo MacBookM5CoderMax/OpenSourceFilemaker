@@ -9,6 +9,7 @@ import { Agent, request, type Server } from 'node:http';
 import type { SignInFailures } from '../../store/src/sign-in-failures.ts';
 import { serve, setAdminPassword, type Host } from '../src/index.ts';
 import { createStore, LOCKOUT } from '../../store/src/index.ts';
+import { whyNot } from './why-not.ts';
 
 const FROM = '203.0.113.9';
 let dir: string;
@@ -82,7 +83,7 @@ test('bad passkey assertions count against the address, and an admin can lift th
   const lift = await fetch(`${base}/tabularius/admin/v1/accounts/unlock`, {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-tabularius-admin': '1', authorization: 'Basic ' + btoa(':admin-secret'), 'x-forwarded-for': '198.51.100.254' }, body: JSON.stringify({ database: 'Charts', address: from }),
   });
-  assert.equal(lift.status, 200, await lift.clone().text());
+  assert.equal(lift.status, 200, await whyNot(lift, 200));
   // Admin input is checked: not both, not a non-address; and it says whether a block was there.
   const adminCall = (body: unknown) => fetch(`${base}/tabularius/admin/v1/accounts/unlock`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-tabularius-admin': '1', authorization: 'Basic ' + btoa(':admin-secret'), 'x-forwarded-for': '198.51.100.254' }, body: JSON.stringify(body) });
   assert.equal((await adminCall({ database: 'Charts', address: from, account: 'pat' })).status, 400);

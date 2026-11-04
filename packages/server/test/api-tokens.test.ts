@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import type { Server } from 'node:http';
 import { serve, type Host } from '../src/index.ts';
 import { expiryClock, ExpiryClock } from '../../store/src/clock.ts';
+import { whyNot } from './why-not.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -62,7 +63,7 @@ for (const route of ['security', 'admin'] as const) {
       method: 'POST', headers: { 'content-type': 'application/json', ...(route === 'security' ? { authorization: `Bearer ${admin}` } : { 'x-tabularius-admin': '1' }) },
       body: JSON.stringify({ account: 'Ann', database: 'Charts', ...(route === 'security' ? { expiresDays: 1 / 48 } : { days: 1 }) }),
     });
-    assert.equal(response.status, route === 'security' ? 200 : 201, await response.clone().text());
+    assert.equal(response.status, route === 'security' ? 200 : 201, await whyNot(response, route === 'security' ? 200 : 201));
     const body = await response.json();
     const token = body.token;
     assert.ok(store.apiToken(token), 'a newly issued token must work immediately');

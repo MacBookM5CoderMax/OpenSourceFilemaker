@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { Server } from 'node:http';
 import { filterSql, serve } from '../src/index.ts';
 import { FILTER_LIMIT } from '../src/odata.ts';
+import { whyNot } from './why-not.ts';
 
 // A long or deep $filter (a $batch can carry one far past a URL's length) is a quick 400, never minutes of work or a 500.
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
@@ -68,7 +69,7 @@ test('the longest $filter allowed runs, and a longer one in a $batch is a quick 
   // Under the limit: 499 comparisons joined by and/or still fit SQLite's expression depth.
   const longest = Array.from({ length: 499 }, (_, i) => `District eq ${i}`).join(' or ');
   const ok = await at(longest);
-  assert.equal(ok.status, 200, await ok.clone().text());
+  assert.equal(ok.status, 200, await whyNot(ok, 200));
   const values = Array.from({ length: 990 }, (_, i) => i).join(',');
   assert.equal((await at(`District in (${values})`)).status, 200);
   // Under the token limit but past SQLite's expression depth: still the client's to shorten.
@@ -77,7 +78,7 @@ test('the longest $filter allowed runs, and a longer one in a $batch is a quick 
   assert.match(JSON.stringify(deeper.body), /too complex/);
   // Nested functions around a field run as SQL of about the same size as the text.
   const nestedOk = await at('endswith('.repeat(14) + 'State' + ",'a')".repeat(14) + ' eq false');
-  assert.equal(nestedOk.status, 200, await nestedOk.clone().text());
+  assert.equal(nestedOk.status, 200, await whyNot(nestedOk, 200));
 
   const huge = Array.from({ length: 50_000 }, (_, i) => `District eq ${i}`).join(' and ');
   const started = performance.now();

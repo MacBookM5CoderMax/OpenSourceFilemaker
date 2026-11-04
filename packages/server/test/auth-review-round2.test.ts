@@ -13,6 +13,7 @@ import { Store, LOCKOUT } from '../../store/src/index.ts';
 import { McpTokens } from '../src/mcp-tokens.ts';
 import { PgServer } from '../src/pgwire.ts';
 import { Admin, ADMIN_LIMIT } from '../src/admin.ts';
+import { whyNot } from './why-not.ts';
 
 const basic = (account: string, password: string) => `Basic ${Buffer.from(`${account}:${password}`).toString('base64')}`;
 const from = ['2001:db8:1:2::1', '2001:0db8:0001:0002:0:0:0:1'];
@@ -75,7 +76,7 @@ test('console and Admin API share IPv6 lockouts without disabling an existing co
   assert.equal(blocked.status, 429);
   await blocked.arrayBuffer();
   const existing = await fetch(`${url}/tabularius/admin/v1/passkeys`, { headers: { cookie, 'sec-fetch-site': 'same-origin', 'x-forwarded-for': from[1] } });
-  assert.equal(existing.status, 200, await existing.clone().text());
+  assert.equal(existing.status, 200, await whyNot(existing, 200));
   await existing.arrayBuffer();
 });
 

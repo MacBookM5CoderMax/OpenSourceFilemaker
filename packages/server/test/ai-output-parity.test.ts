@@ -8,6 +8,7 @@ import type { Server } from 'node:http';
 import { createStore, type DesignOp, type Store } from '../../store/src/index.ts';
 import { serve } from '../src/index.ts';
 import { STORE_EXT } from '../src/host.ts';
+import { whyNot } from './why-not.ts';
 
 let dir: string;
 let server: Server;
@@ -41,12 +42,12 @@ before(async () => {
   const login = await fetch(`${base}/fmi/data/vLatest/databases/AuditParity/sessions`, {
     method: 'POST', headers: { authorization: basic, 'content-type': 'application/json' }, body: '{}',
   });
-  assert.equal(login.status, 200, await login.clone().text());
+  assert.equal(login.status, 200, await whyNot(login, 200));
   token = (await login.json()).response.token;
   const webLogin = await fetch(`${base}/fmi/data/vLatest/databases/AuditParity/sessions`, {
     method: 'POST', headers: { authorization: basic, 'content-type': 'application/json', 'x-tabularius-client': 'web' }, body: '{}',
   });
-  assert.equal(webLogin.status, 200, await webLogin.clone().text());
+  assert.equal(webLogin.status, 200, await whyNot(webLogin, 200));
   webToken = (await webLogin.json()).response.token;
   store.setAuditSettings({ logReads: true });
 });
@@ -59,16 +60,16 @@ after(async () => {
 test('OData property reads are audited like Data API record reads', async () => {
   const baseline = reads().length;
   const control = await fetch(`${base}/fmi/data/vLatest/databases/AuditParity/layouts/People/records/${id}`, { headers: { authorization: `Bearer ${token}` } });
-  assert.equal(control.status, 200, await control.clone().text());
+  assert.equal(control.status, 200, await whyNot(control, 200));
   assert.equal(reads().length, baseline + 1);
   const before = reads().length;
   const response = await fetch(`${base}/fmi/odata/v4/AuditParity/People(${id})/Name`, { headers: { authorization: basic } });
-  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(response.status, 200, await whyNot(response, 200));
   assert.equal((await response.json()).value, 'Ada');
   assert.equal(reads().length, before + 1, 'property read must log its record');
   assert.deepEqual([reads().at(-1)?.recordId, reads().at(-1)?.surface], [id, 'odata']);
   const raw = await fetch(`${base}/fmi/odata/v4/AuditParity/People(${id})/Name/$value`, { headers: { authorization: basic } });
-  assert.equal(raw.status, 200, await raw.clone().text());
+  assert.equal(raw.status, 200, await whyNot(raw, 200));
   assert.equal(await raw.text(), 'Ada');
   assert.equal(reads().length, before + 2, '$value must log the same record');
   assert.deepEqual([reads().at(-1)?.recordId, reads().at(-1)?.surface], [id, 'odata']);
@@ -78,7 +79,7 @@ test('OData aggregates are audited like Data API finds', async () => {
   const before = reads().length;
   const path = '/fmi/odata/v4/AuditParity/People?$apply=' + encodeURIComponent('groupby((Status),aggregate($count as Total))');
   const response = await fetch(base + path, { headers: { authorization: basic } });
-  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(response.status, 200, await whyNot(response, 200));
   assert.deepEqual((await response.json()).value.map((r: { Status: string; Total: number }) => [r.Status, r.Total]), [['Active', 1]]);
   assert.equal(reads().length, before + 1, 'aggregate must log the rows it consumed');
   assert.deepEqual([reads().at(-1)?.recordId, reads().at(-1)?.surface], [id, 'odata']);
@@ -90,7 +91,7 @@ test('web client export is audited like Data API record reads', async () => {
     method: 'POST', headers: { authorization: `Bearer ${webToken}`, 'content-type': 'application/json' },
     body: JSON.stringify({ fields: ['Name'], ids: [id], format: 'csv' }),
   });
-  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(response.status, 200, await whyNot(response, 200));
   assert.match(await response.text(), /Ada/);
   assert.equal(reads().length, before + 1, 'export must log its source record');
   assert.deepEqual([reads().at(-1)?.recordId, reads().at(-1)?.surface], [id, 'web']);
@@ -102,7 +103,7 @@ test('MCP summarize_records is audited like MCP find_records', async () => {
     method: 'POST', headers: { authorization: basic, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'summarize_records', arguments: { database: 'AuditParity', layout: 'People', groupBy: ['Status'] } } }),
   });
-  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(response.status, 200, await whyNot(response, 200));
   const result = (await response.json()).result;
   assert.equal(result.isError, undefined, JSON.stringify(result));
   assert.equal(JSON.parse(result.content[0].text).foundCount, 1);
@@ -167,7 +168,7 @@ test('MCP saved dashboards hide secret categories when read back', async () => {
       method: 'POST', headers: { authorization: basic, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: { database: 'AuditParity', ...args } } }),
     });
-    assert.equal(response.status, 200, await response.clone().text());
+    assert.equal(response.status, 200, await whyNot(response, 200));
     const result = (await response.json()).result;
     assert.equal(result.isError, undefined, JSON.stringify(result));
     return result;
@@ -184,7 +185,7 @@ test('MCP dashboard previews and saved reads audit each summarized record', asyn
       method: 'POST', headers: { authorization: basic, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: { database: 'AuditParity', ...args } } }),
     });
-    assert.equal(response.status, 200, await response.clone().text());
+    assert.equal(response.status, 200, await whyNot(response, 200));
     const result = (await response.json()).result;
     assert.equal(result.isError, undefined, JSON.stringify(result));
   };
@@ -213,7 +214,7 @@ test('MCP script results hide values read from secret fields', async () => {
     method: 'POST', headers: { authorization: basic, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'run_script', arguments: { database: 'AuditParity', script: 'ReturnStatus' } } }),
   });
-  assert.equal(safe.status, 200, await safe.clone().text());
+  assert.equal(safe.status, 200, await whyNot(safe, 200));
   const ordinary = JSON.parse((await safe.json()).result.content[0].text);
   assert.equal(ordinary.result, 'ok');
   assert.equal(ordinary.trace, undefined);
@@ -225,7 +226,7 @@ test('MCP scripts that read a secret field return no output, even through comput
       method: 'POST', headers: { authorization: basic, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'run_script', arguments: { database: 'AuditParity', script } } }),
     });
-    assert.equal(response.status, 200, await response.clone().text());
+    assert.equal(response.status, 200, await whyNot(response, 200));
     const result = (await response.json()).result;
     assert.equal(result.isError, undefined, JSON.stringify(result));
     assert.doesNotMatch(JSON.stringify(result), /synthetic-secret-123/);
@@ -260,7 +261,7 @@ test('personal data isolation still refuses derived MCP tools', async () => {
         method: 'POST', headers: { authorization: basic, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: { database: 'AuditParity', ...args } } }),
       });
-      assert.equal(response.status, 200, await response.clone().text());
+      assert.equal(response.status, 200, await whyNot(response, 200));
       assert.equal((await response.json()).result.isError, true, name);
     }
   } finally {

@@ -13,6 +13,7 @@ import { createFeed, revokeFeed } from '../src/calendar.ts';
 import { redactPath } from '../src/server-logs.ts';
 import { makeAuthenticator, forgeRegistration, forgeAssertion } from '../../store/test/forge-webauthn.ts';
 import { removeAtExit } from '../../../scripts/test-remove-at-exit.ts';
+import { whyNot } from './why-not.ts';
 
 function setup(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'link-lifetimes-'));
@@ -324,7 +325,7 @@ test('OAuth codes/access/refresh refuse exact expiry, reuse, revocation and disa
     const fields = Object.fromEntries([...(await page.text()).matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)].map((m) => [m[1], m[2].replace(/&amp;/g, '&')]));
     const response = await fetch(running.url + '/oauth/authorize', { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
       body: new URLSearchParams({ ...fields, database: store.name, account: 'Alice', password: 'pw' }) });
-    assert.equal(response.status, 302, await response.clone().text());
+    assert.equal(response.status, 302, await whyNot(response, 302));
     return new URL(response.headers.get('location')!).searchParams.get('code')!;
   };
   const exchange = (code: string) => post('/oauth/token', { grant_type: 'authorization_code', client_id, redirect_uri: redirect, code, code_verifier: verifier });
@@ -364,7 +365,7 @@ test('exports, reports and handover downloads require a live credential on every
     for (const endpoint of endpoints) { const res = await request(endpoint, token); assert.ok([401, 403].includes(res.status), `${endpoint.path}: ${res.status}`); assert.ok(!(await res.text()).includes(token ?? 'no-token-sentinel')); }
   };
   const initial = make();
-  for (const endpoint of endpoints) { const res = await request(endpoint, initial); assert.equal(res.status, 200, await res.clone().text()); assert.equal(res.headers.get('referrer-policy'), 'no-referrer'); await res.arrayBuffer(); }
+  for (const endpoint of endpoints) { const res = await request(endpoint, initial); assert.equal(res.status, 200, await whyNot(res, 200)); assert.equal(res.headers.get('referrer-policy'), 'no-referrer'); await res.arrayBuffer(); }
   await assertDenied(); now += 1000; await assertDenied(initial);
   const revoked = make(); store.revokeApiToken(store.apiTokens().find((entry) => revoked.startsWith(`ohbt_${entry.id}.`))!.id); await assertDenied(revoked);
   const disabled = make(); store.setAccountActive('Alice', false); await assertDenied(disabled);

@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Host, S3, STORE_EXT, backupFolder, mirrorDown, mirrorUp, restoreBackup, scheduleOffsite, serve, signV4 } from '../src/index.ts';
 import { Store, createStore } from '../../store/src/index.ts';
+import { whyNot } from './why-not.ts';
 
 // Off-site backups: the backup folder mirrored to S3-compatible storage.
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
@@ -209,7 +210,7 @@ test('the server copies each backup off-site, and the last changes when it stops
     });
     try {
     const res = await fetch(`${url}/tabularius/admin/v1/backup`, { method: 'POST', headers: { 'x-tabularius-admin': '1' } });
-    assert.equal(res.status, 200, await res.clone().text());
+    assert.equal(res.status, 200, await whyNot(res, 200));
     const set = ((await res.json()) as { dir: string }).dir.split(/[\\/]/).pop();
     await offsite!.run();
     assert.ok(s3.objects.has(`server/${set}/Charts${STORE_EXT}`), [...s3.objects.keys()].join());

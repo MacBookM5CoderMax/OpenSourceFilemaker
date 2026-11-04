@@ -13,6 +13,7 @@ import { ServerLogs } from '../src/server-logs.ts';
 import { STORE_EXT } from '../src/host.ts';
 import { expiryClock } from '../../store/src/clock.ts';
 import { createStore, Store } from '../../store/src/index.ts';
+import { whyNot } from './why-not.ts';
 
 const password = ['source', 'password'].join('-');
 let dir: string;
@@ -133,7 +134,7 @@ const fmsHeaders = (returnUrl: string) => ({ 'x-fms-application-type': '9', 'x-f
 /** getoauthurl, then the person signing in at the provider; returns the request id and where the browser is sent back. */
 async function appSignIn(returnUrl = 'http://127.0.0.1:5000/', provider = 'Test IdP'): Promise<{ requestId: string; back: URL }> {
   const r = await appFetch(`${base}/oauth/getoauthurl?trackingID=t-42&provider=${encodeURIComponent(provider)}&address=127.0.0.1&X-FMS-OAuth-AuthType=2`, { headers: fmsHeaders(returnUrl) });
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   const requestId = r.headers.get('x-fms-request-id')!;
   assert.ok(requestId);
   const auth = new URL(await r.text());
@@ -165,7 +166,7 @@ async function refused(r: Response, code = '212') {
 test('OAuth fmDataSource uses the other file domain mapping and its read-only privileges in every version', async () => {
   for (const version of ['v1', 'v2', 'vLatest']) {
     const r = await login([await grant()], {}, version);
-    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal(r.status, 200, await whyNot(r, 200));
     const token = r.headers.get('x-fm-data-access-token')!;
     const url = `${base}/fmi/data/${version}/databases/A/layouts/External/records`;
     const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };

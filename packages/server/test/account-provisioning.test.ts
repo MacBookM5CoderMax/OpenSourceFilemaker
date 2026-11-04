@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { serve } from '../src/index.ts';
 import { createStore, totpCode, type Store } from '../../store/src/index.ts';
+import { whyNot } from './why-not.ts';
 
 const csv = (row: string) => 'account,privilegeSet,active\n' + row;
 async function fixture() {
@@ -57,7 +58,7 @@ test('HTTP preview/apply match, replay is durable, changed payload and stale pre
     assert.equal(f.store.accounts().some((a) => a.name === 'New'), false);
     const body = { csv: source, previewToken: preview.previewToken, idempotencyKey: 'http-first' };
     const applied = await f.request(token, 'apply', body);
-    assert.equal(applied.status, 200, await applied.clone().text());
+    assert.equal(applied.status, 200, await whyNot(applied, 200));
     const result = await applied.json();
     assert.deepEqual(result.rows, preview.rows);
     const eventCount = f.store.auditLog({ security: true }).length;

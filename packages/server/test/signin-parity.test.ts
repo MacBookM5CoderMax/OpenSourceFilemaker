@@ -6,6 +6,7 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { join } from 'node:path';
 import { serve, type ServeOptions } from '../src/index.ts';
 import { totpCode } from '../../store/src/index.ts';
+import { whyNot } from './why-not.ts';
 
 async function setup(t: TestContext, options: Partial<ServeOptions> = {}) {
   const dir = mkdtempSync(join(import.meta.dirname, '.signin-parity-'));
@@ -93,7 +94,7 @@ async function provider(t: TestContext) {
   async function grant(base: string, person: Record<string, unknown>) {
     claims = person;
     const start = await fetch(`${base}/oauth/getoauthurl?trackingID=audit&provider=Audit%20IdP`, { headers: { 'x-fms-application-type': '9', 'x-fms-application-version': '15', 'x-fms-return-url': 'https://app.example/callback' } });
-    assert.equal(start.status, 200, await start.clone().text());
+    assert.equal(start.status, 200, await whyNot(start, 200));
     const auth = new URL(await start.text());
     const code = `code-${codes.size}`;
     codes.set(code, { nonce: auth.searchParams.get('nonce')!, challenge: auth.searchParams.get('code_challenge')! });

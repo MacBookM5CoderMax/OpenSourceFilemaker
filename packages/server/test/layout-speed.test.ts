@@ -10,6 +10,7 @@ import { serve } from '../src/index.ts';
 import type { Host } from '../src/host.ts';
 import { createStore } from '../../store/src/index.ts';
 import type { LayoutObject } from '../../fmp12/src/index.ts';
+import { whyNot } from './why-not.ts';
 
 let dir: string;
 let server: Server;
@@ -85,7 +86,7 @@ async function speed(body: unknown): Promise<any> {
   const r = await fetch(`${base}/tabularius/design/v1/databases/Shop/layouts/${layoutId}/speed`, {
     method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${tok}` }, body: JSON.stringify(body),
   });
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   return r.json();
 }
 

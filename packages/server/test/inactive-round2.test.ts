@@ -11,6 +11,7 @@ import { Profiler } from '../src/profiler.ts';
 import { SCRATCH_MAX_BYTES, dropScratch, scratchCopy } from '../src/debug.ts';
 import { RunProfile, ScriptDebugger, runScript, type DebugPoint } from '../../scripts/src/index.ts';
 import { redactCredentialStep } from '../../scripts/src/redaction.ts';
+import { whyNot } from './why-not.ts';
 
 async function fixture() {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-inactive-round2-'));
@@ -32,7 +33,7 @@ async function fixture() {
   const tool = async (name: string, args: object, account = 'Worker') => (await post('/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, { authorization: basic(account), accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' })).json();
   const login = async (client = 'rest', account = 'Worker') => {
     const response = await post(`/fmi/data/vLatest/databases/Local/sessions${client === 'web' ? '?client=web' : ''}`, {}, { authorization: basic(account) });
-    assert.equal(response.status, 200, await response.clone().text());
+    assert.equal(response.status, 200, await whyNot(response, 200));
     return { authorization: `Bearer ${(await response.json()).response.token}` };
   };
   return { ...served, dir, store, basic, post, tool, login, async done() {
@@ -257,7 +258,7 @@ for (const grant of ['authorization_code', 'refresh_token']) test(`OAuth ${grant
       f.store.setAccountActive('Worker', true);
       const verifier = 'v'.repeat(43);
       const signIn = await signInForm(f.url, { client_id, redirect_uri: redirect, response_type: 'code', code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', database: 'Local', account: 'Worker', password: 'worker-secret' });
-      assert.equal(signIn.status, 302, await signIn.clone().text());
+      assert.equal(signIn.status, 302, await whyNot(signIn, 302));
       const code = new URL(signIn.headers.get('location')!).searchParams.get('code')!;
       let fields = { grant_type: grant, client_id, code, code_verifier: verifier, redirect_uri: redirect } as Record<string, string>;
       if (grant === 'refresh_token') {

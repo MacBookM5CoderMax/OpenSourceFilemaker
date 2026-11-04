@@ -11,6 +11,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { serve, setAdminPassword } from '../src/index.ts';
 import { readJson, ApiError, lenient } from '../src/dataapi.ts';
 import { MAX_JSON_DEPTH } from '../src/request-json.ts';
+import { whyNot } from './why-not.ts';
 
 const basic = (account: string) => ({ authorization: 'Basic ' + btoa(`${account}:secret`) });
 const nested = (levels: number) => '['.repeat(levels) + '0' + ']'.repeat(levels);
@@ -73,7 +74,7 @@ for (const surface of [
     const allowed = await send(MAX_JSON_DEPTH - 1);
     assert.ok(allowed.ok, `${surface.name} at the limit: ${allowed.status} ${await allowed.text()}`);
     const denied = await send(MAX_JSON_DEPTH);
-    assert.equal(denied.status, 400, await denied.clone().text());
+    assert.equal(denied.status, 400, await whyNot(denied, 400));
     const error = await denied.json();
     if (surface.name === 'Data API') {
       assert.equal(error.messages[0].code, '960');

@@ -9,6 +9,7 @@ import type { Server } from 'node:http';
 import { serve, type Host } from '../src/index.ts';
 import { StoreError } from '../../store/src/index.ts';
 import { DEFAULT_FEED_DAYS, DEFAULT_TOKEN_DAYS, defaultTokenDays, tokenExpiry } from '../src/token-expiry.ts';
+import { whyNot } from './why-not.ts';
 
 const DAY = 86_400_000;
 const near = (date: string | Date | undefined, days: number) => {
@@ -87,7 +88,7 @@ test('Manage Security: a token made with no lifetime expires in 90 days; 0 and a
 test('the admin console: an AI app token made with no lifetime expires in 90 days; 0 is refused', async () => {
   const made = async (body: object) => {
     const r = await admin(body);
-    assert.equal(r.status, 201, await r.clone().text());
+    assert.equal(r.status, 201, await whyNot(r, 201));
     return ((await r.json()) as { token: string }).token;
   };
   near(expiryOf(await made({})), DEFAULT_TOKEN_DAYS);

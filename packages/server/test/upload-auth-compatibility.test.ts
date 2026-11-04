@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { serve, setAdminPassword } from '../src/index.ts';
 import { ScimDirectory } from '../src/scim.ts';
 import { Assistant } from '../src/assistant.ts';
+import { whyNot } from './why-not.ts';
 
 let app: Awaited<ReturnType<typeof serve>>;
 let dir: string;
@@ -60,7 +61,7 @@ before(async () => {
   const made = await fetch(app.url + '/tabularius/admin/v1/inbound-hooks', { method: 'POST',
     headers: { authorization: basic('Admin'), 'x-tabularius-admin': '1', 'content-type': 'application/json' },
     body: JSON.stringify({ name: 'Test', database: 'U', script: 'Hook', account: 'Admin' }) });
-  assert.equal(made.status, 201, await made.clone().text());
+  assert.equal(made.status, 201, await whyNot(made, 201));
   hook = (await made.json()).path;
   const redirect = 'https://claude.ai/api/mcp/auth_callback';
   const registered = await send('/oauth/register', { client_name: 'Compatibility test', redirect_uris: [redirect] });
@@ -71,7 +72,7 @@ before(async () => {
   const authorized = await signInForm(app.url, { client_id, redirect_uri: redirect, response_type: 'code',
     code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
     resource: app.url + '/mcp', database: 'U', account: 'Admin', password: 'pw', state: 'compat' });
-  assert.equal(authorized.status, 302, await authorized.clone().text());
+  assert.equal(authorized.status, 302, await whyNot(authorized, 302));
   const code = new URL(authorized.headers.get('location')!).searchParams.get('code')!;
   const token = await form('/oauth/token', { grant_type: 'authorization_code', code, code_verifier: verifier, client_id, redirect_uri: redirect });
   assert.equal(token.status, 200);
@@ -86,10 +87,10 @@ after(async () => {
 for (const account of ['Limited', 'Full Access with external source']) test(`${account}: 80 KiB record and find succeed`, async () => {
   const auth = account === 'Limited' ? limited : full;
   const r = await send(records, { fieldData: { Title: bigText } }, auth);
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   assert.equal((await r.json()).messages[0].code, '0');
   const found = await send(records.replace('/records', '/_find'), { query: Array.from({ length: 25 }, () => ({ Title: 'one' + ' '.repeat(3300) })) }, auth);
-  assert.equal(found.status, 200, await found.clone().text());
+  assert.equal(found.status, 200, await whyNot(found, 200));
   assert.ok((await found.json()).response.data.length > 0);
 });
 
@@ -97,7 +98,7 @@ test('limited session: Refresh Window accepts 20,000 ids', async () => {
   const r = await send('/tabularius/app/v1/databases/U/layouts/Docs/refresh', {
     ids: Array.from({ length: 20_000 }, (_, i) => i + 1), recordId: 1, displayRecords: [1],
   }, limited);
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   assert.equal((await r.json()).records[0].fieldData.Title, 'one');
 });
 
@@ -107,7 +108,7 @@ test('limited session: import accepts a 10,000-row CSV', async () => {
   const r = await fetch(app.url + '/tabularius/app/v1/databases/U/layouts/Docs/import?mapping=%5B%22Title%22%5D', {
     method: 'POST', headers: { authorization: limited }, body: data,
   });
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   const result = await r.json();
   assert.equal(result.imported, 10_000, JSON.stringify(result).slice(0, 500));
 });
@@ -117,7 +118,7 @@ for (const readOnly of [false, true]) test(`OData batch: 900 GETs (${readOnly ? 
   assert.ok(JSON.stringify(body).length > 64 * 1024);
   const auth = readOnly ? 'Bearer ' + app.host.get('U')!.createApiToken('Limited', { surfaces: ['fmodata'], readOnly: true }) : basic();
   const r = await send('/fmi/odata/v4/U/$batch', body, auth);
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   const { responses } = await r.json();
   assert.equal(responses.length, 900);
   assert.ok(responses.every((r: { status: number }) => r.status === 200));
@@ -125,7 +126,7 @@ for (const readOnly of [false, true]) test(`OData batch: 900 GETs (${readOnly ? 
 
 test('SQL: a limited account can send an 80 KiB parameter', async () => {
   const r = await send('/tabularius/sql/v1/databases/U', { sql: 'SELECT ? AS value', params: [bigText] }, basic());
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   assert.deepEqual((await r.json()).rows, [[bigText]]);
 });
 
@@ -154,13 +155,13 @@ test('SCIM Group PUT accepts 1,400 members', async () => {
   } catch (e) { store.sql.exec('ROLLBACK'); throw e; }
   assert.ok(JSON.stringify({ members }).length > 64 * 1024);
   const r = await send('/tabularius/scim/v2/databases/U/Groups/TGltaXRlZA', { members }, scim, 'PUT');
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   assert.equal((await r.json()).members.length, 1400);
 });
 
 test('limited session: a long assistant chat reaches the chat provider', async () => {
   const r = await send('/tabularius/assistant/v1/databases/U', { messages: [{ role: 'user', content: bigText }] }, limited);
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   assert.deepEqual(await r.json(), { text: 'accepted' });
 });
 
@@ -175,7 +176,7 @@ for (const token of ['API', 'OAuth']) for (const [name, args] of toolCalls) test
     'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: { database: 'U', ...args } } }),
   });
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   const result = await r.json();
   assert.equal(result.error, undefined, JSON.stringify(result));
   assert.ok(!result.result.isError, JSON.stringify(result));

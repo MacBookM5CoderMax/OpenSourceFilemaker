@@ -11,6 +11,7 @@ import { handoverFacts, scriptDocFacts, unusedObjects } from '../src/handover.ts
 import { redactSecrets } from '../src/ai-output.ts';
 import { docsHtml } from '../src/docs.ts';
 import type { Store } from '../../store/src/index.ts';
+import { whyNot } from './why-not.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -82,7 +83,7 @@ test('handover facts: the design only, with what looks unused', { skip }, () => 
 test('handover memo: written from the design with no tools, secrets hidden, saved as Markdown or a page; [Full Access] only', { skip }, async () => {
   const admin = await login('Admin');
   const r = await memo(admin, 'md');
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   assert.match(r.headers.get('content-disposition')!, /Charts_handover\.md/);
   const text = await r.text();
   assert.match(text, /^# Charts: handover\n\n## What it does\nTracks members of Congress\./);
@@ -146,7 +147,7 @@ test('handover memo with every script written up: the steps go with secrets hidd
   reply = '### Call the API\nCalls a web service.';
   const before = requests.length;
   const r = await memo(await login('Admin'), 'md', { scripts: true });
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   const text = await r.text();
   assert.match(text, /\n## Scripts\n\n### Call the API\nCalls a web service\./);
   const sent = requests.slice(before);

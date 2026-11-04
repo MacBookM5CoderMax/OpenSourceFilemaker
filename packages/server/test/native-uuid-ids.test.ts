@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createStore, Store } from '../../store/src/index.ts';
 import { serve } from '../src/index.ts';
 import { describeRecord } from '../src/record-context.ts';
+import { whyNot } from './why-not.ts';
 
 test('native Data API and OData expose id while compat JSON keeps its original shape', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-native-uuid-http-'));
@@ -29,7 +30,7 @@ test('native Data API and OData expose id while compat JSON keeps its original s
       const token = (await login.json() as { response: { token: string } }).response.token;
       const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
       const made = await fetch(`${api}/layouts/Items/records`, { method: 'POST', headers, body: JSON.stringify({ fieldData: { Title: 'A', ...(mode === 'native' ? { id: 'user-value' } : {}) } }) });
-      assert.equal(made.status, 200, await made.clone().text());
+      assert.equal(made.status, 200, await whyNot(made, 200));
       const created = (await made.json() as { response: Record<string, unknown> }).response;
       const list = (await (await fetch(`${api}/layouts/Items/records`, { headers })).json() as { response: { data: Record<string, unknown>[] } }).response.data[0];
       if (mode === 'native') {
@@ -43,7 +44,7 @@ test('native Data API and OData expose id while compat JSON keeps its original s
       }
       const odata = `${hosted.url}/fmi/odata/v4/${mode}`;
       const row = await fetch(`${odata}/Items(1)`, { headers: { authorization: `Basic ${btoa('Admin:pw')}` } });
-      assert.equal(row.status, 200, await row.clone().text());
+      assert.equal(row.status, 200, await whyNot(row, 200));
       const entity = await row.json() as Record<string, unknown>;
       assert.equal(entity.ROWID, 1);
       if (mode === 'native') {
@@ -65,7 +66,7 @@ test('native Data API and OData expose id while compat JSON keeps its original s
         const exported = await fetch(`${hosted.url}/tabularius/app/v1/databases/${mode}/layouts/Items/export`, {
           method: 'POST', headers, body: JSON.stringify({ fields: ['Title'], format: 'csv', ids: [1], fieldNames: true }),
         });
-        assert.equal(exported.status, 200, await exported.clone().text());
+        assert.equal(exported.status, 200, await whyNot(exported, 200));
         assert.equal(await exported.text(), '"Title"\r\n"A"\r\n');
       }
     }

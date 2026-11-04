@@ -10,6 +10,7 @@ import type { Server } from 'node:http';
 import { serve } from '../src/index.ts';
 import type { Host } from '../src/host.ts';
 import { inlineSafe } from '../src/containers.ts';
+import { whyNot } from './why-not.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -78,7 +79,7 @@ test('base64 in a record\'s JSON fills a container field, with ContentType and F
     method: 'POST', headers: json,
     body: JSON.stringify({ Name: 'With file', File: png.toString('base64'), 'File@com.filemaker.odata.ContentType': 'image/png', 'File@com.filemaker.odata.Filename': 'logo.png' }),
   });
-  assert.equal(made.status, 201, await made.clone().text());
+  assert.equal(made.status, 201, await whyNot(made, 201));
   const id = (await made.json() as { ROWID: number }).ROWID;
   assert.deepEqual((await file(id)).data, png);
   assert.equal((await file(id)).type, 'image/png');

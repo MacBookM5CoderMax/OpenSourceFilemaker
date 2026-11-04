@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { serve } from '../src/index.ts';
 import { DEFAULT_RUN_TOKENS, estimateInputTokens, IMAGE_RESERVE_TOKENS, MAX_RUN_TOKENS, parseRunTokens, runBudgetOf, TOOL_SEARCH_MARGIN } from '../src/assistant.ts';
 import type { PrivilegeDefinition, Store } from '../../store/src/index.ts';
+import { whyNot } from './why-not.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -1255,7 +1256,7 @@ test('assistant: a picture goes with the question to the main model, before its 
     body: JSON.stringify({ messages: [{ role: 'user', content: 'Make a layout like this' }], context: { mode: 'design' }, image }),
   });
   const r = await post({ mediaType: 'image/png', data: png });
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   assert.equal((await r.json()).reply, 'Here is a draft.');
   for (const [bad, why] of [[{ mediaType: 'image/svg+xml', data: png }, /PNG, JPEG, GIF, WEBP/], [{ mediaType: 'image/png', data: 'not base64!' }, /base64/], [{ mediaType: 'image/png', data: 'AAAAA' }, /base64/]] as const) {
     const res = await post(bad);

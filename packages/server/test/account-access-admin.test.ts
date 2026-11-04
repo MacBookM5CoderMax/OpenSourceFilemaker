@@ -10,6 +10,7 @@ import type { Server } from 'node:http';
 import { createStore, LOCKOUT, type Store } from '../../store/src/index.ts';
 import { makeAuthenticator, forgeRegistration } from '../../store/test/forge-webauthn.ts';
 import { serve } from '../src/index.ts';
+import { whyNot } from './why-not.ts';
 
 let dir: string;
 let server: Server;
@@ -37,7 +38,7 @@ test('sets a password for an existing account, and refuses an account the file d
   store.setPassword('alice', 'old-password-1', 'Clerk');
 
   const r = await post('/tabularius/admin/v1/accounts/set-password', { database: 'Charts', account: 'alice', password: 'new-password-1', mustChange: true });
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   assert.equal(store.verify('alice', 'old-password-1', ''), false);
   assert.equal(store.verify('alice', 'new-password-1', ''), true);
   assert.equal(store.mustChangePassword('alice'), true);
@@ -65,7 +66,7 @@ test('typing the account name with different casing updates the real account, no
   store.setPassword('carol', 'old-password-2', 'Clerk2');
 
   const r = await post('/tabularius/admin/v1/accounts/set-password', { database: 'Charts', account: 'Carol', password: 'new-password-2' });
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   assert.equal(store.accounts().filter((a) => a.name.toLowerCase() === 'carol').length, 1, 'no duplicate account was created');
   assert.equal(store.verify('carol', 'new-password-2', ''), true, 'the real account got the new password');
 });
@@ -77,7 +78,7 @@ test('lifts a sign-in lockout', async () => {
   assert.ok(store.lockedOut('bob', '5.5.5.5'));
 
   const r = await post('/tabularius/admin/v1/accounts/unlock', { database: 'Charts', account: 'bob' });
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   assert.deepEqual(await r.json(), { ok: true, cleared: true });
   assert.equal(store.lockedOut('bob', '5.5.5.5'), undefined);
   assert.equal(store.verify('bob', 'bob-pw-1234', '5.5.5.5'), true);

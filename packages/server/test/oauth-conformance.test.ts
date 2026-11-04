@@ -10,6 +10,7 @@ import type { Server } from 'node:http';
 import { createStore, type Store } from '../../store/src/index.ts';
 import { ExpiryClock, expiryClock } from '../../store/src/clock.ts';
 import { serve } from '../src/index.ts';
+import { whyNot } from './why-not.ts';
 
 let dir: string, base: string, server: Server, store: Store;
 const redirect = 'https://client.example/callback';
@@ -23,7 +24,7 @@ const post = (path: string, fields: Record<string, string>, headers: Record<stri
 });
 const register = async (extra: Record<string, unknown> = {}) => {
   const response = await fetch(`${base}/oauth/register`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ client_name: 'Synthetic client', redirect_uris: [redirect], ...extra }) });
-  assert.equal(response.status, 201, await response.clone().text());
+  assert.equal(response.status, 201, await whyNot(response, 201));
   assert.equal(response.headers.get('cache-control'), 'no-store');
   return (await response.json()) as { client_id: string; client_secret?: string };
 };
@@ -42,7 +43,7 @@ async function grant(client_id: string, challenge: string, overrides: Record<str
   const a = await authorize(client_id, challenge, overrides);
   assert.equal(a.page.status, 200);
   const response = await post('/oauth/authorize', { ...a.fields, database: 'Synthetic', account: 'ann', password: 'ann-pw' }, { cookie: a.cookie });
-  assert.equal(response.status, 302, await response.clone().text());
+  assert.equal(response.status, 302, await whyNot(response, 302));
   assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
   const location = response.headers.get('location')!;
   assert.equal(new URL(location).searchParams.get('state'), 's');

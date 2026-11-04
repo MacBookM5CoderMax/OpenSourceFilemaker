@@ -11,6 +11,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { serve, setAdminPassword } from '../src/index.ts';
 import { createStore, Store, writer } from '../../store/src/index.ts';
 import { REST_GROUPS, MCP_NOTES, mcpListing } from '../../../scripts/reference/render.ts';
+import { whyNot } from './why-not.ts';
 
 const shape = (got: unknown, want: unknown, path = '$'): void => {
   if (want === null || typeof want !== 'object') {
@@ -171,7 +172,7 @@ async function fixture(withReplication = false) {
   const hosted = await serve({ dir, port: 0, watch: false, mcpToken: 'reference-mcp-admin', listFilesPublicly: true, ...(withReplication ? { replicationToken: 'reference-replication-token' } : {}), testOutbound: {}, compaction: false, webhooks: true, inboundHooks: true, appConnections: true, log: () => {} });
   const adminBasic = `Basic ${Buffer.from('Admin:pw').toString('base64')}`;
   const login = await fetch(`${hosted.url}/fmi/data/vLatest/databases/Invoices/sessions`, { method: 'POST', headers: { authorization: adminBasic, 'content-type': 'application/json' }, body: '{}' });
-  assert.equal(login.status, 200, await login.clone().text());
+  assert.equal(login.status, 200, await whyNot(login, 200));
   const token = (await login.json() as { response: { token: string } }).response.token;
   const security = await fetch(`${hosted.url}/tabularius/security/v1/databases/Invoices`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ changes: [
     { op: 'savePrivilegeSet', set: { name: 'Sales', records: { view: true, edit: true, create: true, delete: true }, layouts: 'modifiable', valueLists: 'viewOnly', scripts: 'viewOnly', extendedPrivileges: ['fmrest', 'fmmcp', 'fmodata', 'fmxdbc'] } },
@@ -188,48 +189,48 @@ async function fixture(withReplication = false) {
     { op: 'setAccount', name: 'Hooks', password: 'hooks-pass', privilegeSet: '[Full Access]' },
     { op: 'setAccount', name: 'Reader', password: 'reader-pass', privilegeSet: 'Readers' },
   ] }) });
-  assert.equal(security.status, 200, await security.clone().text());
+  assert.equal(security.status, 200, await whyNot(security, 200));
   const referenceLogin = await fetch(`${hosted.url}/fmi/data/vLatest/databases/Invoices/sessions`, { method: 'POST', headers: { authorization: `Basic ${Buffer.from('Reference:Reference-pw-123456').toString('base64')}`, 'content-type': 'application/json' }, body: '{}' });
-  assert.equal(referenceLogin.status, 200, await referenceLogin.clone().text());
+  assert.equal(referenceLogin.status, 200, await whyNot(referenceLogin, 200));
   const referenceToken = (await referenceLogin.json() as { response: { token: string } }).response.token;
   const prefs = await fetch(`${hosted.url}/tabularius/app/v1/databases/Invoices/prefs/sorts`, { method: 'PUT', headers: { authorization: `Bearer ${referenceToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ value: [{ name: 'By customer', layout: 'Invoices', sort: [{ fieldName: 'Customer', sortOrder: 'ascend' }] }] }) });
-  assert.equal(prefs.status, 200, await prefs.clone().text());
+  assert.equal(prefs.status, 200, await whyNot(prefs, 200));
   const webLogin = await fetch(`${hosted.url}/fmi/data/vLatest/databases/Invoices/sessions`, { method: 'POST', headers: { authorization: `Basic ${Buffer.from('Reference:Reference-pw-123456').toString('base64')}`, 'content-type': 'application/json', 'x-tabularius-client': 'web' }, body: '{}' });
-  assert.equal(webLogin.status, 200, await webLogin.clone().text());
+  assert.equal(webLogin.status, 200, await whyNot(webLogin, 200));
   const digestBoard = await fetch(`${hosted.url}/tabularius/dashboards/v1/databases/Invoices`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Z Reference digest', widgets: [{ title: 'Invoice revenue', kind: 'number', layout: 'Invoices', measure: { field: 'Amount', fn: 'sum' } }] }) });
-  assert.equal(digestBoard.status, 201, await digestBoard.clone().text());
+  assert.equal(digestBoard.status, 201, await whyNot(digestBoard, 201));
   const automation = await fetch(`${hosted.url}/tabularius/automations/v1/databases/Invoices`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ automation: { name: 'Reference automation', layout: 'Invoices', on: 'update', fields: ['Status'], condition: 'Status = "Paid"', script: 'Mark invoice paid' } }) });
-  assert.equal(automation.status, 201, await automation.clone().text());
+  assert.equal(automation.status, 201, await whyNot(automation, 201));
   const board = (await digestBoard.json() as { dashboard: { id: string } }).dashboard;
   const digest = await fetch(`${hosted.url}/tabularius/digests/v1/databases/Invoices`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ dashboard: board.id, name: 'Reference weekly', days: [1], at: '23:59', prompt: 'weekly invoice summary' }) });
-  assert.equal(digest.status, 201, await digest.clone().text());
+  assert.equal(digest.status, 201, await whyNot(digest, 201));
   const digestId = (await digest.json() as { digest: { id: string } }).digest.id;
   const digestRun = await fetch(`${hosted.url}/tabularius/digests/v1/databases/Invoices/${digestId}/run`, { method: 'POST', headers: { authorization: `Bearer ${token}` } });
-  assert.equal(digestRun.status, 200, await digestRun.clone().text());
+  assert.equal(digestRun.status, 200, await whyNot(digestRun, 200));
   const basic = `Basic ${Buffer.from('Reference:Reference-pw-123456').toString('base64')}`;
   const adminLogin = await fetch(`${hosted.url}/fmi/admin/api/v2/user/auth`, { method: 'POST', headers: { authorization: `Basic ${Buffer.from('admin:admin-secret').toString('base64')}`, 'content-type': 'application/json' }, body: '{}' });
-  assert.equal(adminLogin.status, 200, await adminLogin.clone().text());
+  assert.equal(adminLogin.status, 200, await whyNot(adminLogin, 200));
   const adminToken = (await adminLogin.json() as { response: { token: string } }).response.token;
   let adminCookie = '';
   const refreshAdminCookie = async () => {
     const consoleLogin = await fetch(`${hosted.url}/tabularius/admin/v1/sign-in`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-tabularius-admin': '1' }, body: JSON.stringify({ password: 'admin-secret' }) });
-    assert.equal(consoleLogin.status, 200, await consoleLogin.clone().text());
+    assert.equal(consoleLogin.status, 200, await whyNot(consoleLogin, 200));
     adminCookie = consoleLogin.headers.get('set-cookie')?.split(';', 1)[0] ?? '';
   };
   await refreshAdminCookie();
   const inboundSetup = await fetch(`${hosted.url}/tabularius/admin/v1/inbound-hooks`, { method: 'POST', headers: { cookie: adminCookie, 'x-tabularius-admin': '1', 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Reference public hook', database: 'Invoices', script: 'Mark invoice paid', account: 'Hooks', layout: 'Invoices' }) });
-  assert.equal(inboundSetup.status, 201, await inboundSetup.clone().text());
+  assert.equal(inboundSetup.status, 201, await whyNot(inboundSetup, 201));
   const inboundSeed = await inboundSetup.json() as { id: string; secret: string };
   const legacyCsv = 'account,privilegeSet,active\nLegacy,Readers,true';
   const legacyPreview = await fetch(`${hosted.url}/tabularius/security/v1/databases/Invoices/accounts/import/preview`, { method: 'POST', headers: { authorization: `Bearer ${referenceToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ csv: legacyCsv }) });
-  assert.equal(legacyPreview.status, 200, await legacyPreview.clone().text());
+  assert.equal(legacyPreview.status, 200, await whyNot(legacyPreview, 200));
   const legacyToken = (await legacyPreview.json() as { previewToken: string }).previewToken;
   const legacyApply = await fetch(`${hosted.url}/tabularius/security/v1/databases/Invoices/accounts/import/apply`, { method: 'POST', headers: { authorization: `Bearer ${referenceToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ csv: legacyCsv, previewToken: legacyToken, idempotencyKey: 'reference-legacy-account' }) });
-  assert.equal(legacyApply.status, 200, await legacyApply.clone().text());
+  assert.equal(legacyApply.status, 200, await whyNot(legacyApply, 200));
   const scimSetup = await fetch(`${hosted.url}/tabularius/admin/v1/scim/token`, { method: 'POST', headers: { cookie: adminCookie, 'x-tabularius-admin': '1', 'content-type': 'application/json' }, body: JSON.stringify({ database: 'Invoices', defaultPrivilegeSet: 'Readers' }) });
-  assert.equal(scimSetup.status, 200, await scimSetup.clone().text());
+  assert.equal(scimSetup.status, 200, await whyNot(scimSetup, 200));
   const approvalTokenResponse = await fetch(`${hosted.url}/tabularius/admin/v1/mcp/tokens`, { method: 'POST', headers: { cookie: adminCookie, 'x-tabularius-admin': '1', 'content-type': 'application/json' }, body: JSON.stringify({ database: 'Invoices', agent: { name: 'Reference Approval Agent', privilegeSet: 'Sales', needsApproval: true }, label: 'Reference approval flow', days: 30 }) });
-  assert.equal(approvalTokenResponse.status, 201, await approvalTokenResponse.clone().text());
+  assert.equal(approvalTokenResponse.status, 201, await whyNot(approvalTokenResponse, 201));
   const approvalToken = (await approvalTokenResponse.json() as { token: string }).token;
   const approvalClient = new Client({ name: 'reference-approval-seed', version: '1' });
   await approvalClient.connect(new StreamableHTTPClientTransport(new URL(`${hosted.url}/mcp`), { requestInit: { headers: { authorization: `Bearer ${approvalToken}` } } }));
@@ -248,12 +249,12 @@ async function fixture(withReplication = false) {
       hosted.host.get('Invoices')?.setPassword('Admin', 'pw', '[Full Access]');
       r = await request();
     }
-    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal(r.status, 200, await whyNot(r, 200));
     return (await r.json() as { response: { token: string } }).response.token;
   };
   const newAdminToken = async () => {
     const r = await fetch(`${hosted.url}/fmi/admin/api/v2/user/auth`, { method: 'POST', headers: { authorization: `Basic ${Buffer.from('admin:admin-secret').toString('base64')}`, 'content-type': 'application/json' }, body: '{}' });
-    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal(r.status, 200, await whyNot(r, 200));
     return (await r.json() as { response: { token: string } }).response.token;
   };
   const closeAdminToken = async (t: string) => {
@@ -688,7 +689,7 @@ test('REST reference examples match live status and response shape', async () =>
   let skipped = 0;
   try {
     const dash = await fetch(`${f.url}/tabularius/dashboards/v1/databases/Invoices`, { method: 'POST', headers: { authorization: `Bearer ${f.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Sales', description: 'Invoice totals', widgets: [{ title: 'Revenue by customer', kind: 'chart', chart: 'bar', layout: 'Invoices', groupBy: ['Customer'], measure: { field: 'Amount', fn: 'sum' } }] }) });
-    assert.equal(dash.status, 201, await dash.clone().text());
+    assert.equal(dash.status, 201, await whyNot(dash, 201));
     await client.connect(new StreamableHTTPClientTransport(new URL(`${f.url}/mcp`), { requestInit: { headers: { authorization: 'Bearer reference-mcp-admin' } } }));
     const listing = await mcpListing();
     const runtimeIds: Record<string, string> = {};

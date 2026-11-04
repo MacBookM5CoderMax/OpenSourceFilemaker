@@ -14,6 +14,7 @@ import { docsHtml } from '../src/docs.ts';
 import { inlineScriptSources } from '../src/csp.ts';
 import { STORE_EXT } from '../src/host.ts';
 import { createStore, type DesignOp, type Store } from '../../store/src/index.ts';
+import { whyNot } from './why-not.ts';
 
 /** Strings that would run script or add markup if a page put them in HTML as they are. */
 const PAYLOADS = [
@@ -157,7 +158,7 @@ test('the solution documentation and handover memo downloads keep every name and
   const memo = await fetch(`${base}/tabularius/assistant/v1/databases/X/handover?format=html`, {
     method: 'POST', headers: { ...auth(), 'content-type': 'application/json' }, body: JSON.stringify({ memo: `# ${ALL}\n\n| ${ALL} | b |\n|---|---|\n| ${ALL} | \`${ALL}\` |\n\n- ${ALL}\n\n\`\`\`\n${ALL}\n\`\`\`\n` }),
   });
-  assert.equal(memo.status, 200, await memo.clone().text());
+  assert.equal(memo.status, 200, await whyNot(memo, 200));
   assert.match(memo.headers.get('content-disposition') ?? '', /^attachment; filename="X_handover\.html"$/);
   assertPageHeaders(memo, 'memo');
   const memoPage = await memo.text();

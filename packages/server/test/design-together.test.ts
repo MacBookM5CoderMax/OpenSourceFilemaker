@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Server } from 'node:http';
 import { serve } from '../src/index.ts';
+import { whyNot } from './why-not.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -102,7 +103,7 @@ test('people in design mode see each other, their selection and each save, with 
     method: 'POST', headers: { authorization: `Bearer ${bob}`, 'content-type': 'application/json' },
     body: JSON.stringify({ changes: [{ op: 'updateLayout', layout: layoutId, design: { width: 900 } }] }),
   });
-  assert.equal(save.status, 200, await save.clone().text());
+  assert.equal(save.status, 200, await whyNot(save, 200));
   const saved = await untilEvent(() => annHears.events.find((e) => e.kind === 'design'));
   assert.deepEqual(saved && { ids: saved.ids, account: saved.account, self: saved.self }, { ids: [layoutId], account: 'Bob', self: false });
 
@@ -127,7 +128,7 @@ test('scripts and tables have presence too, and saves name the scripts and table
     method: 'POST', headers: { authorization: `Bearer ${bob}`, 'content-type': 'application/json' },
     body: JSON.stringify({ changes: [{ op: 'createScript', name: 'Tidy', text: 'Show All Records' }] }),
   });
-  assert.equal(make.status, 200, await make.clone().text());
+  assert.equal(make.status, 200, await whyNot(make, 200));
   const made = await make.json();
   const scriptId = made.design.scripts.find((x: { name: string }) => x.name === 'Tidy').id;
   const tableId = made.design.tables[0].id;

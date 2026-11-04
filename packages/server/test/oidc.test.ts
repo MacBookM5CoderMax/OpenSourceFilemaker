@@ -16,6 +16,7 @@ import type { Store } from '../../store/src/index.ts';
 import { expiryClock, ExpiryClock } from '../../store/src/clock.ts';
 import { notOnWindows } from '../../store/test/windows.ts';
 import { withFilesystemHook, type FilesystemBoundary } from '../../store/src/fs-boundary.ts';
+import { whyNot } from './why-not.ts';
 
 const fetch = oidcBrowser();
 
@@ -161,7 +162,7 @@ test('pending sign-in is shared between handlers, single-use and expires', async
 test('a Data API app\'s sign-in is shared between handlers: started on one, finished on another, taken once by a third', async () => {
   person = { email: 'sam@example.com', email_verified: true, groups: ['Staff'] };
   const start = await fetch(`${secondaryBase}/oauth/getoauthurl?trackingID=t1&provider=test-idp`, { headers: { 'x-fms-return-url': `${secondaryBase}/done` } });
-  assert.equal(start.status, 200, await start.clone().text());
+  assert.equal(start.status, 200, await whyNot(start, 200));
   const requestId = start.headers.get('x-fms-request-id')!;
   const auth = new URL(start.headers.get('x-fms-return-url')!);
   const code = Math.random().toString(36).slice(2);

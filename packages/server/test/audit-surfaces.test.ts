@@ -8,6 +8,7 @@ import type { Server } from 'node:http';
 import type { Store } from '../../store/src/index.ts';
 import { serve } from '../src/index.ts';
 import { auditSurface } from '../src/audit-surface.ts';
+import { whyNot } from './why-not.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
 const skip = existsSync(fixture) ? false : 'fixtures missing: run npm run fixtures';
@@ -46,7 +47,7 @@ async function createViaDataApi(client?: 'web'): Promise<number> {
   const r = await fetch(`${base}/fmi/data/vLatest/databases/Charts/layouts/Congress/records`, {
     method: 'POST', headers: { authorization: `Bearer ${await token(client)}`, 'content-type': 'application/json' }, body: JSON.stringify({ fieldData: { Name: 'Via ' + (client ?? 'rest'), State: 'Oregon' } }),
   });
-  assert.equal(r.status, 200, await r.clone().text());
+  assert.equal(r.status, 200, await whyNot(r, 200));
   return Number(((await r.json()) as { response: { recordId: string } }).response.recordId);
 }
 
@@ -69,7 +70,7 @@ test('an OData write is logged as odata', { skip }, async () => {
   const r = await fetch(`${base}/fmi/odata/v4/Charts/Congress`, {
     method: 'POST', headers: { authorization: basic, 'content-type': 'application/json' }, body: JSON.stringify({ Name: 'Via OData', State: 'Utah' }),
   });
-  assert.ok(r.status === 201 || r.status === 200, await r.clone().text());
+  assert.ok(r.status === 201 || r.status === 200, await whyNot(r, 201, 200));
   const entry = store.auditLog({ table: 'Congress', surface: 'odata' }).at(-1);
   assert.equal(entry?.changes?.Name, 'Via OData');
 });
@@ -127,7 +128,7 @@ test('the web client reads a record\'s history and puts a change back, within th
   const readOnly = `Bearer ${store.createApiToken('Admin', { readOnly: true })}`;
   assert.equal((await post('history', { recordId: id }, readOnly)).status, 200);
   const refused = await post('revert', { recordId: id, seq: name.seq, fields: ['Name'] }, readOnly);
-  assert.equal(refused.status, 400, await refused.clone().text());
+  assert.equal(refused.status, 400, await whyNot(refused, 400));
   assert.equal(store.get('Congress', id, 'iso').fieldData.Name, 'Renamed');
 
   const ok = await post('revert', { recordId: id, seq: name.seq, fields: ['Name'] });

@@ -12,6 +12,7 @@ import { DataApi } from '../src/index.ts';
 import { serve } from '../src/index.ts';
 import { endTransaction, writer, type Store, type Transaction } from '../../store/src/index.ts';
 import { signInForm } from './oauth-form.ts';
+import { whyNot } from './why-not.ts';
 
 const REDIRECT = 'https://claude.ai/api/mcp/auth_callback';
 
@@ -113,7 +114,7 @@ test('signing an OAuth app out while a transaction has changed sign-in state is 
     client_id, redirect_uri: REDIRECT, response_type: 'code', code_challenge: createHash('sha256').update(verifier).digest('base64url'),
     code_challenge_method: 'S256', state: 'xyz', resource: `${url}/mcp`, database: 'A', account: 'ann', password: 'ann-password',
   });
-  assert.equal(signed.status, 302, await signed.clone().text());
+  assert.equal(signed.status, 302, await whyNot(signed, 302));
   const code = new URL(signed.headers.get('location')!).searchParams.get('code')!;
   const issued = await post('/oauth/token', form({ grant_type: 'authorization_code', code, code_verifier: verifier, client_id, redirect_uri: REDIRECT }));
   assert.equal(issued.status, 200);
