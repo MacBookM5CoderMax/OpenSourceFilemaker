@@ -7,13 +7,12 @@ export interface DangerousFinding { file: string; line: number; fn: string; kind
 export interface DangerousAllowance { file: string; fn: string; kind: string; hash: string; reason: string }
 export const digest = (text: string) => createHash('sha256').update(text.replace(/\s+/g, ' ')).digest('hex').slice(0, 20);
 const sourceFiles = (root: string) => {
-  const dir = join(root, 'packages/server/src');
   const walk = (path: string): string[] => readdirSync(path, { withFileTypes: true }).flatMap((entry) => {
     const file = join(path, entry.name);
     if (entry.isDirectory()) return walk(file);
     return entry.isFile() && /\.[cm]?tsx?$/.test(entry.name) && !/\.d\.[cm]?ts$/.test(entry.name) ? [file] : [];
   });
-  return walk(dir).sort();
+  return ['server', 'store', 'scripts'].flatMap((name) => existsSync(join(root, 'packages', name, 'src')) ? walk(join(root, 'packages', name, 'src')) : []).sort();
 };
 export function functionName(node: ts.Node): string {
   const names: string[] = [];

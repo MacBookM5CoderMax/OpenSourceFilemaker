@@ -27,6 +27,17 @@ function logged() { try { work(); } catch (err) { console.error(err); } }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('scans the store and scripts packages too, where a bare caught-error log is found', () => {
+  const root = fixture('export const none = 1;\n');
+  try {
+    for (const pkg of ['store', 'scripts']) {
+      mkdirSync(join(root, 'packages', pkg, 'src'), { recursive: true });
+      writeFileSync(join(root, 'packages', pkg, 'src', 'probe.ts'), 'export function run() { try { work(); } catch (e) { console.error(e); } }\n');
+    }
+    assert.deepEqual(collectDangerousApis(root).map((f) => f.file), ['packages/scripts/src/probe.ts', 'packages/store/src/probe.ts']);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('ignores words in comments and strings', () => {
   const root = fixture(`// eval(x); spawn('x', { shell: true }); console.error(err)
 const text = "eval(x); new Function(x); execSync('x', {shell:true}); console.error(error)";

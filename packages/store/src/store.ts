@@ -7,6 +7,7 @@ import { sortProgress } from './cooperative.ts';
 import { ownKeyed, setOwn } from './own-keys.ts';
 import { checkStoredWebViewerHosts, normalizeWebViewerHosts } from './web-viewer-hosts.ts';
 import { isCredentialName } from '../../scripts/src/credentials.ts';
+import { faultLog } from './fault-text.ts';
 import { checkSqlSize, cleanSql, sqlName, sqlTokens } from './sql-tokens.ts';
 import { SignInFailures, LOCKOUT, SIGN_IN_FAILURE_AUDIT_FLOOR, signInFailureAuditShare, noAddressBudget, sharedSource, addressBucket, accountsSharingLockout, lockoutName } from './sign-in-failures.ts';
 import { expiryClock } from './clock.ts';
@@ -1095,6 +1096,8 @@ export class Store {
   locks = new RecordLocks();
   /** Called after every change to a record (and lock changes), for live clients. */
   readonly listeners = new Set<(change: Change) => void>();
+  /** A change listener's error: logged with file paths and credentials hidden, and capped per minute. */
+  private readonly logListenerFault = faultLog();
   /** Additional live principals (including external identities on other workers) to check before deleting a row. */
   readonly deleteReaders = new Set<() => Iterable<Privileges>>();
   /** Single-flight directory checks, keyed exactly like failures. No queue, timers or idle entries;
@@ -2365,7 +2368,7 @@ export class Store {
         l(change);
       } catch (e) {
         rethrowExecutionRefusal(e);
-        console.error(e);
+        this.logListenerFault(e);
       }
     }
   }

@@ -45,7 +45,7 @@ import { BoundedMap } from './bounded-map.ts';
 import { said } from './said.ts';
 import { ReadAudit } from './read-audit.ts';
 import { sameSecret } from './secrets.ts';
-import { logFault } from './fault-log.ts';
+import { callerText, isFault, logFault } from './fault-log.ts';
 
 const IDLE_MS = 10 * 60_000;
 /** Files larger than this aren't copied for a scratch run (the copy takes a while and the disk). */
@@ -520,8 +520,9 @@ export class DebugApi {
       }
       throw new ApiError(3, 'Command is unavailable', 405);
     } catch (e) {
-      const err = e instanceof ApiError ? e : e instanceof URIError ? badPathError() : e instanceof StoreError ? new ApiError(e.code, e.message, 400) : e instanceof ScriptError ? new ApiError(3, e.message, 400) : new ApiError(-1, (e as Error).message);
-      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof StoreError) && !(e instanceof ScriptError)) logFault(e);
+      const err = e instanceof ApiError ? e : e instanceof URIError ? badPathError() : e instanceof StoreError ? new ApiError(e.code, e.message, 400) : e instanceof ScriptError ? new ApiError(3, e.message, 400) : new ApiError(-1, callerText(e));
+      // callerText logs a fault of the server's own and hides its text; anything else is logged here.
+      if (!(e instanceof URIError) && !(e instanceof ApiError) && !(e instanceof StoreError) && !(e instanceof ScriptError) && !isFault(e)) logFault(e);
       send(err.status, { error: { code: err.code, message: err.message } });
     }
     return true;
