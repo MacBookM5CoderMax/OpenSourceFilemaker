@@ -41,7 +41,7 @@ import { externalFieldNames, type DeviceType, type CustomMenu, type Script, type
 import { asBoolean, asText, compile, num, text, type DeviceLocation, type Value } from '../../calc/src/index.ts';
 import { randomBytes } from 'node:crypto';
 import { captureDenial, DenialCollector, denialOperation } from './denial-audit.ts';
-import { denialOf } from '../../store/src/access-denial.ts';
+import { denialOf } from '../../store/src/access-denial.ts'; import { downloadBase } from '../../store/src/portable-path.ts';
 import { scriptDenial, ScriptError, clientWindow, clientWindowGet, importFileRowIterator, runScript, type ClientAction, type DialogRequest, type OpenWindow, type RunResult, type WindowState, type ClientCheckpoint } from '../../scripts/src/index.ts';
 import { isoCell, xlsx, xlsxSheetNames, type XlsxOutCell } from '../../scripts/src/xlsx.ts';
 import { aiRefusal } from './ai-access.ts';
@@ -1398,7 +1398,7 @@ export class WebClient {
       return format === 'tab' ? visibleControls(formulaGuard(String(v), kinds[i])).replace(/\r\n|[\r\n]/g, '\v') : csvField(String(v), { quoteAll: true, type: kinds[i], lineBreak: '\v' });
     };
     const sepr = format === 'tab' ? '\t' : ',';
-    const base = String(typeof body.name === 'string' && body.name.trim() ? body.name.trim() : layout).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_');
+    const base = downloadBase(String(typeof body.name === 'string' && body.name.trim() ? body.name.trim() : layout));
     const total = ids?.length ?? 0;
     let offset = 0;
     let lastId = 0;
@@ -1529,7 +1529,7 @@ export class WebClient {
       const to = store.schema.tableOccurrences.find((t) => t.name === m[1]);
       return store.schema.tables.find((t) => t.id === to?.baseTableId)?.fields.find((x) => x.name === m[2]);
     };
-    const base = String(typeof body.name === 'string' && body.name.trim() ? body.name.trim() : layout).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_');
+    const base = downloadBase(String(typeof body.name === 'string' && body.name.trim() ? body.name.trim() : layout));
     if (format === 'xlsx') {
       // Dates, times and timestamps are Excel's own cell types (the values came as ISO text); the rest is as it was.
       const kinds = fields.map((f) => info.fields.find((x) => x.name === f)?.type);

@@ -80,3 +80,24 @@ export function sameFile(a: string, b: string): boolean {
     return false;
   }
 }
+
+/**
+ * The name, without its extension, of a file the web client offers to save (an export of the records): the characters Windows
+ * refuses become `_`, a name ending in a dot or a space loses them, a device name (`CON`, `nul.txt`) gets a `_` in front
+ * (Windows would save `CON.csv` as the device), and a long name is cut to `maxBytes` bytes of whole characters. Never empty.
+ */
+export function downloadBase(name: string, maxBytes = 120): string {
+  const clean = (text: string) => text.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/[ .]+$/, '');
+  // At most maxBytes characters are looked at (a character is at least a byte), so a huge name costs no more than a long one.
+  const chars = name[Symbol.iterator]();
+  let prefix = '';
+  for (let i = 0; i < maxBytes; i++) {
+    const next = chars.next();
+    if (next.done) break;
+    prefix += next.value;
+  }
+  let out = clean(prefix);
+  while (Buffer.byteLength(out) > maxBytes) out = clean([...out].slice(0, -1).join(''));
+  if (!out) return 'export';
+  return portableName(out) ? out : `_${out}`;
+}
