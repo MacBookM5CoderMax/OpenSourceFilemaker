@@ -1220,8 +1220,10 @@ export class Store {
         const source = this.schema.dataSources.find((item) => item.id === group[0].table.external?.dataSourceId);
         const seconds = wholeNumber('TABULARIUS_ESS_TIMEOUT_SECONDS', { min: 1 }) ?? 30;
         const location = connection.host ? `, host ${connection.host}${connection.port ? `:${connection.port}` : ''}` : '';
+        const wait = error instanceof EssBridgeError && error.reason === 'resting' ? Math.max(1, Math.ceil((error.retryInMs ?? 0) / 1000)) : 0;
         const reason = error instanceof EssBridgeError && error.reason === 'timeout'
-          ? `did not answer within ${seconds} second${seconds === 1 ? '' : 's'}` : 'could not write';
+          ? `did not answer within ${seconds} second${seconds === 1 ? '' : 's'}`
+          : wait ? `did not answer in time a moment ago and is asked again in ${wait} second${wait === 1 ? '' : 's'}; nothing was written` : 'could not write';
         const detail = error instanceof EssBridgeError && error.detail ? `: ${error.detail}` : '';
         throw new StoreError(ESS_ERROR, `The SQL database "${source?.name ?? group[0].table.name}" ${reason} (connection "${connection.name}"${location})${detail}`);
       }

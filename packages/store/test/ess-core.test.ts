@@ -7,11 +7,13 @@ import { createStore, parseScriptText, relatedRows, Store, StoreError } from '..
 import { scriptStepName, type Script } from '@tabularius/fmp12';
 import { runScript } from '../../scripts/src/index.ts';
 import { SqliteDriver, ESS_ERROR } from '../src/ess/driver.ts';
-import { closeEssBridge, essCall, EssBridgeError } from '../src/ess/bridge.ts';
+import { allowSqliteStandIn, closeEssBridge, essCall, EssBridgeError } from '../src/ess/bridge.ts';
 import { refreshMirror, requestFor } from '../src/ess/mirror.ts';
 
 const dir = mkdtempSync(join(tmpdir(), 'tabularius-ess-core-'));
 after(() => { closeEssBridge(); rmSync(dir, { recursive: true, force: true }); });
+// These tests use SQLite files as outside sources: the driver for that is registered only when a test asks for it.
+allowSqliteStandIn();
 
 async function setup(name: string): Promise<{ store: Store; outside: SqliteDriver; tick: (n: number) => void }> {
   const outsidePath = join(dir, `${name}-outside.sqlite`);
@@ -239,7 +241,7 @@ test('a timed-out worker call becomes a bounded store ESS error', async () => {
     const started = performance.now();
     assert.throws(() => requestFor(store.schema, store.sqlConnection, store.schema.tables[0], 'query', ['WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x + 1 FROM n) SELECT x FROM n LIMIT 100000000', [], { maxRows: 100000000 }]), (error: unknown) => error instanceof StoreError && error.code === ESS_ERROR && /did not answer within 1 second/.test(error.message));
     assert.ok(performance.now() - started < 4_000);
-  } finally { delete process.env.TABULARIUS_ESS_TIMEOUT_SECONDS; store.close(); await outside.close(); }
+  } finally { delete process.env.TABULARIUS_ESS_TIMEOUT_SECONDS; closeEssBridge(); store.close(); await outside.close(); }
 });
 
 test('another worker thread that imports the store keeps its own messages (the bridge answers only its own worker)', async () => {

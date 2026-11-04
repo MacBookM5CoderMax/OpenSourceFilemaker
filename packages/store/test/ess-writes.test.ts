@@ -5,10 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, Store, StoreError } from '../src/index.ts';
 import { SqliteDriver, ESS_ERROR, writeEssBatch, type SqlDriver } from '../src/ess/driver.ts';
-import { closeEssBridge } from '../src/ess/bridge.ts';
+import { allowSqliteStandIn, closeEssBridge } from '../src/ess/bridge.ts';
 
 const dir = mkdtempSync(join(tmpdir(), 'tabularius-ess-writes-'));
 after(() => { closeEssBridge(); rmSync(dir, { recursive: true, force: true }); });
+// A SQLite file stands in for the outside database: the bridge opens one only when a test asks for it.
+allowSqliteStandIn();
 
 async function setup(label: string, definition = 'id INTEGER PRIMARY KEY, name TEXT NOT NULL, note TEXT'): Promise<{ store: Store; outside: SqliteDriver }> {
   const outsidePath = join(dir, `${label}-source.sqlite`);

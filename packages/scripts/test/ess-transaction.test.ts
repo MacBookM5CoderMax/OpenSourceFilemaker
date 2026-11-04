@@ -5,8 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, Store } from '@tabularius/store';
 import { SqliteDriver } from '../../store/src/ess/driver.ts';
-import { closeEssBridge } from '../../store/src/ess/bridge.ts';
+import { allowSqliteStandIn, closeEssBridge } from '../../store/src/ess/bridge.ts';
 import { runScript } from '../src/index.ts';
+
+// A SQLite file stands in for the outside database: the bridge opens one only when a test asks for it.
+allowSqliteStandIn();
 
 test('Open Transaction defers shadow writes until commit and Revert Transaction discards them', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-ess-script-'));

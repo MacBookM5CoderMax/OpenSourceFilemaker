@@ -27,6 +27,10 @@ export function requestFor<T>(schema: Schema, resolve: (name: string) => SqlConn
       const cap = wholeNumber('TABULARIUS_ESS_MAX_ROWS', { min: 1 }) ?? 100_000;
       throw new StoreError(ESS_ERROR, `The SQL database "${source.name}" has more than ${cap} rows in "${table.external?.table}". Pushed-down finds are coming in a later item; raise TABULARIUS_ESS_MAX_ROWS to read this table now`);
     }
+    if (error instanceof EssBridgeError && error.reason === 'resting') {
+      const wait = Math.max(1, Math.ceil((error.retryInMs ?? 0) / 1000));
+      throw new StoreError(ESS_ERROR, `The SQL database "${source.name}" did not answer in time a moment ago and is asked again in ${wait} second${wait === 1 ? '' : 's'} (connection "${connection.name}"${location})`);
+    }
     const what = error instanceof EssBridgeError && error.reason === 'timeout' ? `did not answer within ${seconds} second${seconds === 1 ? '' : 's'}` : 'could not be read';
     throw new StoreError(ESS_ERROR, `The SQL database "${source.name}" ${what} (connection "${connection.name}"${location})`);
   }
@@ -67,6 +71,7 @@ export function refreshMirror(options: {
   for (const key of external.keys) if (!names.includes(key)) throw new StoreError(ESS_ERROR, `The SQL key column "${key}" is missing from "${external.table}"`);
   const source = [external.schema, external.table].filter(Boolean).map((n) => essName(n!, connection.dialect)).join('.');
   const cap = wholeNumber('TABULARIUS_ESS_MAX_ROWS', { min: 1 }) ?? 100_000;
+  const started = performance.now();
   const result = query(`SELECT ${names.map((n) => essName(n, connection.dialect)).join(', ')} FROM ${source}`, cap);
   const keyTable = q(`_fm_ess_keys_${table.id}`);
   const nested = sql.isTransaction;
@@ -99,7 +104,9 @@ export function refreshMirror(options: {
     const dropped = table.fields.filter((f) => f.externalColumn && f.externalDropped);
     if (dropped.length) sql.exec(`UPDATE ${q(table.name)} SET ${dropped.map((f) => `${q(f.name)} = NULL`).join(', ')}`);
     sql.exec(nested ? 'RELEASE ess_refresh' : 'COMMIT');
-    fresh.set(table.id, now);
+    // The read blocked this process while it ran: a source that takes long to answer is read again only after nine times
+    // as long, so a slow database cannot hold the server for more than about a tenth of the time.
+    fresh.set(table.id, now + Math.max(0, 9 * (performance.now() - started) - interval));
   } catch (error) {
     sql.exec(nested ? 'ROLLBACK TO ess_refresh; RELEASE ess_refresh' : 'ROLLBACK');
     throw error;

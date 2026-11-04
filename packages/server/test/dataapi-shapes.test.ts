@@ -15,6 +15,7 @@ import { serve } from '../src/index.ts';
 import { STORE_EXT } from '../src/host.ts';
 import { createStore, type DesignOp, type Store } from '../../store/src/index.ts';
 import { SqliteDriver } from '../../store/src/ess/driver.ts';
+import { allowSqliteStandIn } from '../../store/src/ess/bridge.ts';
 import type { LayoutObject } from '../../fmp12/src/index.ts';
 
 let dir: string;
@@ -163,6 +164,8 @@ test('sessions: log in, the token header, log out', async () => {
 
 test('Data API create on a shadow table writes the outside row and mirror key', async () => {
   const outsidePath = join(dir, 'ess-api-source.sqlite');
+  // A SQLite file stands in for the outside database: the bridge opens one only when a test asks for it.
+  allowSqliteStandIn();
   const outside = new SqliteDriver(outsidePath);
   try {
     await outside.query('CREATE TABLE outside_items (id INTEGER PRIMARY KEY, name TEXT)', []);

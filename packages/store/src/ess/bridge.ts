@@ -17,12 +17,30 @@ const factories = new Map<SqlDriver['dialect'], Factory>();
 
 /** Register in the worker module when adding a protocol client. */
 export function registerDriver(dialect: SqlDriver['dialect'], factory: Factory): void { factories.set(dialect, factory); }
-registerDriver('sqlite', (connection) => new SqliteDriver(connection.path ?? ':memory:'));
 
+// The sqlite driver opens whatever path a connection names, so it is a stand-in for tests, never a production client:
+// the bridge's worker registers it only after allowSqliteStandIn(), which nothing outside the tests calls. A connection
+// that came from a file's design or an import could otherwise read any SQLite file the server's user can open.
+let sqliteStandIn = false;
+/** Tests only: let the bridge open SQLite files as outside sources. Restarts the worker so it takes effect. */
+export function allowSqliteStandIn(): void {
+  if (sqliteStandIn) return;
+  sqliteStandIn = true;
+  closeEssBridge();
+}
+
+export type EssBridgeReason = 'timeout' | 'unavailable' | 'row-limit' | 'failure' | 'conflict' | 'resting';
 export class EssBridgeError extends Error {
-  readonly reason: 'timeout' | 'unavailable' | 'row-limit' | 'failure' | 'conflict';
+  readonly reason: EssBridgeReason;
   readonly detail?: string;
-  constructor(reason: EssBridgeError['reason'], detail?: string) { super(reason); this.reason = reason; this.detail = detail; }
+  /** For 'resting': how long until the connection is asked again. */
+  readonly retryInMs?: number;
+  constructor(reason: EssBridgeReason, detail?: string, retryInMs?: number) {
+    super(reason);
+    this.reason = reason;
+    this.detail = detail;
+    if (retryInMs !== undefined) this.retryInMs = retryInMs;
+  }
 }
 
 interface Request {
@@ -45,6 +63,7 @@ function safeWriteDetail(error: unknown): string | undefined {
 // Only the bridge's own worker answers requests: any other worker thread that imports the store (a sandbox, a test reader)
 // must not have its messages taken by this handler.
 if (!isMainThread && (workerData as { essBridge?: boolean } | null)?.essBridge === true) {
+  if ((workerData as { sqliteStandIn?: boolean }).sqliteStandIn === true) registerDriver('sqlite', (connection) => new SqliteDriver(connection.path ?? ':memory:'));
   const drivers = new Map<string, { name: string; driver: SqlDriver }>();
   parentPort!.on('message', async (request: Request) => {
     const state = new Int32Array(request.state);
@@ -94,13 +113,23 @@ if (!isMainThread && (workerData as { essBridge?: boolean } | null)?.essBridge =
 let worker: Worker | undefined;
 function readyWorker(): Worker {
   if (!worker) {
-    worker = new Worker(new URL('./bridge.ts', import.meta.url), { workerData: { essBridge: true } });
+    worker = new Worker(new URL('./bridge.ts', import.meta.url), { workerData: { essBridge: true, sqliteStandIn } });
     worker.unref();
   }
   return worker;
 }
 
+// A call blocks this thread until the source answers, and so every other request this process serves. A source that
+// did not answer in time is not asked again for a while (a minute or twice the timeout, doubling to 15 minutes while it
+// keeps not answering), so a slow or hostile database stalls the server once per rest, not on every read.
+const MAX_REST_MS = 15 * 60_000;
+const resting = new Map<string, { until: number; rest: number }>();
+
 export function essCall<T>(connection: SqlConnection, op: EssOperation, args: unknown[] = [], timeoutMs = (wholeNumber('TABULARIUS_ESS_TIMEOUT_SECONDS', { min: 1 }) ?? 30) * 1000): T {
+  const name = connection.name.toLowerCase();
+  const rest = resting.get(name);
+  const now = Date.now();
+  if (rest && now < rest.until) throw new EssBridgeError('resting', undefined, rest.until - now);
   const state = new Int32Array(new SharedArrayBuffer(4));
   const { port1, port2 } = new MessageChannel();
   try {
@@ -108,8 +137,11 @@ export function essCall<T>(connection: SqlConnection, op: EssOperation, args: un
     if (Atomics.wait(state, 0, 0, timeoutMs) === 'timed-out') {
       void worker?.terminate();
       worker = undefined;
+      const next = Math.min(MAX_REST_MS, rest ? rest.rest * 2 : Math.max(60_000, timeoutMs * 2));
+      resting.set(name, { until: Date.now() + next, rest: next });
       throw new EssBridgeError('timeout');
     }
+    resting.delete(name);
     const reply = receiveMessageOnPort(port1)?.message as Reply | undefined;
     if (!reply) throw new EssBridgeError('unavailable');
     if (reply.error) throw new EssBridgeError(reply.error, reply.detail);
@@ -119,4 +151,4 @@ export function essCall<T>(connection: SqlConnection, op: EssOperation, args: un
   }
 }
 
-export function closeEssBridge(): void { void worker?.terminate(); worker = undefined; }
+export function closeEssBridge(): void { void worker?.terminate(); worker = undefined; resting.clear(); }
