@@ -87,8 +87,19 @@ test('the threat model does not call a planted admin password file accepted whil
   writeFileSync(loose, 'hash\n');
   chmodSync(loose, 0o666);
   assert.throws(() => readCredentialFileSync(loose), { code: 'ESTALE' });
+  // A file the service user owns that only the owner may write is accepted whatever its read bits are: the check forbids group
+  // and world WRITE (0o022), not group or world read, so a 0644 or 0640 file is accepted. The page says exactly that.
+  for (const mode of [0o644, 0o640, 0o600]) {
+    const readable = join(folder, `readable-${mode.toString(8)}`);
+    writeFileSync(readable, 'hash\n');
+    chmodSync(readable, mode);
+    assert.equal(readCredentialFileSync(readable).trim(), 'hash', `mode ${mode.toString(8)} is accepted`);
+  }
   // The words: the page does not say the opposite, and says what the checks cannot tell apart.
   assert.doesNotMatch(markdown, /Known gap: the admin password/);
   assert.doesNotMatch(markdown, /is still accepted/);
   assert.match(markdown, /What the checks cannot tell apart:/);
+  assert.match(markdown, /\(or by root\)/);
+  assert.match(markdown, /no group or world write permission/);
+  assert.doesNotMatch(markdown, /administrator account\) with one name and a private mode/);
 });

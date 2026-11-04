@@ -52,7 +52,7 @@ The AI key path may be an operator-provided symlink: its private-mode check appl
 
 These checks are not `openat(2)` and do not make path-based operations atomic. The folders must belong to the service user. A hostile concurrent rename of a parent folder is out of scope.
 
-What the checks cannot tell apart: a plain file made by the server's own user (or by an administrator account) with one name and a private mode is accepted, whoever really wrote it, and an admin password file that is removed reads as no password set. Keep the hosted folder writable only by the service user.
+What the checks cannot tell apart: a plain file made by the server's own user (or by root) with one name and no group or world write permission is accepted (a 0644 or 0640 file is accepted, not only 0600), whoever really wrote it, and an admin password file that is removed reads as no password set. Keep the hosted folder writable only by the service user.
 
 **Modules that use it**
 
