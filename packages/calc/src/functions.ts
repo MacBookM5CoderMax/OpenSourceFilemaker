@@ -1548,7 +1548,14 @@ export function convertFromFileMakerPath(t: string, format: number): string {
     const w = p.replace(/^\/([A-Za-z]:)/, '$1').replace(/\//g, '\\');
     return w;
   }
-  if (format === 3) return 'file://' + (p.startsWith('//') ? p.slice(1) : p).split('/').map(encodeURIComponent).join('/');
+  if (format === 3) {
+    // A share ("filewin://server/share/a") is file://server/share/a, not file:///server/share/a, and a drive letter keeps its colon
+    // (file:///C:/a%20b.txt, as RFC 8089 writes it); every other part is percent-encoded. How the product spells a Windows path as a URL is unverified.
+    const share = /^filewin:\/\/[^/]/i.test(t.trim());
+    const parts = (share ? p.slice(2) : p.startsWith('//') ? p.slice(1) : p).split('/');
+    const drive = !share && parts[0] === '' && /^[A-Za-z]:$/.test(parts[1] ?? '');
+    return 'file://' + parts.map((x, i) => (drive && i === 1 ? x : encodeURIComponent(x))).join('/');
+  }
   return p.replace(/^\/([A-Za-z]:)/, '$1');
 }
 /** A native path or file URL (in the given format) as a FileMaker path: the reverse of convertFromFileMakerPath. */
@@ -1565,10 +1572,12 @@ export function convertToFileMakerPath(t: string, format: number): string {
         return '?';
       }
     }
+    // file://server/share/a (a host that is not this machine) is a share: //server/share/a, as WinPath gives it.
     const m = /^file:\/\/(?:localhost)?(\/.*)$/i.exec(p);
-    if (!m) return '?';
+    const remote = m ? undefined : /^file:\/\/([^/?#:]+)(\/.*)$/i.exec(p);
+    if (!m && !remote) return '?';
     try {
-      return decodeURIComponent(m[1]);
+      return m ? decodeURIComponent(m[1]) : `//${remote![1]}${decodeURIComponent(remote![2])}`;
     } catch (e) {
       rethrowExecutionRefusal(e);
       return '?';
