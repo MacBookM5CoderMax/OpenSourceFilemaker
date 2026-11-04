@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**266 entries in 33 areas.** Unverified: 130. Waiting on: 22 on a sample file, 157 on a FileMaker run or Design Report, 15 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
+**270 entries in 34 areas.** Unverified: 133. Waiting on: 22 on a sample file, 159 on a FileMaker run or Design Report, 15 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -56,6 +56,15 @@ part of it.
 | --- | --- | --- | --- |
 | Whether Claude Code expands a variable in a header stored by the printed add command is unverified | The command works only if Claude Code expands the variable when it connects; if not, the app is refused for want of a token | A run of the printed command against Claude Code | [docs/starter-solutions.md › Showcase](starter-solutions.md) — “…Code expands the variable in a stored header is unverified); Claude Desktop keeps its settings in a file…” |
 | That the pinned mcp-remote version in the Claude Desktop snippet exists and connects is unverified | npx fails to find the version, or the bridge does not connect | A run of the snippet in Claude Desktop | [docs/starter-solutions.md › Showcase](starter-solutions.md) — “…Code expands the variable in a stored header is unverified); Claude Desktop keeps its settings in a file…” |
+
+## External SQL sources
+
+| What differs or is unknown | How it shows | What would settle it | Where it is written |
+| --- | --- | --- | --- |
+| SQL column type mapping and supplemental-field behavior relative to FileMaker ESS are unverified | A source value or supplemental field may be interpreted differently | A comparison with the same schema and values in a FileMaker ESS solution | [docs/guides/running/external-sql-sources.md › What works in this core](guides/running/external-sql-sources.md) — “…behavior relative to FileMaker's ESS are unverified.” |
+| Refresh timing, whole-table row limit, record-id reuse and ESS error number are unverified against FileMaker | An ESS read may refresh or fail differently and report another error number | A comparison of refresh, row-cap and failure cases in FileMaker | [docs/guides/running/external-sql-sources.md › Refresh and limits](guides/running/external-sql-sources.md) — “…The FileMaker error number for an ESS failure is unverified; this core consistently uses 8310. Refresh timing,…” |
+| Shadow-table writes are unavailable in this core, while FileMaker ESS can write supported sources | A write accepted in FileMaker fails here | A write and transaction comparison after the SQL write item is implemented | [docs/guides/running/external-sql-sources.md › Writes](guides/running/external-sql-sources.md) — “Creating, editing and deleting rows of a shadow table are refused with an actionable error in this core. The…” |
+| Network SQL clients and their Connections binding are not present in this core, and behavior against a real server is unverified | A solution using an ODBC source cannot yet connect to one of the four network databases | A run against each real database after its client and Connections binding are added | [docs/guides/running/external-sql-sources.md › What works in this core](guides/running/external-sql-sources.md) — “The store has a SQL driver interface and a worker bridge. The supplied sqlite driver can use a separate SQLite…” |
 
 ## File system races
 

@@ -39,6 +39,8 @@ export interface FieldSpec {
   id?: number;
   name: string;
   type?: FieldType;
+  /** Internal design metadata for a mapped shadow-table column. */
+  externalColumn?: true;
   kind?: Exclude<FieldKind, 'unknown'>;
   comment?: string;
   /** Calculation formula (kind "calculation"), or an auto-enter calculation (set options.autoEnter.calculation). */
@@ -72,6 +74,8 @@ export interface PredicateSpec {
 
 export type DesignOp =
   | { op: 'createTable'; id?: number; name: string; fields?: FieldSpec[]; occurrenceId?: number; layoutId?: number; /** Also add a table occurrence and a layout for it (default true), as FileMaker does. */ withLayout?: boolean }
+  | { op: 'createShadowTable'; dataSource: Ref; table: string; schema?: string; name?: string; keys?: string[]; columns?: { name: string; type: FieldType }[] }
+  | { op: 'syncShadowTable'; table: Ref; columns?: { name: string; type: FieldType }[] }
   | { op: 'renameTable'; table: Ref; name: string }
   | { op: 'deleteTable'; table: Ref }
   | ({ op: 'createField'; table: Ref } & FieldSpec)
@@ -102,8 +106,8 @@ export type DesignOp =
    * an ODBC entry (one path, odbc:DSN). Tabularius never connects to either: a
    * file reference finds the hosted database of the same name.
    */
-  | { op: 'createDataSource'; id?: number; name: string; paths: string[] }
-  | { op: 'updateDataSource'; dataSource: Ref; name?: string; paths?: string[] }
+  | { op: 'createDataSource'; id?: number; name: string; paths: string[]; connection?: string }
+  | { op: 'updateDataSource'; dataSource: Ref; name?: string; paths?: string[]; connection?: string | null }
   | { op: 'deleteDataSource'; dataSource: Ref }
   | { op: 'createContainerDirectory'; id?: number; path: string }
   | { op: 'updateContainerDirectory'; directory: number; path: string }
@@ -1321,6 +1325,7 @@ function buildField(st: DesignState, table: Table, spec: FieldSpec, id: number):
   if (!fieldTypes(st).includes(type)) throw invalid(st.fileMode !== 'native' && NATIVE_FIELD_TYPES.includes(type) ? `Field type "${type}" is available only in native files` : `Field type must be one of ${fieldTypes(st).join(', ')}`);
   if (kind === 'calculation' && !spec.calculation) throw invalid(`Calculation field "${name}" needs a formula`);
   const field: Field = { id, name, kind, type, hasCalculation: spec.calculation !== undefined };
+  if (spec.externalColumn) field.externalColumn = true;
   if (spec.comment) field.comment = spec.comment;
   if (spec.calculation !== undefined) field.calculation = spec.calculation;
   if (spec.calculationContext !== undefined) field.calculationContextId = find(st.schema.tableOccurrences, spec.calculationContext, 'Table occurrence', 106).id;
@@ -1509,6 +1514,29 @@ function applyOneOp(st: DesignState, op: DesignOp, deleted?: DeletedLookup): { o
   s.customMenus ??= [];
   s.customMenuSets ??= [];
   switch (op.op) {
+    case 'createShadowTable': {
+      const ds = find(s.dataSources, op.dataSource, 'Data source', 960);
+      if (!ds.paths[0]?.startsWith('odbc:')) throw invalid(`Data source "${ds.name}" is not an ODBC source`);
+      if (!op.columns?.length) throw invalid('The SQL table has no columns');
+      const name = op.name ?? op.table;
+      const created = applyOneOp(st, { op: 'createTable', name, fields: op.columns.map((c) => ({ name: c.name, type: c.type, externalColumn: true })) }, deleted);
+      const table = s.tables.find((t) => t.name === name)!;
+      table.external = { dataSourceId: ds.id, ...(op.schema ? { schema: op.schema } : {}), table: op.table, keys: op.keys ?? [] };
+      const effect = created.effects.find((e): e is Extract<Effect, { k: 'createTable' }> => e.k === 'createTable');
+      if (effect) effect.table.external = structuredClone(table.external);
+      return { op: { ...op, dataSource: ds.id, name, keys: table.external.keys }, effects: created.effects };
+    }
+    case 'syncShadowTable': {
+      const table = find(s.tables, op.table, 'Table', 106);
+      if (!table.external) throw invalid(`Table "${table.name}" is not a SQL shadow table`);
+      if (!op.columns?.length) throw invalid('The SQL table has no columns');
+      for (const field of table.fields.filter((f) => f.externalColumn)) field.externalDropped = op.columns.some((c) => c.name.toLowerCase() === field.name.toLowerCase()) ? undefined : true;
+      for (const column of op.columns) {
+        if (table.fields.some((f) => f.name.toLowerCase() === column.name.toLowerCase())) continue;
+        effects.push(...applyOneOp(st, { op: 'createField', table: table.id, name: column.name, type: column.type, externalColumn: true }, deleted).effects);
+      }
+      return { op: { ...op, table: table.id }, effects };
+    }
     case 'createTable': {
       const name = checkName(op.name, 'A table');
       if (/^_fm_/i.test(name) || /^sqlite_/i.test(name)) throw invalid(`Table names can't start with "${name.slice(0, name.indexOf('_', 1) + 1)}"`);
@@ -1938,11 +1966,12 @@ function applyOneOp(st: DesignState, op: DesignOp, deleted?: DeletedLookup): { o
       unique(s.dataSources.map((d) => d.name), name, 'Data source');
       const id = designId(s, 'dataSources', s.dataSources.map((d) => d.id), op.id);
       const paths = dataSourcePaths(op.paths);
-      s.dataSources.push({ id, name, paths });
+      s.dataSources.push({ id, name, paths, ...(op.connection ? { connection: checkName(op.connection, 'A connection') } : {}) });
       return { op: { ...op, id, paths }, effects };
     }
     case 'updateDataSource': {
       const ds = find(s.dataSources, op.dataSource, 'Data source', 960);
+      if (op.connection !== undefined) ds.connection = op.connection === null ? undefined : checkName(op.connection, 'A connection');
       if (op.name !== undefined) {
         const name = checkName(op.name, 'A data source');
         unique(s.dataSources.map((d) => d.name), name, 'Data source', ds.name);

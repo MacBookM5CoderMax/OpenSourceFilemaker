@@ -40,6 +40,10 @@ export interface Field {
   name: string;
   kind: FieldKind;
   type: FieldType;
+  /** Set only on a mapped SQL column; supplemental fields have no mapping. */
+  externalColumn?: true;
+  /** The column was absent at the last shadow-table sync. */
+  externalDropped?: true;
   comment?: string;
   /** Auto-enter / calculation formula, when present. */
   hasCalculation: boolean;
@@ -170,6 +174,8 @@ export interface Table {
   id: number;
   name: string;
   fields: Field[];
+  /** Tabularius design metadata for a SQL table mirrored in this file. The .fmp12 reader does not populate it. */
+  external?: { dataSourceId: number; schema?: string; table: string; keys: string[] };
 }
 
 export interface TableOccurrence {
@@ -408,6 +414,8 @@ export interface CustomFunction extends CatalogItem {
 
 export interface DataSource extends CatalogItem {
   paths: string[];
+  /** Optional Connections entry; otherwise the ODBC DSN names the connection. */
+  connection?: string;
 }
 
 /** A Manage Containers base directory: a path relative to the database's folder, ending in "/". */

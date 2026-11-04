@@ -226,6 +226,34 @@
       "restart": "Yes for a running server.",
       "explainedBy": "docs/upgrading.md"
     },
+    "TABULARIUS_ESS_MAX_ROWS": {
+      "description": "Maximum number of rows a whole-table shadow refresh reads before it fails without changing the mirror.",
+      "default": "100000 rows",
+      "accepted": "Whole number of rows, 1 or more, digits only",
+      "restart": "Read on each refresh.",
+      "explainedBy": "docs/guides/running/external-sql-sources.md"
+    },
+    "TABULARIUS_ESS_POOL": {
+      "description": "Maximum connections per named outside SQL source; the core SQLite driver currently uses one.",
+      "default": "4 connections",
+      "accepted": "Whole number from 1 to 64, digits only",
+      "restart": "Yes for a running server.",
+      "explainedBy": "docs/guides/running/external-sql-sources.md"
+    },
+    "TABULARIUS_ESS_REFRESH_SECONDS": {
+      "description": "Minimum time between successful shadow-table mirror refreshes.",
+      "default": "5 seconds",
+      "accepted": "Whole number of seconds, 0 or more, digits only; 0 refreshes on every read",
+      "restart": "Read on each refresh.",
+      "explainedBy": "docs/guides/running/external-sql-sources.md"
+    },
+    "TABULARIUS_ESS_TIMEOUT_SECONDS": {
+      "description": "Deadline for each outside SQL driver call.",
+      "default": "30 seconds",
+      "accepted": "Whole number of seconds, 1 or more, digits only",
+      "restart": "Read on each call.",
+      "explainedBy": "docs/guides/running/external-sql-sources.md"
+    },
     "TABULARIUS_ENCRYPTION_KEY": {
       "description": "Passphrase used to unlock encrypted hosted files. A set-but-empty or whitespace-only value stops `serve`; unset it to run without encryption, or give a passphrase. Nonblank passphrases are used unchanged.",
       "default": "No encryption passphrase (unset); set but empty refuses to start",

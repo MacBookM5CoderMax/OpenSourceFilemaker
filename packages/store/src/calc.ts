@@ -3223,6 +3223,7 @@ export function serialIncrement(s: string, by: number): string {
  * batch is in memory at a time. `cols` reads just those columns.
  */
 export function* rowsById(store: Store, table: Table, ids: Iterable<number>, cols?: string[]): Generator<Rec> {
+  store.refreshShadow(table);
   const select = cols ? ['_fm_record_id', ...cols].map(q).join(', ') : '*';
   const sql = `SELECT ${select} FROM ${q(table.name)} WHERE _fm_record_id IN (SELECT value FROM json_each(?))`;
   const flush = function* (batch: number[]): Generator<Rec> {

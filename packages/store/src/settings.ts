@@ -153,6 +153,10 @@ export function checkServeSettings(env: Env = process.env): void {
   check(() => wholeNumber('TABULARIUS_PGWIRE_MAX_PARAM_BYTES', { min: 1, env }));
   check(() => wholeNumber('TABULARIUS_MAX_SESSION_LOCKS', { min: 1, env }));
   check(() => wholeNumber('TABULARIUS_TRACE_SQL_MIN_MS', { min: 0, max: 86_400_000, env }));
+  check(() => wholeNumber('TABULARIUS_ESS_POOL', { min: 1, max: 64, env }));
+  check(() => wholeNumber('TABULARIUS_ESS_TIMEOUT_SECONDS', { min: 1, env }));
+  check(() => wholeNumber('TABULARIUS_ESS_REFRESH_SECONDS', { min: 0, env }));
+  check(() => wholeNumber('TABULARIUS_ESS_MAX_ROWS', { min: 1, env }));
   for (const name of ['TABULARIUS_XML_PUBLISHING_WRITES', 'TABULARIUS_SQL_WRITES', 'TABULARIUS_LIST_FILES_PUBLICLY', 'TABULARIUS_ALLOW_PLAIN_HTTP']) check(() => boolean(name, { env }));
   check(() => boolean('TABULARIUS_OIDC_TRUST_EMAIL', { env, words: 'strict' }));
   if (problems.length) throw new Error(problems.join('\n'));

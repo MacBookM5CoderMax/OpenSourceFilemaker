@@ -187,6 +187,7 @@ export function relatedRows(
   const path = relationPath(store.schema, fromId, toId);
   const target = occurrence(store, toId);
   if (!path || !target) return undefined;
+  target.store.refreshShadow(target.table);
   if (opts.cols) opts = { ...opts, cols: opts.cols.filter((name) => hasColumn(target.table, name)) };
   const offset = Math.max(0, opts.offset ?? 0);
   const limit = Math.max(0, opts.limit ?? MAX_ROWS);

@@ -23,6 +23,9 @@ import { boundedStatement, collectRows } from './sql-result.ts';
 import { calledFunctions, isBuiltinFunction, recursiveRows, usesRecursion, type Op, type PortableFunction } from './sql-recursive.ts';
 import { SHARED_SQL_FUNCTIONS } from './sql-shared-functions.ts';
 import { DatabaseSync, backup, type Session, type StatementSync, type SQLInputValue, type SQLOutputValue } from 'node:sqlite';
+import { type SqlConnection } from './ess/bridge.ts';
+import { ESS_ERROR, type SqlColumn, type SqlResult } from './ess/driver.ts';
+import { essFieldType, refreshMirror, requestFor, sourceFor } from './ess/mirror.ts';
 import { createHash, createHmac, pbkdf2Sync, scrypt, scryptSync, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { isIP } from 'node:net';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -1170,6 +1173,42 @@ export class Store {
         this.logSecurity('file-access-name-updated', { account: '[host]', target: other.name });
       }
     });
+  }
+
+  /** The host supplies a file-scoped Connections entry for this ODBC data source. */
+  sqlConnection: (name: string) => SqlConnection | undefined = () => undefined;
+  /** Injectable for refresh tests. */
+  essClock: () => number = () => Date.now();
+  private readonly essFresh = new Map<number, number>();
+
+  private prepareShadowOps(ops: DesignOp[]): DesignOp[] {
+    return ops.map((op) => {
+      if (op.op !== 'createShadowTable' && op.op !== 'syncShadowTable') return op;
+      const table = op.op === 'syncShadowTable'
+        ? this.schema.tables.find((t) => t.id === op.table || t.name.toLowerCase() === String(op.table).toLowerCase())
+        : undefined;
+      const ds = op.op === 'createShadowTable'
+        ? this.schema.dataSources.find((d) => d.id === op.dataSource || d.name.toLowerCase() === String(op.dataSource).toLowerCase())
+        : this.schema.dataSources.find((d) => d.id === table?.external?.dataSourceId);
+      if (!ds?.paths[0]?.startsWith('odbc:')) throw new StoreError(ESS_ERROR, 'The SQL data source is missing or is not ODBC');
+      const external = table?.external ?? { dataSourceId: ds.id, table: op.op === 'createShadowTable' ? op.table : '', keys: [], ...(op.op === 'createShadowTable' && op.schema ? { schema: op.schema } : {}) };
+      const placeholder: Table = table ?? { id: -1, name: op.op === 'createShadowTable' ? op.name ?? op.table : '', fields: [], external };
+      const columns = requestFor<SqlColumn[]>(this.schema, this.sqlConnection, placeholder, 'columns', [{ schema: external.schema, name: external.table }]);
+      const keys = op.op === 'createShadowTable' ? op.keys ?? columns.filter((c) => c.key).map((c) => c.name) : external.keys;
+      if (!keys.length) throw new StoreError(ESS_ERROR, `The SQL table "${external.table}" has no primary key; give keys with its unique column names`);
+      for (const key of keys) if (!columns.some((c) => c.name === key)) throw new StoreError(ESS_ERROR, `The SQL key column "${key}" is missing from "${external.table}"`);
+      return { ...op, ...(op.op === 'createShadowTable' ? { keys } : {}), columns: columns.map((c) => ({ name: c.name, type: essFieldType(c.type) })) } as DesignOp;
+    });
+  }
+
+  /** Refresh one mirror before a public read; the worker call is bounded and mirror writes are atomic. */
+  refreshShadow(table: Table | string): void {
+    const t = typeof table === 'string' ? this.schema.tables.find((x) => x.name.toLowerCase() === table.toLowerCase()) : table;
+    if (!t?.external) return;
+    const { connection } = sourceFor(this.schema, this.sqlConnection, t);
+    refreshMirror({ table: t, sql: this.sql, clock: this.essClock, fresh: this.essFresh, connection,
+      query: (statement, maxRows) => requestFor<SqlResult>(this.schema, this.sqlConnection, t, 'query', [statement, [], { maxRows }]),
+      nextId: () => this.nextRecordId(t.name) });
   }
 
   /**
@@ -2391,6 +2430,7 @@ export class Store {
    * (Calculations.applyDelta) rather than leaving them for the warmer.
    */
   private changeOne<T>(table: Table, recordId: number, old: Row | undefined, run: () => T): T {
+    if (table.external) throw new StoreError(ESS_ERROR, `Changing records of the SQL table "${table.external.table}" is not built yet`);
     if (!this.results || (this.sql.isTransaction && !this.writePublications) || !this.calc.summaryFields(table).length) return run();
     // In one write transaction, so no other process's write can land between reading the record, the write and the version.
     if (!this.sql.isTransaction) return this.withWriteTransaction(() => this.changeOne(table, recordId, old, run));
@@ -2539,6 +2579,7 @@ export class Store {
   /** Checks design changes without making them: the changes as they would apply, or the error applyDesign would give. */
   checkDesign(ops: DesignOp[], opts: { readOtherFile?: (file: Store) => boolean } = {}): { applied: DesignOp[]; schema: Schema; designs: LayoutDesigns; privileges: PrivilegeDefinition[] } {
     try {
+      ops = this.prepareShadowOps(ops);
       const r = applyOps({ schema: this.schema, designs: this.designs(), privileges: this.privilegeSets(), fileMode: this.fileMode, externalFile: (d) => this.otherFileDesign(d, opts.readOtherFile) }, ops, (id) => this.deletedDesign(id));
       return { applied: r.ops, schema: r.state.schema, designs: r.state.designs, privileges: r.state.privileges ?? this.privilegeSets() };
     } catch (e) {
@@ -2548,6 +2589,7 @@ export class Store {
   }
 
   applyDesign(ops: DesignOp[], opts: WriteOptions = {}): { applied: DesignOp[] } {
+    ops = this.prepareShadowOps(ops);
     this.joinTransaction();
     // Sign-in rows that are waiting go first, before this change opens its own transaction or savepoint (it logs its own row).
     this.settleDeferredSecurity();
@@ -3565,6 +3607,7 @@ export class Store {
       case 'createTable': {
         const cols = e.table.fields.filter((f) => f.kind !== 'summary').map((f) => `, ${q(f.name)} ${SQL_TYPES[f.type]}`).join('');
         this.sql.exec(`CREATE TABLE ${q(e.table.name)} (_fm_record_id INTEGER PRIMARY KEY, _fm_mod_id INTEGER NOT NULL DEFAULT 0${this.fileMode === 'native' ? ", _fm_uuid TEXT NOT NULL DEFAULT ''" : ''}${cols})`);
+        if (e.table.external) this.sql.exec(`CREATE TABLE ${q(`_fm_ess_keys_${e.table.id}`)} (record_id INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE)`);
         this.ensureRecordIdMarks([e.table.name]);
         if (this.fileMode === 'native') this.nativeIdGuards(e.table);
         break;
@@ -7038,6 +7081,8 @@ export class Store {
 
   /** Checks a write of `fields` to a record (current row; none when creating). */
   private checkWrite(info: LayoutInfo, pv: Privileges | undefined, fields: Iterable<string>, current?: Record<string, SqlValue>): void {
+    const shadow = this.table(info).external;
+    if (shadow) throw new StoreError(ESS_ERROR, `Changing records of the SQL table "${shadow.table}" is not built yet`);
     if (!pv) return;
     const names = [...fields];
     this.checkWriteFields(info, pv, names);
@@ -9770,6 +9815,7 @@ export class Store {
 
   /** A record's stored values, by column. */
   row(info: LayoutInfo, recordId: number): Record<string, SqlValue> {
+    this.refreshShadow(info.table);
     const row = this.prepared(`SELECT * FROM ${q(info.table)} WHERE _fm_record_id = ?`).get(recordId) as Record<string, SqlValue> | undefined;
     if (!row) throw new StoreError(101, 'Record is missing');
     return row;
@@ -10185,6 +10231,7 @@ export class Store {
    */
   setStoredCalcValues(table: string, field: string, values: { recordId: number; value: SqlValue; expect: SqlValue }[], opts: WriteOptions = {}): { set: number; skipped: number[] } {
     const t = this.schema.tables.find((x) => x.name.toLowerCase() === table.toLowerCase());
+    if (t?.external) throw new StoreError(ESS_ERROR, `Changing records of the SQL table "${t.external.table}" is not built yet`);
     const f = t?.fields.find((x) => x.name.toLowerCase() === field.toLowerCase());
     if (!t || !f) throw new StoreError(102, `Field "${table}::${field}" is missing`);
     if (f.kind !== 'calculation' || f.options?.unstored || f.options?.global) throw new StoreError(102, `"${t.name}::${f.name}" is not a stored calculation`);
@@ -10617,6 +10664,8 @@ export class Store {
 
   delete(layout: string | LayoutInfo, recordId: number, opts: WriteOptions = {}): void {
     const info = this.layoutInfo(layout);
+    const shadow = info.owner.table(info).external;
+    if (shadow) throw new StoreError(ESS_ERROR, `Changing records of the SQL table "${shadow.table}" is not built yet`);
     this.gateAgentWrite(opts, 'delete', info, recordId, undefined, undefined);
     this.checkLayout(info, opts.privileges, true);
     if (info.owner !== this) return info.owner.delete(info, recordId, opts);
@@ -11053,6 +11102,7 @@ export class Store {
     if (info.owner !== this) return info.owner.selectIds(info, opts);
     const pv = this.local(opts.privileges);
     this.checkFieldsVisible(info, pv, [...(opts.fields ?? []), ...(opts.sort ?? []).map((x) => x.fieldName)]);
+    this.refreshShadow(info.table);
     const view = this.viewFilter(info, pv);
     const limit = opts.limit === undefined ? (opts.offset === undefined ? '' : ' LIMIT -1') : ` LIMIT ${Math.max(0, Math.floor(opts.limit))}`;
     const offset = opts.offset === undefined ? '' : ` OFFSET ${Math.max(0, Math.floor(opts.offset))}`;
@@ -11067,6 +11117,7 @@ export class Store {
     if (info.owner !== this) return info.owner.countIds(info, opts);
     const pv = this.local(opts.privileges);
     this.checkFieldsVisible(info, pv, [...(opts.fields ?? []), ...(opts.sort ?? []).map((x) => x.fieldName)]);
+    this.refreshShadow(info.table);
     const view = this.viewFilter(info, pv);
     return Number((this.sql.prepare(`SELECT count(*) AS n FROM ${q(info.table)} WHERE (${opts.where ?? '1'}) AND ${view.where}`)
       .get(...(opts.params ?? []), ...view.params) as { n: number }).n);
@@ -11134,6 +11185,7 @@ export class Store {
     if (info.owner !== this) return yield* info.owner.findIdsProgress(info, opts);
     const pv = this.local(opts.privileges);
     this.checkFieldsVisible(info, pv, (opts.query ?? []).flatMap((r) => Object.keys(r)));
+    this.refreshShadow(info.table);
     const used = new Set((opts.query ?? []).flatMap((r) => Object.keys(r)));
     if (this.table(info).fields.some((f) => used.has(f.name) && ((f.kind === 'calculation' && f.options?.unstored) || f.options?.global))) {
       const found = this.findIdsCurrent(info, opts);
@@ -11202,6 +11254,7 @@ export class Store {
   private findIdsHere(info: LayoutInfo, opts: { query?: FindRequest[]; sort?: SortSpec[]; privileges?: Privileges; dateOrder?: DateStyle }): number[] {
     const pv = this.local(opts.privileges);
     this.checkFieldsVisible(info, pv, [...(opts.query ?? []).flatMap((r) => Object.keys(r)), ...(opts.sort ?? []).map((x) => x.fieldName)]);
+    this.refreshShadow(info.table);
     let materialized: string | undefined;
     const source = () => materialized ??= this.findSource(info, opts);
     let where = '1';
@@ -11467,6 +11520,8 @@ export class Store {
   /** Deletes every record of a table (Truncate Table). */
   truncate(layout: string | LayoutInfo, opts: WriteOptions = {}): number {
     const info = this.layoutInfo(layout);
+    const shadow = info.owner.table(info).external;
+    if (shadow) throw new StoreError(ESS_ERROR, `Changing records of the SQL table "${shadow.table}" is not built yet`);
     this.checkLayout(info, opts.privileges, true);
     if (info.owner !== this) return info.owner.truncate(info, opts);
     // Claris requires Full Access, even when a custom set may delete every record.

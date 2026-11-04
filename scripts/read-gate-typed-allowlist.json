@@ -2678,5 +2678,13 @@
   "count": 1,
   "gate": "checked-before",
   "why": "The default (and the only options any caller passes) is this.reading, or {query, ...this.reading}: the session Privileges, elevated only for a full-access script's own file. findIdsProgress applies checkLayout, checkFieldsVisible and the record viewFilter, as findIds did at each of these call sites on main; the scanner could not see the type of the Parameters<> default."
+ },
+ {
+  "file": "packages/store/src/ess/mirror.ts",
+  "within": "refreshMirror",
+  "api": "sql.prepare",
+  "count": 1,
+  "gate": "store-internal",
+  "why": "Reads only the private _fm_ess_keys table's key-to-record-id mapping to reconcile a shadow mirror. It returns no row values; every public read still applies layout, field and record privileges."
  }
 ]
