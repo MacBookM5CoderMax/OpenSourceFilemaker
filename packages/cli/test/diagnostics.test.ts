@@ -331,6 +331,40 @@ test('a person\'s name in a path, in every form a path takes', () => {
   assert.match(s.patterns('C:\\Users\\jdoe is where it was'), /^~ is where it was$/, 'what follows a user name in a sentence stays');
 });
 
+test('a Windows folder is hidden however a message spells it: any case, either slash, doubled slashes', () => {
+  const s = new Scrubber({ folder: 'D:\\Clients\\Acme\\Hosted', home: 'C:\\Data\\jsmith-profile' });
+  const spelled: Array<[string, string]> = [
+    ['opened D:\\Clients\\Acme\\Hosted\\Sales.fmp12', 'opened <folder>\\Sales.fmp12'],
+    ['opened d:\\clients\\acme\\hosted\\Sales.fmp12', 'opened <folder>\\Sales.fmp12'],
+    ['opened D:/Clients/Acme/Hosted/Sales.fmp12', 'opened <folder>/Sales.fmp12'],
+    ['opened file:///D:/CLIENTS/ACME/HOSTED/Sales.fmp12', 'opened file:///<folder>/Sales.fmp12'],
+    ['"D:\\\\Clients\\\\Acme\\\\Hosted\\\\x"', '"<folder>\\\\x"'],
+    ['backup of c:\\data\\JSMITH-profile\\x', 'backup of ~\\x'],
+  ];
+  for (const [input, want] of spelled) {
+    const out = s.patterns(input);
+    assert.equal(out, want, input);
+    assert.equal(s.patterns(out), out, `${input}: scrubbing twice changes ${out}`);
+  }
+  // A different folder is not the folder.
+  assert.equal(s.patterns('D:\\Clients\\Other\\Hosted\\x'), 'D:\\Clients\\Other\\Hosted\\x');
+  // A share as the hosted folder, in the same spellings.
+  const share = new Scrubber({ folder: '\\\\fileserver\\dept\\Hosted' });
+  assert.equal(share.patterns('opened \\\\FILESERVER\\Dept\\Hosted\\x.fmp12'), 'opened <folder>\\x.fmp12');
+  assert.equal(share.patterns('opened //fileserver/dept/Hosted/x.fmp12'), 'opened <folder>/x.fmp12');
+});
+
+test('a share is hidden whether it is written with forward slashes or as a long path, and a web address is not one', () => {
+  const s = new Scrubber({ folder: '/srv/db' });
+  for (const path of ['opened //fileserver/finance$/q3/x', 'opened \\\\?\\UNC\\fileserver\\finance$\\q3\\x', 'opened \\\\.\\UNC\\fileserver\\finance$']) {
+    const out = s.patterns(path);
+    assert.ok(!/fileserver|finance/.test(out), `${path} became ${out}`);
+    assert.match(out, /<share>/);
+    assert.equal(s.patterns(out), out, `${path}: scrubbing twice changes ${out}`);
+  }
+  assert.equal(s.patterns('GET https://files.example/docs/x and //'), 'GET https://files.example/… and //');
+});
+
 test('a very long line is cut and scrubbed in seconds at most, whatever it is made of', () => {
   const s = new Scrubber({ folder: '/srv/db' });
   for (const unit of ['a', 'a.', 'a-', 'a+', '1.']) {

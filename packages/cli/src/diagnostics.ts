@@ -73,6 +73,14 @@ export interface ScrubberOptions {
   salt?: Buffer;
 }
 
+/** A pattern for a Windows path (a drive or a share) in any case, with either slash or several, or undefined for any other path. */
+function windowsSpelling(path: string): RegExp | undefined {
+  if (!/^(?:[A-Za-z]:[\\/]|[\\/]{2}[^\\/])/.test(path)) return undefined;
+  const parts = path.split(/[\\/]+/).filter(Boolean);
+  if (parts.length < 2) return undefined;
+  return new RegExp(`${/^[\\/]{2}/.test(path) ? '[\\\\/]{2}' : ''}${parts.map(escapeRe).join('[\\\\/]+')}`, 'gi');
+}
+
 /**
  * Hides secrets and personal values in text. `patterns` is the layer that needs no knowledge of the solution (secrets,
  * paths, addresses); `text` adds the names from the solution and, for log lines, anything quoted.
@@ -84,10 +92,16 @@ export class Scrubber {
   private readonly salt: Buffer;
   private readonly secrets: string[];
   private readonly names: [string, string][];
+  /** The folder and the home folder as a Windows path may be spelled other than the way the system names it. */
+  private readonly spellings: [RegExp, string][];
 
   constructor(o: ScrubberOptions) {
     this.folder = o.folder;
     this.home = o.home;
+    this.spellings = [[o.folder, '<folder>'], [o.home, '~']].flatMap(([path, label]) => {
+      const spelled = path ? windowsSpelling(path) : undefined;
+      return spelled ? [[spelled, label] as [RegExp, string]] : [];
+    });
     this.host = o.host && o.host.length >= 3 ? o.host : undefined;
     this.salt = o.salt ?? randomBytes(16);
     // Longest first, so a secret that holds another is hidden whole.
@@ -127,6 +141,8 @@ export class Scrubber {
       const escaped = path.replace(/\\/g, '\\\\');
       if (escaped !== path) s = s.split(escaped).join(label);
     }
+    // A Windows path is the same place in either case, with either slash, or doubled: the same names, however a message spells it.
+    for (const [spelled, label] of this.spellings) s = s.replace(spelled, label);
     // Private keys, whole blocks.
     s = s.replace(/-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY(?: BLOCK)?-----|$)/g, REDACTED);
     // What a parser quotes of the text it could not read (a settings file with a password in it): never the quote.
@@ -159,6 +175,9 @@ export class Scrubber {
     s = s.replace(/\/(?:Users|home)\/[^/\s"'<>:;,]+/gi, '/~');
     s = s.replace(/\/~/g, '~');
     s = s.replace(/\b[A-Za-z]:[\\/]+(?:Users|Documents and Settings)[\\/]+[^\\/\s"'<>:;,]+(?: [^\\/\s"'<>:;,]+(?=[\\/]))?/gi, '~');
+    // The same share written with forward slashes (//server/share/x) or as a long path (\\?\UNC\server\share\x).
+    s = s.replace(/(?<![:\w/\\])\/\/[\w.$-]+\/[\w.$-]+(?:\/[^/\s"'<>:;,]+)?/g, '<share>');
+    s = s.replace(/(?<![\w\\])\\\\[?.]\\UNC\\[\w.$-]+\\[\w.$-]+(?:\\[^\\\s"'<>:;,]+)?/gi, '<share>');
     s = s.replace(/\\\\[\w.$-]+\\[\w.$-]+(?:\\[^\\\s"'<>:;,]+)?/g, '<share>');
     s = s.replace(/(?<![\w~])~(?!\/)[A-Za-z][\w.-]*(?=\/|\\|\s|$)/g, '~');
     if (this.host) s = s.replace(new RegExp(`(?<![${LETTER}-])${escapeRe(this.host)}(?![${LETTER}-])`, 'giu'), '<host>');
