@@ -2519,16 +2519,21 @@ function main(argv: string[]): number {
     }
     case 'optimize': {
       if (path.toLowerCase().endsWith('.fmp12')) break; // a FileMaker file: below
+      // Each option is read once, before the file name is taken from what is left: bool() removes the option it finds, so reading it
+      // per file purged only the first file, and an option written before the name made the name read as "no name", so every file.
+      const purgeOrphans = bool(args, '--purge-orphans');
+      const json = bool(args, '--json');
+      refuseStrayOptions('optimize', args, '--json and --purge-orphans');
       const host = new Host(path);
       try {
-        const names = args[0] && !args[0].startsWith('--') ? [args[0]] : host.names();
+        const names = args[0] ? [args[0]] : host.names();
         const reports = names.map((name) => {
           const store = host.get(name);
           if (!store) throw new Error(`optimize: no database "${name}" in ${path}; hosted: ${host.names().join(', ')}`);
-          const purge = bool(args, '--purge-orphans') ? store.purgeOrphanContainers() : undefined;
+          const purge = purgeOrphans ? store.purgeOrphanContainers() : undefined;
           return { ...optimizationReport(store), orphanContainers: { ...store.orphanContainerReport(), integrity: store.containerIntegrityReport(), ...(purge ? { purge } : {}) } };
         });
-        if (bool(args, '--json')) console.log(JSON.stringify(reports.length === 1 ? reports[0] : reports, null, 2));
+        if (json) console.log(JSON.stringify(reports.length === 1 ? reports[0] : reports, null, 2));
         else console.log(reports.map((r) => `${r.text}\n\nUnreferenced containers: ${r.orphanContainers.count}${r.orphanContainers.purge ? ` (purged ${r.orphanContainers.purge.removed}, ${r.orphanContainers.purge.bytes} bytes, ${r.orphanContainers.purge.externalFiles} external files)` : ''}`).join('\n\n'));
       } finally {
         host.close();
