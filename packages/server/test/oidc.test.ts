@@ -2,7 +2,7 @@ import { oidcBrowser } from './oidc-browser.ts';
 // Sign-in through an identity provider, against a stand-in OpenID Connect provider.
 import { test, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, chownSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, chownSync, existsSync, linkSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
@@ -15,6 +15,7 @@ import { serve } from '../src/index.ts';
 import type { Store } from '../../store/src/index.ts';
 import { expiryClock, ExpiryClock } from '../../store/src/clock.ts';
 import { notOnWindows } from '../../store/test/windows.ts';
+import { withFilesystemHook, type FilesystemBoundary } from '../../store/src/fs-boundary.ts';
 
 const fetch = oidcBrowser();
 
@@ -407,6 +408,36 @@ test('OIDC storage refuses symlinks and permissive main files and sidecars', { s
   rmSync(`${path}-wal`, { force: true });
   rmSync(path, { force: true });
   rmSync(testDir, { recursive: true, force: true });
+});
+
+test('OIDC storage file is made through the filesystem boundary, and a file with a second name is refused', { skip: notOnWindows('it checks link counts and permission bits, which Windows files do not have') }, () => {
+  const testDir = mkdtempSync(join(tmpdir(), 'tabularius-oidc-boundary-'));
+  const path = join(testDir, '.openhbam-oidc', 'pending.sqlite');
+  const create = () => new Oidc({ dir: testDir } as never, new DataApi({ onClose: [] } as never), { name: 'x', issuer, clientId: 'x' });
+  try {
+    // A new file is created by the boundary's checked open, private, and used.
+    const events: FilesystemBoundary[] = [];
+    withFilesystemHook((event) => { if (event.path === path) events.push(event); }, () => create().close());
+    assert.deepEqual(events.map((event) => `${event.operation}:${event.phase}`).slice(0, 2), ['open:checked', 'open:opened']);
+    assert.equal(statSync(path).mode & 0o777, 0o600);
+    // Another worker making the file between the check and the open is looked at again, not refused.
+    rmSync(path);
+    let raced = false;
+    withFilesystemHook((event) => {
+      if (event.path === path && event.phase === 'checked' && !raced) { raced = true; writeFileSync(path, '', { mode: 0o600 }); }
+    }, () => create().close());
+    assert.equal(raced, true);
+    // The same file again is accepted (it is ours, private and has one name).
+    create().close();
+    // A second name for the file is refused, and the refusal names no path.
+    const other = join(testDir, 'second-name');
+    linkSync(path, other);
+    assert.throws(create, (error: NodeJS.ErrnoException) => error.code === 'ESTALE' && !error.message.includes(testDir));
+    rmSync(other);
+    create().close();
+  } finally {
+    rmSync(testDir, { recursive: true, force: true });
+  }
 });
 
 test('OIDC startup failure is visible in administrator status', async () => {

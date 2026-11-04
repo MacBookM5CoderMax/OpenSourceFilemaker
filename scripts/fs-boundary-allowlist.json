@@ -28,10 +28,6 @@
     "reason": "does not write a key, token or approval record: copies, links or moves solution files"
   },
   {
-    "file": "packages/server/src/oidc.ts",
-    "reason": "does not write a key, token or approval record: an empty private file created with exclusive open"
-  },
-  {
     "file": "packages/server/src/s3.ts",
     "reason": "does not write a key, token or approval record: streams a download to a partial file, then renames it"
   },

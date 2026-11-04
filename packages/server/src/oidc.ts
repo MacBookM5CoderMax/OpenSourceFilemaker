@@ -49,7 +49,8 @@ import { ApiError, readBody as readRaw, type DataApi } from './dataapi.ts';
 import type { Host } from './host.ts';
 import type { Store } from '../../store/src/index.ts';
 import { DatabaseSync } from 'node:sqlite';
-import { closeSync, constants, mkdirSync, openSync, lstatSync, statSync, type Stats } from 'node:fs';
+import { mkdirSync, lstatSync, statSync, closeSync, type Stats } from 'node:fs';
+import { openSync } from '../../store/src/fs-boundary.ts';
 import { join } from 'node:path';
 import { guardedFetch } from '../../scripts/src/net-guard.ts';
 import { sameSecret } from './secrets.ts';
@@ -758,11 +759,18 @@ function groupClaim(claims: Record<string, unknown>, name: string): unknown {
 }
 
 function secureOidcFile(file: string): Pick<Stats, 'dev' | 'ino'> {
-  try {
-    const fd = openSync(file, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0), 0o600);
-    closeSync(fd);
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+  // Made through the filesystem boundary: a link, a pipe or a file with a second name at this name is refused (ESTALE), and a
+  // file that is already there (EEXIST) goes on to the owner and mode checks below. Workers starting at once can each find the
+  // file missing and one of them makes it first; that reads as ESTALE once, so it is looked at again before it is refused.
+  for (let tries = 0; ; tries++) {
+    try {
+      closeSync(openSync(file, 'wx', 0o600));
+      break;
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (code === 'EEXIST') break;
+      if (code !== 'ESTALE' || tries >= 5) throw e;
+    }
   }
   const validated = secureExisting(file);
   secureOidcSidecars(join(file, '..'));

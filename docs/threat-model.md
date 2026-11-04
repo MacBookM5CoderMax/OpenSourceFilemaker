@@ -86,6 +86,7 @@ Known gap: the admin password file (`.openhbam-admin`) is refused when a link, p
 - `packages/server/src/logs.ts`
 - `packages/server/src/mcp-local-token.ts`
 - `packages/server/src/oauth.ts`
+- `packages/server/src/oidc.ts`
 - `packages/server/src/outbox.ts`
 - `packages/server/src/restore-files.ts`
 - `packages/server/src/server-logs.ts`

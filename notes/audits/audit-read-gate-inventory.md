@@ -373,12 +373,12 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/odata.ts:1827](../../packages/server/src/odata.ts#L1827) `ODataEndpoint/relatedRecords` | `Store.getMany` (1827) | ODATA |
 | [packages/server/src/odata.ts:1064](../../packages/server/src/odata.ts#L1064) `ODataEndpoint/resource` | `Store.countIds` (1064); `Store.get` (1109, 1116, 1205, 1233, 1240) | ODATA |
 | [packages/server/src/odata.ts:1822](../../packages/server/src/odata.ts#L1822) `ODataEndpoint/viewableIn` | `Store.viewableSet` (1822) | ODATA |
-| [packages/server/src/oidc.ts:470](../../packages/server/src/oidc.ts#L470) `Oidc/authorizeUrl` | `SQLite.prepare` (470, 473) | AUTH |
-| [packages/server/src/oidc.ts:525](../../packages/server/src/oidc.ts#L525) `Oidc/callback` | `SQLite.get` (525); `SQLite.prepare` (525, 536, 540); `SQLite.all` (536) | AUTH |
-| [packages/server/src/oidc.ts:217](../../packages/server/src/oidc.ts#L217) `Oidc/constructor` | `SQLite.all` (217, 228); `SQLite.prepare` (217, 228, 238, 239, 244, 244) | AUTH |
-| [packages/server/src/oidc.ts:645](../../packages/server/src/oidc.ts#L645) `Oidc/finish` | `SQLite.prepare` (645, 646, 648); `SQLite.get` (646) | AUTH |
-| [packages/server/src/oidc.ts:443](../../packages/server/src/oidc.ts#L443) `Oidc/makeRoom` | `SQLite.get` (443, 445, 447); `SQLite.prepare` (443, 444, 445, 447, 449); `SQLite.all` (444, 449) | AUTH |
-| [packages/server/src/oidc.ts:385](../../packages/server/src/oidc.ts#L385) `Oidc/takeGrant` | `SQLite.all` (385); `SQLite.prepare` (385) | AUTH |
+| [packages/server/src/oidc.ts:471](../../packages/server/src/oidc.ts#L471) `Oidc/authorizeUrl` | `SQLite.prepare` (471, 474) | AUTH |
+| [packages/server/src/oidc.ts:526](../../packages/server/src/oidc.ts#L526) `Oidc/callback` | `SQLite.get` (526); `SQLite.prepare` (526, 537, 541); `SQLite.all` (537) | AUTH |
+| [packages/server/src/oidc.ts:218](../../packages/server/src/oidc.ts#L218) `Oidc/constructor` | `SQLite.all` (218, 229); `SQLite.prepare` (218, 229, 239, 240, 245, 245) | AUTH |
+| [packages/server/src/oidc.ts:646](../../packages/server/src/oidc.ts#L646) `Oidc/finish` | `SQLite.prepare` (646, 647, 649); `SQLite.get` (647) | AUTH |
+| [packages/server/src/oidc.ts:444](../../packages/server/src/oidc.ts#L444) `Oidc/makeRoom` | `SQLite.get` (444, 446, 448); `SQLite.prepare` (444, 445, 446, 448, 450); `SQLite.all` (445, 450) | AUTH |
+| [packages/server/src/oidc.ts:386](../../packages/server/src/oidc.ts#L386) `Oidc/takeGrant` | `SQLite.all` (386); `SQLite.prepare` (386) | AUTH |
 | [packages/server/src/optimization-containers.ts:78](../../packages/server/src/optimization-containers.ts#L78) `planContainerMove` | `Store.embeddedContainerCount` (78) | DESIGN |
 | [packages/server/src/optimization-containers.ts:46](../../packages/server/src/optimization-containers.ts#L46) `read` | `SQLite.get` (46); `SQLite.prepare` (46); `Store.sql` (46) | DESIGN |
 | [packages/server/src/optimization-containers.ts:147](../../packages/server/src/optimization-containers.ts#L147) `undoContainerMove` | `SQLite.prepare` (147); `Store.sql` (147); `SQLite.get` (148) | DESIGN |
