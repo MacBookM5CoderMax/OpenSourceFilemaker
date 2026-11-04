@@ -8,7 +8,7 @@ import type { LayoutObject } from '../../fmp12/src/index.ts';
 
 // A portal row may set only the fields placed in that portal, the same rule a record's own fields follow on its layout.
 
-function setup(t: { after: (fn: () => void) => void }): { store: Store; parent: number; portal: string; call: number } {
+function setup(t: { after: (fn: () => void) => void }, onlyFurther = false): { store: Store; parent: number; portal: string; call: number } {
   const dir = mkdtempSync(join(tmpdir(), 'tabularius-portal-placed-'));
   const path = join(dir, 'P.openhbam.sqlite');
   createStore(path);
@@ -34,7 +34,7 @@ function setup(t: { after: (fn: () => void) => void }): { store: Store; parent: 
   const objects = [field('Contacts', 'Id'), {
     id: 900, kind: 'portal', type: 9, anchors, style: {}, bounds: { top: 300, left: 20, bottom: 400, right: 300 },
     portal: { tableOccurrenceId: occ('Calls').id, tableOccurrence: 'Calls', rows: 4, initialRow: 1 },
-    children: [field('Calls', 'Note'), field('Calls', 'Tags', 3), field('Staff', 'Name')],
+    children: onlyFurther ? [field('Staff', 'Name')] : [field('Calls', 'Note'), field('Calls', 'Tags', 3), field('Staff', 'Name')],
   } as unknown as LayoutObject];
   store.applyDesign([{ op: 'updateLayout', layout: 'Contacts', design: { objects, tableView: [] } }] as DesignOp[]);
   const parent = store.create('Contacts', { Id: 7, Name: 'a' }).recordId;
@@ -71,4 +71,13 @@ test('placed fields, with or without the occurrence name and by repetition, are 
   store.updatePortals('Contacts', parent, { [portal]: [{ recordId: call, 'Calls::Note': 'edited', 'Tags(2)': 'b' }, { Note: 'second' }] });
   const rows = calls(store);
   assert.deepEqual(rows.map((r) => r.Note).sort(), ['edited', 'second']);
+});
+
+test('a portal that places none of its own fields shows them all, so it takes them all; further fields stay strict', (t) => {
+  const { store, parent, portal, call } = setup(t, true);
+  assert.equal(store.layout('Contacts').plan!.portals[0].fields.length, 0);
+  assert.ok('Calls::Unplaced' in store.get('Contacts', parent).portalData![portal][0], 'the read shows every own field');
+  store.updatePortals('Contacts', parent, { [portal]: [{ recordId: call, 'Calls::Unplaced': 'set' }] });
+  assert.equal(calls(store)[0].Unplaced, 'set');
+  assert.throws(() => store.updatePortals('Contacts', parent, { [portal]: [{ recordId: call, 'Staff::Salary': '1' }] }), missing);
 });
