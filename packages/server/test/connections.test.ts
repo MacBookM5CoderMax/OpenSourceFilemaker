@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Server } from 'node:http';
 import { createServer } from 'node:http';
-import { Connections, serve } from '../src/index.ts';
+import { Connections, serve, setAdminPassword } from '../src/index.ts';
 import { ConnectionError, guardedFetch } from '../src/connections.ts';
 import { withFilesystemHook } from '../../store/src/fs-boundary.ts';
 import { fakeS3 } from './fake-s3.ts';
@@ -334,4 +334,20 @@ test('a connection test completing after deletion does not restore the connectio
     const vault = JSON.parse(readFileSync(join(folder, '.openhbam-connection-secrets.json'), 'utf8'));
     assert.equal(Object.keys(vault.items).some((key) => key.startsWith(`${made.id}/`)), false);
   } finally { rmSync(folder, { recursive: true, force: true }); }
+});
+
+test('a file account cannot create or edit an admin Connection entry', async () => {
+  new Connections(dir).create({ name: 'guard', type: 'rest', config: { baseUrl: 'https://example.com', auth: 'none' } });
+  const before = new Connections(dir).list();
+  setAdminPassword(dir, 'local-console-password-for-test');
+  const headers = { 'x-tabularius-admin': '1', authorization: 'Basic ' + btoa('file-user:file-password'), 'content-type': 'application/json' };
+  const created = await fetch(`${base}/tabularius/admin/v1/connections`, {
+    method: 'POST', headers, body: JSON.stringify({ name: 'unapproved', type: 'rest', config: { baseUrl: 'https://example.com', auth: 'none' } }),
+  });
+  assert.equal(created.status, 401);
+  const edited = await fetch(`${base}/tabularius/admin/v1/connections/${before[0].id}`, {
+    method: 'PATCH', headers, body: JSON.stringify({ note: 'attempted edit' }),
+  });
+  assert.equal(edited.status, 401);
+  assert.deepEqual(new Connections(dir).list(), before);
 });

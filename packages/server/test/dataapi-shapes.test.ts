@@ -14,6 +14,7 @@ import type { Server } from 'node:http';
 import { serve } from '../src/index.ts';
 import { STORE_EXT } from '../src/host.ts';
 import { createStore, type DesignOp, type Store } from '../../store/src/index.ts';
+import { SqliteDriver } from '../../store/src/ess/driver.ts';
 import type { LayoutObject } from '../../fmp12/src/index.ts';
 
 let dir: string;
@@ -158,6 +159,24 @@ test('sessions: log in, the token header, log out', async () => {
   failed(await call('/databases/Shapes/sessions', { method: 'POST', auth: 'Basic ' + btoa('Admin:nope'), body: {} }), 401, '212');
   ok(await call(`/databases/Shapes/sessions/${token}`, { method: 'DELETE' }), []);
   failed(await call('/databases/Shapes/layouts', { auth: `Bearer ${token}` }), 401, '952');
+});
+
+test('Data API create on a shadow table writes the outside row and mirror key', async () => {
+  const outsidePath = join(dir, 'ess-api-source.sqlite');
+  const outside = new SqliteDriver(outsidePath);
+  try {
+    await outside.query('CREATE TABLE outside_items (id INTEGER PRIMARY KEY, name TEXT)', []);
+    store.sqlConnection = (name) => name === 'ApiSql' ? { name: 'ApiSql', dialect: 'sqlite', path: outsidePath } : undefined;
+    store.applyDesign([{ op: 'createDataSource', name: 'ApiSql', paths: ['odbc:ApiSql'] }]);
+    store.applyDesign([{ op: 'createShadowTable', dataSource: 'ApiSql', table: 'outside_items' }]);
+    const auth = await login();
+    const made = ok(await call('/databases/Shapes/layouts/outside_items/records', {
+      method: 'POST', auth, body: { fieldData: { name: 'via API' } },
+    }), ['recordId', 'modId']);
+    assert.deepEqual((await outside.query('SELECT id, name FROM outside_items', [])).rows, [[1, 'via API']]);
+    const table = store.schema.tables.find((entry) => entry.name === 'outside_items')!;
+    assert.equal((store.sql.prepare(`SELECT key FROM "_fm_ess_keys_${table.id}" WHERE record_id = ?`).get(Number(made.recordId)) as { key: string }).key, '[1]');
+  } finally { await outside.close(); }
 });
 
 test('v1, v2 and vLatest return the same JSON envelope and content type', async () => {

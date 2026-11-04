@@ -1,7 +1,7 @@
 import { isMainThread, MessageChannel, receiveMessageOnPort, Worker, parentPort, workerData } from 'node:worker_threads';
 import { createHash } from 'node:crypto';
 import { wholeNumber } from '../settings.ts';
-import { SqliteDriver, type SqlDriver, type SqlValue } from './driver.ts';
+import { EssConflict, SqliteDriver, writeEssBatch, type EssWrite, type SqlDriver, type SqlValue } from './driver.ts';
 
 export interface SqlConnection {
   name: string;
@@ -11,7 +11,7 @@ export interface SqlConnection {
   port?: number;
   password?: string;
 }
-export type EssOperation = 'columns' | 'query' | 'tables';
+export type EssOperation = 'columns' | 'query' | 'tables' | 'writes';
 type Factory = (connection: SqlConnection) => SqlDriver | Promise<SqlDriver>;
 const factories = new Map<SqlDriver['dialect'], Factory>();
 
@@ -20,8 +20,9 @@ export function registerDriver(dialect: SqlDriver['dialect'], factory: Factory):
 registerDriver('sqlite', (connection) => new SqliteDriver(connection.path ?? ':memory:'));
 
 export class EssBridgeError extends Error {
-  readonly reason: 'timeout' | 'unavailable' | 'row-limit' | 'failure';
-  constructor(reason: 'timeout' | 'unavailable' | 'row-limit' | 'failure') { super(reason); this.reason = reason; }
+  readonly reason: 'timeout' | 'unavailable' | 'row-limit' | 'failure' | 'conflict';
+  readonly detail?: string;
+  constructor(reason: EssBridgeError['reason'], detail?: string) { super(reason); this.reason = reason; this.detail = detail; }
 }
 
 interface Request {
@@ -31,7 +32,15 @@ interface Request {
   state: SharedArrayBuffer;
   port: MessageChannel['port1'];
 }
-interface Reply { ok?: unknown; error?: EssBridgeError['reason'] }
+interface Reply { ok?: unknown; error?: EssBridgeError['reason']; detail?: string }
+
+function safeWriteDetail(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+  const message = error.message;
+  if (/^(?:NOT NULL|UNIQUE) constraint failed: [A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?(?:, [A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)*$/.test(message)) return message;
+  if (message === 'FOREIGN KEY constraint failed') return message;
+  return undefined;
+}
 
 // Only the bridge's own worker answers requests: any other worker thread that imports the store (a sandbox, a test reader)
 // must not have its messages taken by this handler.
@@ -62,12 +71,18 @@ if (!isMainThread && (workerData as { essBridge?: boolean } | null)?.essBridge =
       }
       if (op === 'columns') reply = { ok: await driver.columns(args[0] as { schema?: string; name: string }) };
       else if (op === 'tables') reply = { ok: await driver.tables() };
+      else if (op === 'writes') {
+        const writes = args[0] as EssWrite[];
+        reply = { ok: await writeEssBatch(driver, writes) };
+      }
       else {
         const [sql, params, options] = args as [string, SqlValue[], { maxRows?: number; timeoutMs?: number }];
         reply = { ok: await driver.query(sql, params, options) };
       }
     } catch (error) {
-      reply = { error: error instanceof Error && error.message.startsWith('SQL row limit of ') ? 'row-limit' : 'failure' };
+      reply = error instanceof EssConflict ? { error: 'conflict' } :
+        error instanceof Error && error.message.startsWith('SQL row limit of ') ? { error: 'row-limit' } :
+          { error: 'failure', detail: request.op === 'writes' ? safeWriteDetail(error) : undefined };
     }
     request.port.postMessage(reply);
     Atomics.store(state, 0, 1);
@@ -97,7 +112,7 @@ export function essCall<T>(connection: SqlConnection, op: EssOperation, args: un
     }
     const reply = receiveMessageOnPort(port1)?.message as Reply | undefined;
     if (!reply) throw new EssBridgeError('unavailable');
-    if (reply.error) throw new EssBridgeError(reply.error);
+    if (reply.error) throw new EssBridgeError(reply.error, reply.detail);
     return reply.ok as T;
   } finally {
     port1.close();

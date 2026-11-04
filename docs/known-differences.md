@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**275 entries in 35 areas.** Unverified: 138. Waiting on: 24 on a sample file, 162 on a FileMaker run or Design Report, 15 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
+**278 entries in 35 areas.** Unverified: 140. Waiting on: 24 on a sample file, 166 on a FileMaker run or Design Report, 15 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -62,8 +62,11 @@ part of it.
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
 | SQL column type mapping and supplemental-field behavior relative to FileMaker ESS are unverified | A source value or supplemental field may be interpreted differently | A comparison with the same schema and values in a FileMaker ESS solution | [docs/guides/running/external-sql-sources.md › What works in this core](guides/running/external-sql-sources.md) — “…behavior relative to FileMaker's ESS are unverified.” |
+| Deleting a shadow row already gone from SQL succeeds here; FileMaker parity is unverified | A delete may report a different result in FileMaker | A comparison of already-deleted SQL rows in FileMaker ESS | [docs/guides/running/external-sql-sources.md › Writes](guides/running/external-sql-sources.md) — “…its mirror row succeeds; FileMaker parity is unverified.” |
+| File serial-number behavior on shadow tables is unverified against FileMaker | An auto-entered number may differ from a FileMaker ESS solution | A comparison of serial auto-enter and SQL defaults in FileMaker | [docs/guides/running/external-sql-sources.md › Writes](guides/running/external-sql-sources.md) — “…table are local values; parity with FileMaker is unverified. The outside database supplies defaults for…” |
 | Refresh timing, whole-table row limit, record-id reuse and ESS error number are unverified against FileMaker | An ESS read may refresh or fail differently and report another error number | A comparison of refresh, row-cap and failure cases in FileMaker | [docs/guides/running/external-sql-sources.md › Refresh and limits](guides/running/external-sql-sources.md) — “…The FileMaker error number for an ESS failure is unverified; this core consistently uses 8310. Refresh timing,…” |
-| Shadow-table writes are unavailable in this core, while FileMaker ESS can write supported sources | A write accepted in FileMaker fails here | A write and transaction comparison after the SQL write item is implemented | [docs/guides/running/external-sql-sources.md › Writes](guides/running/external-sql-sources.md) — “Creating, editing and deleting rows of a shadow table are refused with an actionable error in this core. The…” |
+| Shadow writes across connections, or between an outside database and the mirror, have no atomic commit | A later failure can leave one database committed and the other uncommitted | A recovery and transaction comparison against FileMaker ESS | [docs/guides/running/external-sql-sources.md › Writes](guides/running/external-sql-sources.md) — “One record or portal commit sends all its shadow-table changes for the same connection in one outside database…” |
+| Truncate Table on a shadow table remains unavailable | A truncate that another ESS host permits fails here | A comparison of Truncate Table on a shadow table in FileMaker | [docs/guides/running/external-sql-sources.md › Writes](guides/running/external-sql-sources.md) — “The SQLite stand-in has automated write tests. The PostgreSQL, MySQL, SQL Server and Oracle write SQL has not…” |
 | Network SQL clients and their Connections binding are not present in this core, and behavior against a real server is unverified | A solution using an ODBC source cannot yet connect to one of the four network databases | A run against each real database after its client and Connections binding are added | [docs/guides/running/external-sql-sources.md › What works in this core](guides/running/external-sql-sources.md) — “The store has a SQL driver interface and a worker bridge. The supplied sqlite driver can use a separate SQLite…” |
 
 ## External SQL Sources

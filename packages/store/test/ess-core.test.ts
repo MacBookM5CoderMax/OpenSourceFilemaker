@@ -166,16 +166,18 @@ test('the worker replaces a named connection when its source changes under a poo
   } finally { closeEssBridge(); delete process.env.TABULARIUS_ESS_POOL; await first.close(); await second.close(); }
 });
 
-test('store writes and unavailable connections are refused with one ESS code', async () => {
+test('store writes reach SQL and unavailable connections are refused with one ESS code', async () => {
   const { store, outside } = await setup('refusal');
   try {
     store.applyDesign([{ op: 'createShadowTable', dataSource: 'Sales', table: 'customers' }]);
     const id = store.findIds('customers')[0];
-    const refused = (fn: () => unknown) => assert.throws(fn, (error: unknown) => error instanceof StoreError && error.code === ESS_ERROR && /not built yet/.test(error.message));
-    refused(() => store.create('customers', { name: 'New' }));
-    refused(() => store.update('customers', id, { name: 'Changed' }));
-    refused(() => store.delete('customers', id));
-    refused(() => store.truncate('customers'));
+    const made = store.create('customers', { name: 'New' });
+    assert.equal((await outside.query('SELECT name FROM customers WHERE id = ?', [made.recordId])).rows[0]?.[0], 'New');
+    store.update('customers', id, { name: 'Changed' });
+    assert.equal((await outside.query('SELECT name FROM customers WHERE id = 1', [])).rows[0]?.[0], 'Changed');
+    store.delete('customers', made.recordId);
+    assert.equal((await outside.query('SELECT count(*) FROM customers WHERE id = ?', [made.recordId])).rows[0]?.[0], 0);
+    assert.throws(() => store.truncate('customers'), (error: unknown) => error instanceof StoreError && error.code === ESS_ERROR && /not built yet/.test(error.message));
     store.sqlConnection = () => undefined;
     store.essClock = () => Date.now() + 60_000;
     assert.throws(() => store.findIds('customers'), (error: unknown) => error instanceof StoreError && error.code === ESS_ERROR && /no approved connection/.test(error.message));
@@ -188,7 +190,7 @@ test('store writes and unavailable connections are refused with one ESS code', a
   } finally { store.close(); await outside.close(); }
 });
 
-test('Import Records and Replace Field Contents refuse shadow-table writes', async () => {
+test('Import Records and Replace Field Contents write through shadow tables', async () => {
   const { store, outside } = await setup('script-refusal');
   try {
     store.applyDesign([{ op: 'createShadowTable', dataSource: 'Sales', table: 'customers' }]);
@@ -199,18 +201,18 @@ test('Import Records and Replace Field Contents refuse shadow-table writes', asy
         stepId: step.stepId!, name: scriptStepName(step.stepId!), enabled: true, params: step.params,
       })),
     });
-    writeFileSync(join(dir, 'ess-script-rows.csv'), '3,New,2026-04-05,1\n');
+    writeFileSync(join(dir, 'ess-script-rows.csv'), '3,New,2026-04-05,1\n4,Second,2026-04-06,2\n5,Third,2026-04-07,3\n');
     const imported = await runScript(store, script('Import Records [ With dialog: Off ; Table: customers ; Source: "ess-script-rows.csv" ; Add ; Fields: customers::id, customers::name, customers::since, customers::balance ]'), {
       layout: 'customers', documents: dir, foundSet: ids,
     });
-    assert.equal(imported.error, ESS_ERROR);
+    assert.equal(imported.error, 0);
     const replaced = await runScript(store, script('Replace Field Contents [ With dialog: Off ; customers::name ; "Changed" ]'), {
       layout: 'customers', foundSet: ids,
     });
-    assert.equal(replaced.error, ESS_ERROR);
-    assert.deepEqual(store.findIds('customers'), ids);
-    assert.equal(store.get('customers', ids[0]).fieldData.name, 'Ada');
-    assert.deepEqual((await outside.query('SELECT id, name FROM customers ORDER BY id', [])).rows, [[1, 'Ada'], [2, 'Bela']]);
+    assert.equal(replaced.error, 0);
+    assert.equal(store.findIds('customers').length, 5);
+    assert.equal(store.get('customers', ids[0]).fieldData.name, 'Changed');
+    assert.deepEqual((await outside.query('SELECT id, name FROM customers ORDER BY id', [])).rows, [[1, 'Changed'], [2, 'Changed'], [3, 'New'], [4, 'Second'], [5, 'Third']]);
   } finally { store.close(); await outside.close(); }
 });
 

@@ -23,8 +23,9 @@ import { boundedStatement, collectRows } from './sql-result.ts';
 import { calledFunctions, isBuiltinFunction, recursiveRows, usesRecursion, type Op, type PortableFunction } from './sql-recursive.ts';
 import { SHARED_SQL_FUNCTIONS } from './sql-shared-functions.ts';
 import { DatabaseSync, backup, type Session, type StatementSync, type SQLInputValue, type SQLOutputValue } from 'node:sqlite';
-import { type SqlConnection } from './ess/bridge.ts';
-import { ESS_ERROR, type SqlColumn, type SqlResult } from './ess/driver.ts';
+import { essCall, EssBridgeError, type SqlConnection } from './ess/bridge.ts';
+import { ESS_ERROR, type EssWrite, type EssWriteResult, type SqlColumn, type SqlResult } from './ess/driver.ts';
+import { wholeNumber } from './settings.ts';
 import { essFieldType, refreshMirror, requestFor, sourceFor } from './ess/mirror.ts';
 import { createHash, createHmac, pbkdf2Sync, scrypt, scryptSync, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { isIP } from 'node:net';
@@ -1180,6 +1181,72 @@ export class Store {
   /** Injectable for refresh tests. */
   essClock: () => number = () => Date.now();
   private readonly essFresh = new Map<number, number>();
+  private readonly essPending: { table: Table; recordId: number; connection: SqlConnection; write: EssWrite }[] = [];
+
+  private essMapped(table: Table, row: Row): EssWrite['values'] {
+    return Object.fromEntries(table.fields.filter((field) => field.externalColumn && !field.externalDropped)
+      .map((field) => [field.name, row[field.name] ?? null])) as EssWrite['values'];
+  }
+
+  private essQueue(table: Table, recordId: number, write: EssWrite): void {
+    const { connection } = sourceFor(this.schema, this.sqlConnection, table);
+    this.essPending.push({ table, recordId, connection, write: { ...write, recordId } });
+  }
+
+  private essKey(values: NonNullable<EssWriteResult['keys']>): string {
+    return JSON.stringify(values.map((value) => typeof value === 'bigint' ? value.toString()
+      : value instanceof Uint8Array ? Buffer.from(value).toString('base64')
+        : value instanceof Date ? value.toISOString() : value));
+  }
+
+  /** A local SQLite commit follows each outside transaction; one batch is sent per connection. */
+  private flushEssWrites(): void {
+    if (!this.essPending.length) return;
+    const groups = new Map<string, typeof this.essPending>();
+    for (const entry of this.essPending) {
+      const key = JSON.stringify(entry.connection);
+      const group = groups.get(key) ?? [];
+      group.push(entry);
+      groups.set(key, group);
+    }
+    for (const group of groups.values()) {
+      const connection = group[0].connection;
+      let results: EssWriteResult[];
+      try { results = essCall<EssWriteResult[]>(connection, 'writes', [group.map((entry) => entry.write)]); }
+      catch (error) {
+        if (error instanceof EssBridgeError && error.reason === 'conflict') {
+          throw new StoreError(306, 'Record modification id does not match');
+        }
+        const source = this.schema.dataSources.find((item) => item.id === group[0].table.external?.dataSourceId);
+        const seconds = wholeNumber('TABULARIUS_ESS_TIMEOUT_SECONDS', { min: 1 }) ?? 30;
+        const location = connection.host ? `, host ${connection.host}${connection.port ? `:${connection.port}` : ''}` : '';
+        const reason = error instanceof EssBridgeError && error.reason === 'timeout'
+          ? `did not answer within ${seconds} second${seconds === 1 ? '' : 's'}` : 'could not write';
+        const detail = error instanceof EssBridgeError && error.detail ? `: ${error.detail}` : '';
+        throw new StoreError(ESS_ERROR, `The SQL database "${source?.name ?? group[0].table.name}" ${reason} (connection "${connection.name}"${location})${detail}`);
+      }
+      for (let index = 0; index < group.length; index++) {
+        const { table, recordId, write } = group[index];
+        const keyTable = q(`_fm_ess_keys_${table.id}`);
+        this.sql.exec(`CREATE TABLE IF NOT EXISTS ${keyTable} (record_id INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE)`);
+        if (write.kind === 'delete') this.sql.prepare(`DELETE FROM ${keyTable} WHERE record_id = ?`).run(recordId);
+        else {
+          const keys = results[index]?.keys;
+          if (!keys || keys.length !== write.keys.length || keys.some((value) => value === null || value === undefined)) {
+            throw new StoreError(ESS_ERROR, `The SQL database did not return the key of a row in "${write.table}"`);
+          }
+          if (write.kind === 'create') {
+            const update = write.keys.map((name) => `${q(name)} = ?`).join(', ');
+            this.sql.prepare(`UPDATE ${q(table.name)} SET ${update} WHERE _fm_record_id = ?`).run(...keys.map((value) => value instanceof Date ? value.toISOString() : typeof value === 'boolean' ? Number(value) : value), recordId);
+          }
+          this.sql.prepare(`INSERT INTO ${keyTable} (record_id, key) VALUES (?, ?) ON CONFLICT(record_id) DO UPDATE SET key = excluded.key`)
+            .run(recordId, this.essKey(keys));
+        }
+        this.essFresh.delete(table.id);
+      }
+    }
+    this.essPending.length = 0;
+  }
 
   private prepareShadowOps(ops: DesignOp[]): DesignOp[] {
     return ops.map((op) => {
@@ -1205,6 +1272,7 @@ export class Store {
   refreshShadow(table: Table | string): void {
     const t = typeof table === 'string' ? this.schema.tables.find((x) => x.name.toLowerCase() === table.toLowerCase()) : table;
     if (!t?.external) return;
+    if (this.essPending.some((entry) => entry.table.id === t.id)) return;
     const { connection } = sourceFor(this.schema, this.sqlConnection, t);
     refreshMirror({ table: t, sql: this.sql, clock: this.essClock, fresh: this.essFresh, connection,
       query: (statement, maxRows) => requestFor<SqlResult>(this.schema, this.sqlConnection, t, 'query', [statement, [], { maxRows }]),
@@ -1917,6 +1985,7 @@ export class Store {
     const touchedSignIn = this.heldChangedSignInState();
     this.closeSignInSessions();
     const heldAudit = this.heldAudit;
+    const heldEss = this.essPending.splice(0);
     const audit = heldAudit.map(({ seq, onAudit }) => ({
       row: this.sql.prepare('SELECT * FROM _fm_audit WHERE seq = ?').get(seq) as Record<string, SQLInputValue>, onAudit,
     }));
@@ -1936,7 +2005,7 @@ export class Store {
       try { renameSync(marker, `${marker}.held`); return [marker]; } catch { return []; }
     });
     const bringBack = () => { for (const marker of aside) { try { renameSync(`${marker}.held`, marker); } catch { /* recovery looks at the file */ } } };
-    try { this.sql.exec(`ROLLBACK TO ${name}; RELEASE ${name}; COMMIT`); } catch (e) { this.heldAudit = heldAudit; bringBack(); throw e; }
+    try { this.sql.exec(`ROLLBACK TO ${name}; RELEASE ${name}; COMMIT`); } catch (e) { this.essPending.push(...heldEss); this.heldAudit = heldAudit; bringBack(); throw e; }
     // The waiting rows are out of the file with the rest of the transaction and wait again from here on, whatever happens
     // next (the other window's write, a failed rejoin): they are written before the other window's own security rows, or in
     // front of the transaction's when it is back, or when the hold ends. None of them is ever only in the file that was undone.
@@ -1950,6 +2019,7 @@ export class Store {
     let result!: T;
     let failed: unknown;
     try { result = run(); } catch (e) { failed = e; }
+    this.essPending.push(...heldEss);
     try {
       // Rejoin using the originating transaction, regardless of the current window's writer context.
       const holder = <R>(fn: () => R): R => writer.run({ ...writer.getStore(), transaction: { open: tx } }, fn);
@@ -2029,6 +2099,7 @@ export class Store {
     // Audit rows a held transaction has been told about: a rolled back savepoint takes its own back out.
     const auditMark = this.heldAudit.length;
     const waitingMark = this.deferredIntoHold.length;
+    const essMark = this.essPending.length;
     let result: T;
     this.sql.exec(name ? `SAVEPOINT ${name}` : 'BEGIN IMMEDIATE');
     this.writePublications = publications;
@@ -2036,14 +2107,22 @@ export class Store {
     this.writeExternalMarkers = markers;
     try {
       result = run();
+      if (!parent && !this.heldBy) this.flushEssWrites();
       this.sql.exec(name ? `RELEASE ${name}` : 'COMMIT');
     } catch (e) {
+      const stale = e instanceof StoreError && e.code === 306
+        ? [...new Set(this.essPending.slice(essMark).map((entry) => entry.table))] : [];
+      this.essPending.length = essMark;
       if (this.sql.isTransaction) this.sql.exec(name ? `ROLLBACK TO ${name}; RELEASE ${name}` : 'ROLLBACK');
       if (this.heldAudit.length > auditMark) this.heldAudit.length = auditMark;
       // Sign-in rows written into the held transaction inside this savepoint go with it: they wait again.
       this.requeueDeferred(this.deferredIntoHold.splice(waitingMark));
       this.resetCaches();
       this.finishExternalFiles(files, markers, false);
+      if (!nested) for (const table of stale) {
+        this.essFresh.delete(table.id);
+        try { this.refreshShadow(table); } catch { /* keep the original edit conflict */ }
+      }
       throw e;
     } finally {
       this.writePublications = parent;
@@ -2072,6 +2151,19 @@ export class Store {
   endTransaction(tx: Transaction, keep: boolean): void {
     const name = tx.files.get(this);
     if (!name || this.heldBy !== tx) return;
+    if (keep) {
+      try { this.flushEssWrites(); }
+      catch (error) {
+        const stale = error instanceof StoreError && error.code === 306
+          ? [...new Set(this.essPending.map((entry) => entry.table))] : [];
+        this.endTransaction(tx, false);
+        for (const table of stale) {
+          this.essFresh.delete(table.id);
+          try { this.refreshShadow(table); } catch { /* keep the original edit conflict */ }
+        }
+        throw error;
+      }
+    } else this.essPending.length = 0;
     this.heldSession?.close();
     this.heldSession = undefined;
     this.heldChainBase = undefined;
@@ -2430,7 +2522,6 @@ export class Store {
    * (Calculations.applyDelta) rather than leaving them for the warmer.
    */
   private changeOne<T>(table: Table, recordId: number, old: Row | undefined, run: () => T): T {
-    if (table.external) throw new StoreError(ESS_ERROR, `Changing records of the SQL table "${table.external.table}" is not built yet`);
     if (!this.results || (this.sql.isTransaction && !this.writePublications) || !this.calc.summaryFields(table).length) return run();
     // In one write transaction, so no other process's write can land between reading the record, the write and the version.
     if (!this.sql.isTransaction) return this.withWriteTransaction(() => this.changeOne(table, recordId, old, run));
@@ -3111,6 +3202,8 @@ export class Store {
     let logged = changes;
     if (changes && (kind === 'create' || kind === 'update' || kind === 'delete')) {
       logged = Object.fromEntries(Object.entries(changes).map(([field, v]) => [field, this.auditHides(table, field) ? (kind === 'update' ? [NOT_LOGGED, NOT_LOGGED] : NOT_LOGGED) : v]));
+      const shadow = this.schema.tables.find((entry) => entry.name === table && entry.external);
+      if (shadow) logged._sql_connection = sourceFor(this.schema, this.sqlConnection, shadow).connection.name;
     }
     const json = logged && JSON.stringify(logged, (_k, v) => (v instanceof Uint8Array ? `<${v.length} bytes>` : typeof v === 'bigint' ? Number(v) : v));
     const agent = account && this.isAgent(account) ? 1 : 0;
@@ -7081,8 +7174,6 @@ export class Store {
 
   /** Checks a write of `fields` to a record (current row; none when creating). */
   private checkWrite(info: LayoutInfo, pv: Privileges | undefined, fields: Iterable<string>, current?: Record<string, SqlValue>): void {
-    const shadow = this.table(info).external;
-    if (shadow) throw new StoreError(ESS_ERROR, `Changing records of the SQL table "${shadow.table}" is not built yet`);
     if (!pv) return;
     const names = [...fields];
     this.checkWriteFields(info, pv, names);
@@ -9972,6 +10063,8 @@ export class Store {
     this.changeOne(table, next, undefined, () => this.sql
       .prepare(`INSERT INTO ${q(info.table)} (${['_fm_record_id', '_fm_mod_id', ...(this.fileMode === 'native' ? ['_fm_uuid'] : []), ...names.map(q)].join(', ')}) VALUES (?, 0${this.fileMode === 'native' ? ', ?' : ''}${', ?'.repeat(names.length)})`)
       .run(next, ...(uuid ? [uuid] : []), ...names.map((n) => row[n] as SqlValue)));
+    if (table.external) this.essQueue(table, next, { kind: 'create', schema: table.external.schema, table: table.external.table, keys: table.external.keys,
+      values: Object.fromEntries(Object.entries(this.essMapped(table, row)).filter(([name, value]) => value !== null || cols.has(name))) });
     this.keepCalcRuns(table, next, row, calcRuns);
     this.audit('create', info.table, next, Object.fromEntries(names.map((n) => [n, row[n]])), opts);
     this.notify('create', info.table, next, 0);
@@ -10014,6 +10107,8 @@ export class Store {
     this.changeOne(table, next, undefined, () => this.sql
       .prepare(`INSERT INTO ${q(info.table)} (${['_fm_record_id', '_fm_mod_id', ...(this.fileMode === 'native' ? ['_fm_uuid'] : []), ...names.map(q)].join(', ')}) VALUES (?, 0${this.fileMode === 'native' ? ', ?' : ''}${', ?'.repeat(names.length)})`)
       .run(next, ...(uuid ? [uuid] : []), ...names.map((n) => row[n] as SqlValue)));
+    if (table.external) this.essQueue(table, next, { kind: 'create', schema: table.external.schema, table: table.external.table, keys: table.external.keys,
+      values: Object.fromEntries(Object.entries(this.essMapped(table, row)).filter(([, value]) => value !== null)) });
     this.keepCalcRuns(table, next, row, calcRuns);
     this.audit('create', info.table, next, Object.fromEntries(names.map((n) => [n, row[n]])), opts, recordId);
     this.notify('create', info.table, next, 0);
@@ -10126,6 +10221,13 @@ export class Store {
           if (modId !== undefined || retry >= 5) throw new StoreError(306, 'Record modification id does not match');
           return this.update(info, recordId, data, undefined, opts, retry + 1);
         }
+        if (table.external) {
+          const mapped = this.essMapped(table, row);
+          const before = this.essMapped(table, current as Row);
+          const values = Object.fromEntries(changed.filter((name) => Object.hasOwn(mapped, name)).map((name) => [name, mapped[name]]));
+          if (Object.keys(values).length) this.essQueue(table, recordId, { kind: 'edit', schema: table.external.schema,
+            table: table.external.table, keys: table.external.keys, values, before });
+        }
         diff = changed.filter((n) => row[n] !== current[n]);
       } catch (e) {
         if (step && this.sql.isTransaction) undo();
@@ -10231,7 +10333,6 @@ export class Store {
    */
   setStoredCalcValues(table: string, field: string, values: { recordId: number; value: SqlValue; expect: SqlValue }[], opts: WriteOptions = {}): { set: number; skipped: number[] } {
     const t = this.schema.tables.find((x) => x.name.toLowerCase() === table.toLowerCase());
-    if (t?.external) throw new StoreError(ESS_ERROR, `Changing records of the SQL table "${t.external.table}" is not built yet`);
     const f = t?.fields.find((x) => x.name.toLowerCase() === field.toLowerCase());
     if (!t || !f) throw new StoreError(102, `Field "${table}::${field}" is missing`);
     if (f.kind !== 'calculation' || f.options?.unstored || f.options?.global) throw new StoreError(102, `"${t.name}::${f.name}" is not a stored calculation`);
@@ -10537,6 +10638,7 @@ export class Store {
       };
       return { p, occ, rinfo: this.occurrenceInfo(occ), related };
     };
+    return this.writeAtomically(() => {
     for (const [name, rows] of Object.entries(portalData)) {
       const { p, occ, rinfo, related } = portal(name);
       for (const r of rows) {
@@ -10588,6 +10690,7 @@ export class Store {
       occ.store.delete(rinfo, Number(m[2]), opts);
     }
     return created;
+    });
   }
 
   /**
@@ -10666,8 +10769,6 @@ export class Store {
 
   delete(layout: string | LayoutInfo, recordId: number, opts: WriteOptions = {}): void {
     const info = this.layoutInfo(layout);
-    const shadow = info.owner.table(info).external;
-    if (shadow) throw new StoreError(ESS_ERROR, `Changing records of the SQL table "${shadow.table}" is not built yet`);
     this.gateAgentWrite(opts, 'delete', info, recordId, undefined, undefined);
     this.checkLayout(info, opts.privileges, true);
     if (info.owner !== this) return info.owner.delete(info, recordId, opts);
@@ -10691,6 +10792,9 @@ export class Store {
         if (before && opts.cascade !== false) this.cascadeDelete(info.table, recordId, before, opts);
         const res = this.changeOne(this.table(info), recordId, before as Row | undefined, () => this.sql.prepare(`DELETE FROM ${q(info.table)} WHERE _fm_record_id = ?`).run(recordId));
         if (res.changes === 0) throw new StoreError(101, 'Record is missing');
+        const shadow = this.table(info).external;
+        if (shadow && before) this.essQueue(this.table(info), recordId, { kind: 'delete', schema: shadow.schema,
+          table: shadow.table, keys: shadow.keys, values: {}, before: this.essMapped(this.table(info), before as Row) });
         this.textStyles.forget(this.table(info).id, recordId);
         if (before) this.forgetStandInValues(this.table(info), [before]);
         this.audit('delete', info.table, recordId, before && Object.fromEntries(Object.entries(before).filter(([k, v]) => !k.startsWith('_fm_') && v !== null)), opts);
