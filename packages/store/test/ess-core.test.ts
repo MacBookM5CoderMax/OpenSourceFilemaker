@@ -297,12 +297,16 @@ test('a shadow field is a SQL column: it cannot be renamed, so reads keep workin
     assert.deepEqual(store.schema.tables.find((t) => t.name === 'customers')!.fields.map((f) => f.name), ['id', 'name', 'since', 'balance', 'label']);
     assert.deepEqual(store.findIds('customers'), before);
     assert.equal(store.get('customers', before[0]).fieldData.name, 'Ada');
-    // A different letter case is the same column, and a field of FileMaker's own is not a column at all.
-    store.applyDesign([{ op: 'updateField', table: 'customers', field: 'name', name: 'Name' }]);
+    // A different letter case is refused too: the refresh quotes each name, and a quoted name keeps its case in Postgres and Oracle,
+    // and the key column is matched exactly. Renaming the key column's case used to leave every later read failing.
+    assert.throws(() => store.applyDesign([{ op: 'updateField', table: 'customers', field: 'name', name: 'Name' }]), refused);
+    assert.throws(() => store.applyDesign([{ op: 'updateField', table: 'customers', field: 'id', name: 'ID' }]), (error: unknown) => error instanceof StoreError && /SQL column/.test(error.message));
+    assert.deepEqual(store.findIds('customers'), before);
+    // A field of FileMaker's own is not a column at all.
     store.applyDesign([{ op: 'updateField', table: 'customers', field: 'label', name: 'caption' }]);
     assert.deepEqual(store.findIds('customers'), before);
     const row = store.get('customers', before[0]).fieldData;
-    assert.equal(row.Name, 'Ada');
+    assert.equal(row.name, 'Ada');
     assert.ok('caption' in row && !('label' in row));
   } finally { store.close(); await outside.close(); }
 });
