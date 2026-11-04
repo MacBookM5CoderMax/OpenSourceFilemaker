@@ -50,7 +50,7 @@ Each command page includes the current help text, options, exit codes, and a tes
 | [`restore`](restore.md) | 6 |
 | [`schema`](schema.md) | 1 |
 | [`script-tests`](script-tests.md) | 2 |
-| [`serve`](serve.md) | 78 |
+| [`serve`](serve.md) | 79 |
 | [`service`](service.md) | 3 |
 | [`sql-privilege`](sql-privilege.md) | 0 |
 | [`stale-calcs`](stale-calcs.md) | 3 |

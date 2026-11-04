@@ -17,7 +17,7 @@ For the MCP tools served at `/mcp`, see [mcp.md](mcp.md).
 - [Calendar feeds](#calendar)
 - [SQL](#sql)
 - [OData](#odata)
-- [Custom Web Publishing XML (reads)](#cwp-xml)
+- [Custom Web Publishing XML](#cwp-xml)
 - [Design mode](#design)
 - [Design mode: script tests, history, profile and dry run](#design-scripts)
 - [Script debugger and Data Viewer](#debug)
@@ -5223,9 +5223,9 @@ Files over 64 MB answer 413; the Data API's container upload streams bigger ones
 
 <a id="cwp-xml"></a>
 
-## Custom Web Publishing XML (reads)
+## Custom Web Publishing XML
 
-The legacy XML interface of FileMaker Server at /fmi/xml, for scripts and pages written against it, reads only. The grammar is the document name: fmresultset.xml, FMPXMLRESULT.xml, or FMPXMLLAYOUT.xml (for -view). The command and its parameters are in the query string (or a POST form): -dbnames, -layoutnames (-db), -scriptnames (-db), -find, -findall, -findany, -findquery and -view (-db and -lay), with -skip, -max (default all records found, up to the server's per-request limit), -sortfield.N and -sortorder.N, -lop (and or or), -recid, -lay.response, field=value with field.op (eq, cn, bw (the default), ew, gt, gte, lt, lte, neq), and -query with -qN and -qN.value for -findquery. -new, -edit, -delete and -dup are refused with error 3 and any -script parameter with 960, so nothing here changes a record or runs a script. Sign in on every request with HTTP Basic; the privilege set needs the fmxml extended privilege. Errors are an error code in the document asked for, with HTTP 200; only a missing or wrong sign-in is a 401 with WWW-Authenticate: Basic.
+The legacy XML interface of FileMaker Server at /fmi/xml, for scripts and pages written against it, reads by default and supports opt-in POST writes. The grammar is the document name: fmresultset.xml, FMPXMLRESULT.xml, or FMPXMLLAYOUT.xml (for -view). The command and its parameters are in the query string (or a POST form): -dbnames, -layoutnames (-db), -scriptnames (-db), -find, -findall, -findany, -findquery and -view (-db and -lay), with -skip, -max (default all records found, up to the server's per-request limit), -sortfield.N and -sortorder.N, -lop (and or or), -recid, -lay.response, field=value with field.op (eq, cn, bw (the default), ew, gt, gte, lt, lte, neq), and -query with -qN and -qN.value for -findquery. -new, -edit, -delete and -dup require TABULARIUS_XML_PUBLISHING_WRITES=1, a POST form and record privileges; otherwise writes give error 3. Browser writes must be same-origin. Writes accept at most 500 field pairs and a 64 KiB body. -edit and -delete accept -modid (306 if stale). Fields must appear on the layout (102 otherwise). Repetitions use field(n); -edit portal rows use TO::Field.recid, with 0 for a new related row. Write compatibility with the vendor is unverified; see hosting-for-a-team.md. Scripts remain refused (960, or 9 when script access is denied). Sign in on every request with HTTP Basic; the privilege set needs the fmxml extended privilege. Errors are an error code in the document asked for, with HTTP 200; only a missing or wrong sign-in is a 401 with WWW-Authenticate: Basic.
 
 Source: `packages/server/src/cwp-xml.ts`
 

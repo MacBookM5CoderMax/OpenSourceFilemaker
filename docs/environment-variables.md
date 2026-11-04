@@ -137,6 +137,7 @@ This table is generated from the notes in `scripts/reference/settings-cli-metada
 | [`TABULARIUS_VISUAL_UPDATE`](reference/settings/environment/tabularius_visual_update.md) | Unset | 1 (set by the test command) | Not applicable | [docs/environment-variables.md](environment-variables.md) |
 | [`TABULARIUS_WARM_HEAP_MB`](reference/settings/environment/tabularius_warm_heap_mb.md) | 1536 MB | Positive safe whole MB, decimal digits only; values below 256 use 256 | Yes for a running server. | [ADMIN.md](../ADMIN.md) |
 | [`TABULARIUS_WORKERS`](reference/settings/environment/tabularius_workers.md) | one process | auto or a positive whole number; decimal digits only for numbers, within the safe integer range | Yes for a running server. | [docs/environment-variables.md](environment-variables.md) |
+| [`TABULARIUS_XML_PUBLISHING_WRITES`](reference/settings/environment/tabularius_xml_publishing_writes.md) | Off: XML publishing only reads records | 1, true, yes or on; 0, false, no, off or empty for off; anything else stops `serve` | Set in the server environment before starting it. | [docs/hosting-for-a-team.md](hosting-for-a-team.md) |
 
 ## Names that appear in the documentation but are not read by the server
 

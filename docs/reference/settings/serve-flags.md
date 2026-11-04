@@ -82,3 +82,4 @@ These are the options named by `tabularius help serve`. A flag takes precedence 
 | [`--tls-key`](serve/tls-key.md) | Unset | PEM private key file path | [docs/hosting-for-a-team.md](../../hosting-for-a-team.md) |
 | [`--trusted-proxies`](serve/trusted-proxies.md) | No trusted proxy addresses | Comma-separated IP addresses or CIDR ranges | [docs/hosting-for-a-team.md](../../hosting-for-a-team.md) |
 | [`--workers`](serve/workers.md) | One process | Whole number from 1 to 64, or auto; decimal digits only for numbers, within the safe integer range | [docs/hosting-for-a-team.md](../../hosting-for-a-team.md) |
+| [`--xml-publishing-writes`](serve/xml-publishing-writes.md) | Off: XML publishing only reads records | No value (a switch) | [docs/hosting-for-a-team.md](../../hosting-for-a-team.md) |

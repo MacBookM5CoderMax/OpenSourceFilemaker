@@ -85,7 +85,7 @@ Usage:
 
 Hosting (point it at a folder of .fmp12 files; each is converted once):
   tabularius serve <folder> [--port 8080] [--host 127.0.0.1] [--open] [--mcp-token T|--mcp-token-file F] [--allow-script-network] [--allow-script-network-to hosts] [--allow-app-connections] [--allow-webhooks] [--allow-inbound-hooks]
-                [--list-files-publicly]
+                [--list-files-publicly] [--xml-publishing-writes]
                 [--tls-cert cert.pem --tls-key key.pem] [--allow-plain-http] [--public-url URL] [--mcp-origin URL]... [--proxy-header x-forwarded-for|forwarded|x-real-ip] [--trusted-proxies IP/CIDR,...] [--connections-per-address N]
                 [--https name[,name]|local [--https-email E] [--http-port 80] [--acme-directory URL]] [--sql-port 5432 [--sql-writes]]
                 [--backup-every 1d] [--keep 7] [--backup-dir DIR] [--no-backups]
@@ -119,6 +119,8 @@ Hosting (point it at a folder of .fmp12 files; each is converted once):
                                              drivers query files (accounts need fmxdbc).
                                              --sql-writes (with --sql-port) also lets them
                                              INSERT, UPDATE and DELETE; off by default.
+                                             --xml-publishing-writes allows XML POST forms to
+                                             change records (accounts need fmxml); off by default.
                                              --ai turns on the AI assistant in the web client
                                              (key in ANTHROPIC_API_KEY, else the file
                                              ~/.openhbam/anthropic-key, chmod 600, or --ai-key-file F
@@ -1497,6 +1499,7 @@ function main(argv: string[]): number {
       const sqlPortText = sqlPortFlag ?? process.env.TABULARIUS_SQL_PORT;
       const sqlPort = sqlPortText === undefined ? undefined : positiveWholeNumber(sqlPortFlag !== undefined ? '--sql-port' : 'TABULARIUS_SQL_PORT', sqlPortText, 0, { min: 0, max: 65535 });
       const sqlWrites = bool(args, '--sql-writes') || boolean('TABULARIUS_SQL_WRITES');
+      const xmlPublishingWrites = bool(args, '--xml-publishing-writes') || boolean('TABULARIUS_XML_PUBLISHING_WRITES');
       if (sqlWrites && sqlPort === undefined) throw new Error('serve: --sql-writes lets the SQL port write, so it needs --sql-port (or TABULARIUS_SQL_PORT)');
       // Standby servers follow this one's changes, signing in with this token.
       const { value: replicationToken, file: replicationTokenFile } = tokenOption(args, '--replication-token', '--replication-token-file', secret('TABULARIUS_REPLICATION_TOKEN'), process.env.TABULARIUS_REPLICATION_TOKEN_FILE, 'serve');
@@ -1588,7 +1591,7 @@ function main(argv: string[]): number {
       const workers = workersText === 'auto' ? availableParallelism() : positiveWholeNumber(workersFlag !== undefined ? '--workers' : 'TABULARIUS_WORKERS', workersText, 1, { max: 64 });
       if (!(Number.isInteger(workers) && workers >= 1 && workers <= 64)) throw new Error('serve: --workers takes a number of processes (1 to 64) or auto');
       if (workers > 1) {
-        serveCluster({ dir: path, port, hostname, mcpToken, scriptNetwork, scriptNetworkAllow, listFilesPublicly, appConnections, webhooks, inboundHooks, testOutbound, ...(sendMail ? { sendMail } : {}), tlsCert, tlsKey, publicUrl, mcpAllowedOrigins, proxyHeader, trustedProxies, edgeLimits, acme, backups, offsite, progressive, statsInterval, logLimit, replicationToken, acceptPartialStandbyFiles, sqlPort, sqlWrites, ai, aiExclude, oidc, ldap, encryptionKey, background: true }, workers, PASSWORD_POLICY.blankFromNetwork).then(({ url, close }) => {
+        serveCluster({ dir: path, port, hostname, mcpToken, scriptNetwork, scriptNetworkAllow, listFilesPublicly, appConnections, webhooks, inboundHooks, testOutbound, ...(sendMail ? { sendMail } : {}), tlsCert, tlsKey, publicUrl, mcpAllowedOrigins, proxyHeader, trustedProxies, edgeLimits, acme, backups, offsite, progressive, statsInterval, logLimit, replicationToken, acceptPartialStandbyFiles, sqlPort, sqlWrites, xmlPublishingWrites, ai, aiExclude, oidc, ldap, encryptionKey, background: true }, workers, PASSWORD_POLICY.blankFromNetwork).then(({ url, close }) => {
           // Ready for a stop before anything is printed: whoever sees the first line may signal at once.
           let stopListening = () => {};
           const stop = () => { stopListening(); void close().finally(() => process.exit(0)); };
@@ -1612,7 +1615,7 @@ function main(argv: string[]): number {
       const graceNumber = graceText === undefined || graceText === '' ? undefined : Number(graceText) * 1000;
       if (graceNumber !== undefined && !(Number.isFinite(graceNumber) && graceNumber >= 1000 && graceNumber <= 86_400_000)) throw new Error('serve: TABULARIUS_DRAIN_SECONDS is a number of seconds (1 to 86400)');
       const drainMs = graceText === undefined ? undefined : positiveWholeNumber('TABULARIUS_DRAIN_SECONDS', graceText, 20, { max: 86400 }) * 1000;
-      serve({ dir: path, drainMs, port, hostname, serviceInstalled: () => installed()?.folder === resolve(path), mcpToken, scriptNetwork, scriptNetworkAllow, listFilesPublicly, appConnections, webhooks, inboundHooks, testOutbound, ...(sendMail ? { sendMail } : {}), tlsCert, tlsKey, publicUrl, mcpAllowedOrigins, proxyHeader, trustedProxies, edgeLimits, acme, backups, offsite, progressive, statsInterval, logLimit, replicationToken, keepApiTokensOnTakeover, acceptPartialStandbyFiles, sqlPort, sqlWrites, ai, aiExclude, oidc, ldap, encryptionKey, background: true }).then(({ url, host, server, offsite: offsiteSchedule }) => {
+      serve({ dir: path, drainMs, port, hostname, serviceInstalled: () => installed()?.folder === resolve(path), mcpToken, scriptNetwork, scriptNetworkAllow, listFilesPublicly, appConnections, webhooks, inboundHooks, testOutbound, ...(sendMail ? { sendMail } : {}), tlsCert, tlsKey, publicUrl, mcpAllowedOrigins, proxyHeader, trustedProxies, edgeLimits, acme, backups, offsite, progressive, statsInterval, logLimit, replicationToken, keepApiTokensOnTakeover, acceptPartialStandbyFiles, sqlPort, sqlWrites, xmlPublishingWrites, ai, aiExclude, oidc, ldap, encryptionKey, background: true }).then(({ url, host, server, offsite: offsiteSchedule }) => {
         // Ready for a stop before anything is printed: whoever sees the first line may signal at once. The last changes go
         // off-site before the process ends. A first signal stops cleanly (running requests finish, the files are saved and
         // closed); a second one stops at once.

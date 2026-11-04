@@ -24,7 +24,7 @@ The routes are in the [REST reference](reference/rest.md#admin-api). A test (`ad
 | Parallel backup | Fixed | the same two routes (`parallelbackup`) |
 | Persistent cache | Fixed | the same two routes (`persistentcache`) |
 | PHP (Custom Web Publishing) configuration | Fixed | `GET /fmi/admin/api/v2/php/config` |
-| XML (Custom Web Publishing) configuration | Fixed | `/fmi/admin/api/v2/xml/config` (reports enabled: the XML interface is served, reads only) |
+| XML (Custom Web Publishing) configuration | Fixed | `/fmi/admin/api/v2/xml/config` (reports enabled: the XML interface is served; record writes require `TABULARIUS_XML_PUBLISHING_WRITES=1`) |
 | HTTPS tunneling | Fixed | `/fmi/admin/api/v2/fmclients/httpstunneling` |
 | List databases | Answered | `GET /fmi/admin/api/v2/databases` |
 | Open, close, pause or resume all databases | Answered | `PATCH /fmi/admin/api/v2/databases` |

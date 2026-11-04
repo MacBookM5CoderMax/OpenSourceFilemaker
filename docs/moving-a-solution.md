@@ -100,7 +100,7 @@ appears within a few seconds. The server prints where everything is:
 | `/admin/` | The admin console | FileMaker Server Admin Console |
 | `/fmi/data/vLatest` | The Data API | FileMaker Data API |
 | `/fmi/odata/v4` | OData | FileMaker OData API |
-| `/fmi/xml/fmresultset.xml` | Legacy XML, reads only (also `FMPXMLRESULT.xml`, `FMPXMLLAYOUT.xml`) | Custom Web Publishing with XML |
+| `/fmi/xml/fmresultset.xml` | Legacy XML, optional POST writes (also `FMPXMLRESULT.xml`, `FMPXMLLAYOUT.xml` for layout metadata) | Custom Web Publishing with XML |
 | `/fmi/admin/api/v2` | The Admin API | FileMaker Server Admin API |
 | `/mcp` | The MCP server, for AI apps | (none) |
 

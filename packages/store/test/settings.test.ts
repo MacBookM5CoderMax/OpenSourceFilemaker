@@ -145,3 +145,13 @@ test('serve rejects invalid whole-number settings at start and accepts valid or 
     if (max !== undefined) assert.doesNotThrow(() => checkServeSettings({ [name]: String(max) }), `${name} maximum`);
   }
 });
+
+test('XML publishing writes is a strict default-off server switch', () => {
+  const name = 'TABULARIUS_XML_PUBLISHING_WRITES';
+  assert.equal(boolean(name, { env: {} }), false);
+  for (const value of ['1', 'true', 'yes', 'on']) {
+    assert.doesNotThrow(() => checkServeSettings({ [name]: value }));
+    assert.equal(boolean(name, { env: { [name]: value } }), true);
+  }
+  assert.throws(() => checkServeSettings({ [name]: 'sometimes' }), /TABULARIUS_XML_PUBLISHING_WRITES/);
+});

@@ -7,7 +7,7 @@ This command's usage comes from `tabularius help serve`. Statements comparing be
 ```text
 Usage:
   tabularius serve <folder> [--port 8080] [--host 127.0.0.1] [--open] [--mcp-token T|--mcp-token-file F] [--allow-script-network] [--allow-script-network-to hosts] [--allow-app-connections] [--allow-webhooks] [--allow-inbound-hooks]
-                [--list-files-publicly]
+                [--list-files-publicly] [--xml-publishing-writes]
                 [--tls-cert cert.pem --tls-key key.pem] [--allow-plain-http] [--public-url URL] [--mcp-origin URL]... [--proxy-header x-forwarded-for|forwarded|x-real-ip] [--trusted-proxies IP/CIDR,...] [--connections-per-address N]
                 [--https name[,name]|local [--https-email E] [--http-port 80] [--acme-directory URL]] [--sql-port 5432 [--sql-writes]]
                 [--backup-every 1d] [--keep 7] [--backup-dir DIR] [--no-backups]
@@ -41,6 +41,8 @@ Usage:
                                              drivers query files (accounts need fmxdbc).
                                              --sql-writes (with --sql-port) also lets them
                                              INSERT, UPDATE and DELETE; off by default.
+                                             --xml-publishing-writes allows XML POST forms to
+                                             change records (accounts need fmxml); off by default.
                                              --ai turns on the AI assistant in the web client
                                              (key in ANTHROPIC_API_KEY, else the file
                                              ~/.openhbam/anthropic-key, chmod 600, or --ai-key-file F
@@ -103,7 +105,7 @@ Usage:
 
 ## Options
 
-`--accept-partial-standby`, `--acme-directory`, `--ai`, `--ai-account-daily-tokens`, `--ai-daily-tokens`, `--ai-embed-model`, `--ai-embed-url`, `--ai-exclude`, `--ai-fast-model`, `--ai-image-embed`, `--ai-image-embed-model`, `--ai-key-file`, `--ai-model`, `--ai-monthly-budget`, `--ai-run-tokens`, `--ai-workspace-id`, `--allow-app-connections`, `--allow-blank-passwords`, `--allow-host`, `--allow-inbound-hooks`, `--allow-plain-http`, `--allow-script-network`, `--allow-script-network-to`, `--allow-webhooks`, `--backup-dir`, `--backup-every`, `--backup-s3`, `--capture-only`, `--capture-only-copies-to-redirect`, `--connections-per-address`, `--host`, `--http-port`, `--https`, `--https-email`, `--keep`, `--keep-api-tokens-on-takeover`, `--ldap-base-dn`, `--ldap-bind-dn-template`, `--ldap-email-attribute`, `--ldap-group-attribute`, `--ldap-name`, `--ldap-search-dn`, `--ldap-url`, `--ldap-user-attribute`, `--list-files-publicly`, `--log-limit`, `--mail-copies`, `--mail-from`, `--mail-redirect`, `--mcp-origin`, `--mcp-token`, `--mcp-token-file`, `--no-backups`, `--oidc-client-id`, `--oidc-config`, `--oidc-data-api-return-urls`, `--oidc-groups-claim`, `--oidc-issuer`, `--oidc-name`, `--oidc-trust-email`, `--open`, `--port`, `--progressive`, `--proxy-header`, `--public-url`, `--replication-token`, `--replication-token-file`, `--s3-endpoint`, `--s3-region`, `--send-mail`, `--sql-port`, `--sql-writes`, `--stats-interval`, `--test-outbound`, `--tls-cert`, `--tls-key`, `--trusted-proxies`, `--workers`
+`--accept-partial-standby`, `--acme-directory`, `--ai`, `--ai-account-daily-tokens`, `--ai-daily-tokens`, `--ai-embed-model`, `--ai-embed-url`, `--ai-exclude`, `--ai-fast-model`, `--ai-image-embed`, `--ai-image-embed-model`, `--ai-key-file`, `--ai-model`, `--ai-monthly-budget`, `--ai-run-tokens`, `--ai-workspace-id`, `--allow-app-connections`, `--allow-blank-passwords`, `--allow-host`, `--allow-inbound-hooks`, `--allow-plain-http`, `--allow-script-network`, `--allow-script-network-to`, `--allow-webhooks`, `--backup-dir`, `--backup-every`, `--backup-s3`, `--capture-only`, `--capture-only-copies-to-redirect`, `--connections-per-address`, `--host`, `--http-port`, `--https`, `--https-email`, `--keep`, `--keep-api-tokens-on-takeover`, `--ldap-base-dn`, `--ldap-bind-dn-template`, `--ldap-email-attribute`, `--ldap-group-attribute`, `--ldap-name`, `--ldap-search-dn`, `--ldap-url`, `--ldap-user-attribute`, `--list-files-publicly`, `--log-limit`, `--mail-copies`, `--mail-from`, `--mail-redirect`, `--mcp-origin`, `--mcp-token`, `--mcp-token-file`, `--no-backups`, `--oidc-client-id`, `--oidc-config`, `--oidc-data-api-return-urls`, `--oidc-groups-claim`, `--oidc-issuer`, `--oidc-name`, `--oidc-trust-email`, `--open`, `--port`, `--progressive`, `--proxy-header`, `--public-url`, `--replication-token`, `--replication-token-file`, `--s3-endpoint`, `--s3-region`, `--send-mail`, `--sql-port`, `--sql-writes`, `--stats-interval`, `--test-outbound`, `--tls-cert`, `--tls-key`, `--trusted-proxies`, `--workers`, `--xml-publishing-writes`
 
 ## Exit codes
 

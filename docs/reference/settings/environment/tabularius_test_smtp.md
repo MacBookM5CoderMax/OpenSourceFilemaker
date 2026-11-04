@@ -8,6 +8,6 @@ The SMTP account (`smtps://user:pass@host:465`) that `--test-outbound --mail-red
 | Accepted values | smtps:// URL |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/privacy.md](../../../privacy.md) |
-| Code | [packages/cli/src/main.ts:710](../../../../packages/cli/src/main.ts#L710) |
+| Code | [packages/cli/src/main.ts:712](../../../../packages/cli/src/main.ts#L712) |
 
 [All environment variables](../../../environment-variables.md)

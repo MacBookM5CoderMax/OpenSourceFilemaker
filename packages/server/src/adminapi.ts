@@ -112,15 +112,15 @@ const FIXED_SETTINGS: Record<string, FixedSettings> = {
     values: { persistentCache: false, persistentCacheSync: false, databaseServerAutoRestart: false },
     why: 'Tabularius writes every change to the file as it commits; there is no cache to persist',
   },
-  // Web technologies FileMaker Server has that Tabularius doesn't (PHP, HTTPS tunneling), and the XML interface it serves read-only.
+  // Web technologies FileMaker Server has that Tabularius doesn't (PHP, HTTPS tunneling), and the XML interface it always serves.
   php: {
     values: { enabled: false, characterEncoding: 'UTF-8', errorMessageLanguage: 'en', dataPreValidation: false, useFileMakerPhp: false },
     why: 'Tabularius has no Custom Web Publishing with PHP; use the Data API or OData',
   },
   xml: {
-    // The XML interface (/fmi/xml, reads only) is always served, so it reports enabled; it can't be turned off.
+    // The XML interface (/fmi/xml, writes opt-in) is always served, so it reports enabled; it can't be turned off.
     values: { enabled: true },
-    why: 'the XML interface is always served (reads only), so it can\'t be turned off',
+    why: 'the XML interface is always served, so it can\'t be turned off',
   },
   httpstunneling: {
     values: { enableHTTPSTunneling: false },

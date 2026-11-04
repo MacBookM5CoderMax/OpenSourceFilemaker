@@ -9,6 +9,6 @@
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | [`TABULARIUS_PROXY_HEADER`](../environment/tabularius_proxy_header.md) |
 | Explained in | [docs/hosting-for-a-team.md](../../../hosting-for-a-team.md) |
-| Code | [packages/cli/src/main.ts:1460](../../../../packages/cli/src/main.ts#L1460) |
+| Code | [packages/cli/src/main.ts:1462](../../../../packages/cli/src/main.ts#L1462) |
 
 [All serve flags](../serve-flags.md)

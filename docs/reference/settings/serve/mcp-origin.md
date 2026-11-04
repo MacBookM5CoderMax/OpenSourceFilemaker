@@ -9,6 +9,6 @@
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | [`TABULARIUS_MCP_ORIGINS`](../environment/tabularius_mcp_origins.md) |
 | Explained in | [docs/security-defaults.md](../../../security-defaults.md) |
-| Code | [packages/cli/src/main.ts:597](../../../../packages/cli/src/main.ts#L597) |
+| Code | [packages/cli/src/main.ts:599](../../../../packages/cli/src/main.ts#L599) |
 
 [All serve flags](../serve-flags.md)

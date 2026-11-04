@@ -242,6 +242,8 @@ export interface ServeOptions {
   sqlPort?: number;
   /** Let INSERT, UPDATE and DELETE run over the PostgreSQL port (`--sql-writes`); needs sqlPort. Off by default. */
   sqlWrites?: boolean;
+  /** Allow POST form writes through XML publishing; off by default. */
+  xmlPublishingWrites?: boolean;
   /** HTTPS with certificates got and renewed automatically (Let's Encrypt), instead of tlsCert/tlsKey. */
   acme?: Omit<AcmeOptions, 'httpsPort' | 'log'>;
   /** Let standby servers follow this one (tabularius standby), signing in with this token. */
@@ -375,7 +377,7 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
     host.beforeClose.push((store) => files.clear(store.path));
     host.onAdd.push((store) => files.clear(store.path));
     const odata = new ODataEndpoint(host, api);
-    const cwpXml = new CwpXmlEndpoint(host, api);
+    const cwpXml = new CwpXmlEndpoint(host, api, opts.xmlPublishingWrites);
     const scim = new ScimEndpoint(host, api);
     odata.files = files;
     let closeLocal = () => {};
@@ -659,6 +661,7 @@ export async function serve(opts: ServeOptions): Promise<{ server: Server; host:
           // A request addressed to a DNS name nobody configured: say what fixes it, and log each such name once.
           const unknownHost = unconfiguredHostName(req, host.publicUrl, host.browserOrigins);
           if (unknownHost !== undefined) refusedHostNames.note(unknownHost);
+          if (await cwpXml.handle(req, res, url, true)) return;
           res.writeHead(403, { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' })
             .end(JSON.stringify({ error: unknownHost !== undefined ? 'Cross-origin request denied: this server was not told that host name; set --public-url or --https for it' : 'Cross-origin request denied' }));
           return;

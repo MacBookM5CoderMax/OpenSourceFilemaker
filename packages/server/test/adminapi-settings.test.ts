@@ -97,7 +97,9 @@ test('settings fmcsadmin reads answer; sending them back unchanged is fine, chan
   assert.deepEqual((await call('/php/config', { headers: auth })).body.response, { enabled: false, characterEncoding: 'UTF-8', errorMessageLanguage: 'en', dataPreValidation: false, useFileMakerPhp: false });
   assert.deepEqual((await call('/xml/config', { headers: auth })).body.response, { enabled: true });
   assert.deepEqual((await call('/fmclients/httpstunneling', { headers: auth })).body.response, { enableHTTPSTunneling: false });
-  assert.equal(code(await patch('/xml/config', auth, { enabled: false })), '21');
+  const disableXml = await patch('/xml/config', auth, { enabled: false });
+  assert.equal(code(disableXml), '21');
+  assert.doesNotMatch(JSON.stringify(disableXml.body), /reads only/);
   assert.equal(code(await patch('/xml/config', auth, { enabled: true })), '0');
   assert.equal(code(await patch('/fmclients/httpstunneling', auth, { enableHTTPSTunneling: false })), '0');
   assert.equal(code(await call('/server/config/nothing', { headers: auth })), '3');

@@ -116,7 +116,7 @@ const serveSwitches = new Set([
   '--accept-partial-standby', '--ai', '--allow-app-connections', '--allow-blank-passwords',
   '--allow-inbound-hooks', '--allow-plain-http', '--allow-script-network', '--allow-webhooks',
   '--capture-only-copies-to-redirect', '--keep-api-tokens-on-takeover', '--list-files-publicly', '--no-backups',
-  '--oidc-trust-email', '--open', '--send-mail', '--sql-writes', '--test-outbound',
+  '--oidc-trust-email', '--open', '--send-mail', '--sql-writes', '--test-outbound', '--xml-publishing-writes',
 ]);
 const serveValues = new Set([
   '--ai-account-daily-tokens', '--ai-daily-tokens', '--ai-embed-model', '--ai-embed-url', '--ai-exclude',

@@ -1,6 +1,7 @@
 // Custom Web Publishing XML, the legacy way FileMaker Server answered scripts and web pages that asked for records as
-// XML (help.claris.com, "FileMaker Server Custom Web Publishing with XML"). Reads only: nothing here changes a record,
-// and no script is run.
+// XML (help.claris.com, "FileMaker Server Custom Web Publishing with XML"). Writes are opt-in, POST forms only,
+// with same-origin browser checks and the Data API store privileges, validation and history. No script is run.
+// Write compatibility, including portal row suffixes, is unverified against that server offline.
 //
 //   GET /fmi/xml/fmresultset.xml?-db=Sales&-lay=Contacts&-findall&-max=20&-sortfield.1=Name
 //   GET /fmi/xml/FMPXMLRESULT.xml?-db=Sales&-lay=Contacts&City=Oslo&City.op=eq
@@ -9,7 +10,8 @@
 //
 // Commands: -dbnames -layoutnames -scriptnames -find -findall -findany -findquery -view. Parameters: -db -lay -skip -max
 // -sortfield.N -sortorder.N -lop -recid -query -qN -qN.value -lay.response, and field=value with field.op (eq cn bw ew gt
-// gte lt lte neq). -new -edit -delete -dup are refused (error 3) and so is any -script parameter (9 when script access
+// gte lt lte neq). -new -edit -delete -dup need TABULARIUS_XML_PUBLISHING_WRITES=1; otherwise error 3.
+// Any -script parameter is refused (9 when script access
 // is denied, otherwise 960). The account signs in with HTTP Basic or an API token,
 // as with OData, and its privilege set needs the fmxml extended privilege.
 //
@@ -18,12 +20,15 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { logFault } from './fault-log.ts';
-import { StoreError, fieldDisplayTypes, fieldMetaData, type FindOptions, type FindRequest, type LayoutInfo, type Privileges, type SortSpec, type Store, type StoredRecord } from '../../store/src/index.ts';
+import { atomicWrites, writer, StoreError, fieldDisplayTypes, fieldMetaData, type FindOptions, type FindRequest, type LayoutInfo, type Privileges, type SortSpec, type Store, type StoredRecord } from '../../store/src/index.ts';
 import { esc } from '../../store/src/snippet-xml.ts';
 import { ApiError, maxLimit, readBody, type DataApi } from './dataapi.ts';
 import { listedFiles, refuseUnknownFile } from './file-list.ts';
 import type { Host } from './host.ts';
 import { signIn } from './sql.ts';
+import { boolean } from '../../store/src/settings.ts';
+import { sameOriginRequest } from './browser-request.ts';
+import { clientAddress } from './client-address.ts';
 import { SERVER_VERSION } from './version.ts';
 
 const PREFIX = '/fmi/xml/';
@@ -50,7 +55,9 @@ class CwpError extends Error {
 /** The query string and, for a POST, the form body: names matched without regard to case, in the order given. */
 class Params {
   readonly pairs: [string, string][];
-  constructor(pairs: [string, string][]) {
+  readonly hasBody: boolean;
+  constructor(pairs: [string, string][], hasBody = false) {
+    this.hasBody = hasBody;
     this.pairs = pairs;
   }
   get(name: string): string | undefined {
@@ -207,11 +214,11 @@ function errorDocument(grammar: Grammar, code: number, database = '', layout = '
 // --- Reading the request.
 
 /** The one query command a request names. */
-function commandOf(params: Params): string {
+function commandOf(params: Params, writes: boolean): string {
   const named = [...new Set(params.pairs.map(([k]) => k.toLowerCase()).filter((k) => k.startsWith('-')).map((k) => k.slice(1)).filter((k) => READ_COMMANDS.includes(k) || WRITE_COMMANDS.includes(k)))];
   if (!named.length) throw new CwpError(4, 'Command is unknown: name a query command such as -findall');
   if (named.length > 1) throw new CwpError(957, `Conflicting query commands: ${named.map((n) => '-' + n).join(', ')}`);
-  if (WRITE_COMMANDS.includes(named[0])) throw new CwpError(3, `Command is unavailable: -${named[0]} would change records, and this interface only reads`);
+  if (WRITE_COMMANDS.includes(named[0]) && !writes) throw new CwpError(3, `Command is unavailable: -${named[0]} changes records, and writing through XML publishing is off on this server. An administrator can turn it on with TABULARIUS_XML_PUBLISHING_WRITES=1.`);
   return named[0];
 }
 
@@ -350,15 +357,17 @@ function repetitions(source: Record<string, unknown>, name: string, count: numbe
 export class CwpXmlEndpoint {
   private readonly host: Host;
   private readonly api: DataApi;
+  private readonly writes: boolean | undefined;
   private readonly verified = new Map<string, number>();
 
-  constructor(host: Host, api: DataApi) {
+  constructor(host: Host, api: DataApi, writes?: boolean) {
+    this.writes = writes;
     this.host = host;
     this.api = api;
   }
 
   /** Returns false when the request is not for the XML interface. */
-  async handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
+  async handle(req: IncomingMessage, res: ServerResponse, url: URL, crossOrigin = false): Promise<boolean> {
     if (!url.pathname.startsWith(PREFIX)) return false;
     const name = url.pathname.slice(PREFIX.length);
     // Only the grammars' documents: a file name below it (container data in the old server) is not here.
@@ -366,15 +375,27 @@ export class CwpXmlEndpoint {
     const grammar = GRAMMARS.find((g) => `${g}.xml`.toLowerCase() === name.toLowerCase());
     let database = '';
     let layout = '';
+    let delegated = false;
     try {
       if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'POST') throw new CwpError(3, 'Command is unavailable: use GET or POST');
       if (!grammar) throw new CwpError(954, `Unsupported XML grammar: ${name}. This server answers ${GRAMMARS.map((g) => g + '.xml').join(', ')}`);
       const params = await this.params(req, url);
       database = params.get('-db') ?? '';
       layout = params.get('-lay') ?? '';
-      const body = await this.answer(req, params, grammar);
+      // The shared browser guard delegates XML refusals here so writes keep their XML error envelope.
+      if (crossOrigin && !params.pairs.some(([k]) => WRITE_COMMANDS.includes(k.toLowerCase().slice(1)) && k.startsWith('-'))) {
+        res.writeHead(403, { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }).end(JSON.stringify({ error: 'Cross-origin request denied' }));
+        return true;
+      }
+      delegated = true;
+      const body = await this.answer(req, params, grammar, crossOrigin);
       this.send(res, 200, body);
     } catch (e) {
+      // A cross-origin request that never reached a write command (an unknown grammar, a bad form) is refused as before, not answered in XML.
+      if (crossOrigin && !delegated) {
+        res.writeHead(403, { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }).end(JSON.stringify({ error: 'Cross-origin request denied' }));
+        return true;
+      }
       this.fail(res, e, grammar ?? 'fmresultset', database, layout);
     }
     return true;
@@ -382,16 +403,26 @@ export class CwpXmlEndpoint {
 
   private async params(req: IncomingMessage, url: URL): Promise<Params> {
     const pairs = [...url.searchParams.entries()];
+    let hasBody = false;
     if (req.method === 'POST') {
       const type = (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
       if (type && type !== 'application/x-www-form-urlencoded') throw new CwpError(960, 'Send the parameters in the address or as a form (application/x-www-form-urlencoded)');
-      pairs.push(...new URLSearchParams((await readBody(req, MAX_BODY)).toString('utf8')).entries());
+      const body = (await readBody(req, MAX_BODY)).toString('utf8');
+      hasBody = type === 'application/x-www-form-urlencoded' && body.length > 0;
+      pairs.push(...new URLSearchParams(body).entries());
     }
-    return new Params(pairs);
+    return new Params(pairs, hasBody);
   }
 
-  private async answer(req: IncomingMessage, params: Params, grammar: Grammar): Promise<string> {
-    const command = commandOf(params);
+  private async answer(req: IncomingMessage, params: Params, grammar: Grammar, crossOrigin = false): Promise<string> {
+    const command = commandOf(params, this.writes ?? boolean('TABULARIUS_XML_PUBLISHING_WRITES'));
+    if (WRITE_COMMANDS.includes(command)) {
+      if (crossOrigin || !sameOriginRequest(req, this.host.publicUrl, this.host.browserOrigins)) {
+        this.host.logs?.write('Event', 'Warning', clientAddress(req), 'XML publishing write refused: cross-origin request');
+        throw new CwpError(3, 'Command is unavailable: XML publishing writes require a same-origin request');
+      }
+      if (req.method !== 'POST' || !params.hasBody) throw new CwpError(3, 'Command is unavailable: send XML publishing writes as a POST form (application/x-www-form-urlencoded)');
+    }
     const scripts = params.pairs.filter(([k]) => /^-script(\.|=|$)/i.test(k));
     const refuseScripts = () => { throw new CwpError(960, 'Parameter is invalid: scripts are not run through this read-only interface'); };
     if (grammar === 'FMPXMLLAYOUT' && command !== 'view') throw new CwpError(954, `Unsupported XML grammar: FMPXMLLAYOUT answers -view; use fmresultset or FMPXMLRESULT for -${command}`);
@@ -411,7 +442,7 @@ export class CwpXmlEndpoint {
       await refuseUnknownFile(this.host, req, db);
       throw new CwpError(802, `Unable to open file "${db}"`);
     }
-    const { privileges: p } = await signIn(req, store, this.api, this.verified, 'fmxml', 'XML publishing');
+    const { privileges: p, readOnlyToken } = await signIn(req, store, this.api, this.verified, 'fmxml', 'XML publishing');
     if (scripts.length) {
       for (const [key, name] of scripts) {
         if (['-script', '-script.prefind', '-script.presort'].includes(key.toLowerCase()) && p.script(name) === 'none') {
@@ -420,6 +451,8 @@ export class CwpXmlEndpoint {
       }
       refuseScripts();
     }
+
+    if (WRITE_COMMANDS.includes(command) && readOnlyToken) throw new CwpError(9, 'This API token is read-only');
 
     if (command === 'layoutnames') {
       return render(listing('LAYOUT_NAME', store.layouts().map((l) => l.name).filter((n) => p.layout(n).layout !== 'none'), store.name));
@@ -437,7 +470,85 @@ export class CwpXmlEndpoint {
       if (grammar === 'FMPXMLLAYOUT') return fmpxmllayout(this.layoutDoc(store, info, p));
       return render(this.describe(store, info, p));
     }
+    if (WRITE_COMMANDS.includes(command)) {
+      if (req.socket.destroyed) throw new CwpError(3, 'Command is unavailable: the connection closed before the write');
+      return writer.run({ ...writer.getStore(), account: p.account, surface: 'XML publishing' },
+        () => atomicWrites(() => render(this.write(store, info, p, params, command))));
+    }
     return render(this.records(store, info, p, params, command));
+  }
+
+  /** Writes use the same store methods and user-entry defaults as Data API records and portalData. */
+  private write(store: Store, info: LayoutInfo, p: Privileges, params: Params, command: string): Result {
+    const pairs = params.pairs.filter(([key]) => !key.startsWith('-'));
+    if (pairs.length > 500) throw new CwpError(960, 'Parameter is invalid: a write may contain at most 500 field pairs');
+    const shown = this.responseLayout(store, info, p, params.get('-lay.response'));
+    const design = info.layoutId === undefined ? undefined : store.design(info.layoutId);
+    const placed = design ? fieldDisplayTypes(design.objects, info.occurrence) : undefined;
+    const fields: Record<string, string> = Object.create(null);
+    const portals = new Map<string, Map<number, Record<string, string | number>>>();
+    for (const [key, value] of pairs) {
+      // XML's TO::Field.recid spelling is unverified; it maps directly onto existing portalData rows.
+      const related = /^(.+)::(.+)\.(\d+)$/.exec(key);
+      let name = key;
+      let target = fields as Record<string, string | number>;
+      let available = info.fields;
+      if (related) {
+        if (command !== 'edit') throw new CwpError(3, 'Command is unavailable: portal row fields require -edit');
+        const [, to, field, rawId] = related;
+        const matches = (info.plan?.portals ?? []).filter((x) => x.occurrence.toLowerCase() === to.toLowerCase());
+        if (matches.length !== 1) throw new CwpError(3, 'Command is unavailable: the related occurrence must identify one portal on this layout');
+        const portal = matches[0];
+        const base = field.replace(/\(\d+\)$/, '');
+        if (!portal.fields.some((f) => f.toLowerCase() === base.toLowerCase())) throw new CwpError(102, 'Field is missing');
+        const id = whole(rawId, 'related record id', undefined)!;
+        let rows = portals.get(portal.name);
+        if (!rows) portals.set(portal.name, rows = new Map());
+        let row = rows.get(id);
+        if (!row) rows.set(id, row = Object.create(null) as Record<string, string | number>);
+        if (id) row.recordId = id;
+        target = row;
+        available = store.occurrence(portal.occurrence).fields;
+        name = field;
+      }
+      const repetition = /^(.*)\((\d+)\)$/.exec(name);
+      const base = repetition ? repetition[1] : name;
+      const field = available.find((f) => f.name.toLowerCase() === base.toLowerCase());
+      if (!field || (!related && placed && !placed.has(field.name.toLowerCase()))) throw new CwpError(102, 'Field is missing');
+      const rep = repetition ? Number(repetition[2]) : 1;
+      if (!Number.isSafeInteger(rep) || rep < 1 || rep > (field.repetitions ?? 1)) throw new CwpError(102, 'Field is missing');
+      const repeated = rep === 1 ? field.name : `${field.name}(${rep})`;
+      const portal = related && (info.plan?.portals ?? []).find((x) => x.occurrence.toLowerCase() === related[1].toLowerCase());
+      const canonical = portal ? `${portal.occurrence}::${repeated}` : repeated;
+      if (Object.hasOwn(target, canonical)) throw new CwpError(960, 'Parameter is invalid: a field repetition is given twice');
+      // Keep text intact; store conversion applies the XML grammar's month/day/year order.
+      target[canonical] = value;
+    }
+    const opts = { account: p.account, privileges: p, dataEntry: true, dateOrder: 'MDY' as const };
+    let id: number;
+    if (command === 'new') id = store.create(info, fields, opts).recordId;
+    else {
+      const recid = params.get('-recid');
+      if (!recid) throw new CwpError(958, 'Parameter missing: -recid');
+      id = whole(recid, '-recid', undefined)!;
+      const modId = whole(params.get('-modid'), '-modid', undefined);
+      if (command === 'dup') id = store.duplicate(info, id, opts).recordId;
+      else if (command === 'delete') {
+        if (modId !== undefined && store.get(info.name, id, 'us', undefined, p, { fields: [] }).modId !== modId) throw new CwpError(306, 'Record modification id does not match');
+        store.delete(info, id, opts);
+      } else {
+        if (portals.size) {
+          const current = store.get(info.name, id, 'us', undefined, p, { fields: [] });
+          if (modId !== undefined && current.modId !== modId) throw new CwpError(306, 'Record modification id does not match');
+          store.updatePortals(info, id, Object.fromEntries([...portals].map(([name, rows]) => [name, [...rows.values()]])), [], opts);
+        }
+        if (Object.keys(fields).length || !portals.size) store.update(info, id, fields, modId, opts);
+      }
+    }
+    const shape = this.describe(store, shown, p);
+    const total = store.find(shown, { privileges: p, limit: 0 }).totalCount;
+    const records = command === 'delete' ? [] : [this.rowOf(store.get(shown.name, id, 'us', undefined, p, { layoutOnly: true }), shape)];
+    return { ...shape, total, found: records.length, records };
   }
 
   /** Finds the records for -find, -findall, -findany and -findquery, and describes them. */
@@ -567,6 +678,7 @@ export class CwpXmlEndpoint {
       res.end();
       return;
     }
-    this.send(res, status, errorDocument(grammar, code, database, layout), headers);
+    const detail = e instanceof CwpError ? `\n<!-- ${esc(e.message).replace(/--/g, '- -')} -->` : '';
+    this.send(res, status, errorDocument(grammar, code, database, layout) + detail, headers);
   }
 }

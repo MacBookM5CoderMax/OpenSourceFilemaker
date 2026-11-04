@@ -828,6 +828,13 @@
       "restart": "Yes for a running server.",
       "explainedBy": "ADMIN.md"
     },
+    "TABULARIUS_XML_PUBLISHING_WRITES": {
+      "description": "Allows -new, -edit, -delete and -dup through XML publishing as POST forms. Requires fmxml and record privileges; browser writes must be same-origin. Scripts remain unavailable.",
+      "default": "Off: XML publishing only reads records",
+      "accepted": "1, true, yes or on; 0, false, no, off or empty for off; anything else stops `serve`",
+      "restart": "Set in the server environment before starting it.",
+      "explainedBy": "docs/hosting-for-a-team.md"
+    },
     "TABULARIUS_WORKERS": {
       "description": "The number of worker processes, or `auto` for one per CPU core.",
       "default": "one process",
@@ -1200,6 +1207,11 @@
     "--trusted-proxies": {
       "default": "No trusted proxy addresses",
       "accepted": "Comma-separated IP addresses or CIDR ranges",
+      "explainedBy": "docs/hosting-for-a-team.md"
+    },
+    "--xml-publishing-writes": {
+      "default": "Off: XML publishing only reads records",
+      "accepted": "No value (a switch)",
       "explainedBy": "docs/hosting-for-a-team.md"
     },
     "--workers": {

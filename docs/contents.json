@@ -453,6 +453,7 @@
         "docs/reference/settings/serve/tls-key.md",
         "docs/reference/settings/serve/trusted-proxies.md",
         "docs/reference/settings/serve/workers.md",
+        "docs/reference/settings/serve/xml-publishing-writes.md",
         "docs/reference/settings/environment/tabularius_acme_directory.md",
         "docs/reference/settings/environment/tabularius_ai_account_daily_tokens.md",
         "docs/reference/settings/environment/tabularius_ai_daily_tokens.md",
@@ -571,7 +572,8 @@
         "docs/reference/settings/environment/tabularius_upload_tmp.md",
         "docs/reference/settings/environment/tabularius_visual_update.md",
         "docs/reference/settings/environment/tabularius_warm_heap_mb.md",
-        "docs/reference/settings/environment/tabularius_workers.md"
+        "docs/reference/settings/environment/tabularius_workers.md",
+        "docs/reference/settings/environment/tabularius_xml_publishing_writes.md"
       ]
     },
     {

@@ -8,6 +8,6 @@ The name shown for the directory.
 | Accepted values | Display name |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1535](../../../../packages/cli/src/main.ts#L1535) |
+| Code | [packages/cli/src/main.ts:1538](../../../../packages/cli/src/main.ts#L1538) |
 
 [All environment variables](../../../environment-variables.md)

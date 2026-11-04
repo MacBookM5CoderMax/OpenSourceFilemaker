@@ -607,7 +607,7 @@ records across sets, each read as the account sees it.
 makes a table, `PATCH .../FileMaker_Tables/Visits` adds fields, `DELETE`
 removes a table or field, and `FileMaker_Indexes` adds and removes indexes.
 
-**Legacy XML (Custom Web Publishing), reads only.** Scripts and pages written
+**Legacy XML (Custom Web Publishing).** Scripts and pages written
 against FileMaker Server's `/fmi/xml` can keep reading. Grant the `fmxml`
 extended privilege, then ask with HTTP Basic:
 
@@ -621,8 +621,57 @@ The document name is the grammar: `fmresultset.xml`, `FMPXMLRESULT.xml`, or
 `-max`, `-sortfield.N`/`-sortorder.N`, `-lop`, `-recid`, `-lay.response`, and
 `field=value` with `field.op` (`eq`, `cn`, `bw` (the default), `ew`, `gt`, `gte`,
 `lt`, `lte`, `neq`). Records follow the account's record and field access, and
-portals come as related sets. Nothing writes and nothing runs: `-new`, `-edit`,
-`-delete` and `-dup` answer error 3, and a `-script` parameter error 960.
+portals come as related sets.
+
+Record writes are **off by default**. An administrator can set
+`TABULARIUS_XML_PUBLISHING_WRITES=1` in the server environment or start with
+`tabularius serve <folder> --xml-publishing-writes` to allow `-new`,
+`-edit`, `-delete` and `-dup`. The account still needs `fmxml` plus the layout,
+record and field privileges required by the Data API. Read-only API tokens are
+refused with error 9. The flag also applies to clustered and service startup. Invalid environment
+switch values stop startup.
+With writes off, error 3 explains the switch in an XML comment after the document.
+
+Send writes as a **POST form** (`application/x-www-form-urlencoded`) with `-db`
+and `-lay`. `-new` takes layout `field=value` pairs; repetitions use `field(n)`.
+`-edit` also requires `-recid`; `-delete` and `-dup` require `-recid` too.
+An optional `-modid` on edits and deletes must match the current modification
+count, otherwise error 306 leaves the record unchanged. Create, edit and duplicate
+return the resulting record and its record/modification IDs in `fmresultset` or
+`FMPXMLRESULT`; delete returns an empty result set. `-lay.response` may name another
+layout over the same table. Fields absent from the layout give 102; field and
+record denials use the store's Data API codes (201 or 200). Text values use the
+store's conversions, including dates in `MM/dd/yyyy`. Auto-enter, validation and
+prohibited field entry follow the Data API's user-entry defaults. History records
+the account and the surface **XML publishing**.
+<!-- known-difference: XML publishing ;; XML write command compatibility is unverified against FileMaker Server ;; Tabularius tests cover required parameters, repetition syntax, modification checks, response layouts, error codes, date conversion, auto-enter and validation using the existing store methods, but the vendor behavior has not been compared ;; A FileMaker Server run of equivalent XML requests -->
+
+GET writes are refused with error 3 and a message to send a POST form. FileMaker
+Server accepting GET writes is **unverified** offline; POST-only is deliberate
+here because browsers can resend cached Basic credentials. A foreign `Origin`
+or `Sec-Fetch-Site: cross-site` is refused with XML error 3 and a Warning log entry.
+The shared browser rules also reject same-site requests from other origins,
+foreign referrers and unconfigured DNS hosts. Configure `--public-url` (or HTTPS
+hostnames) when serving a DNS name; forwarded headers cannot establish trust.
+A same-origin POST works, as does a server-side PHP client with no Origin or
+other browser headers. Writes need a nonempty form body, allow at most **500 field
+pairs** (error 960 above that), and retain the **64 KiB** body limit and shared
+request admission and sign-in rate limits. A refusal leaves no partial write.
+<!-- known-difference: XML publishing ;; GET writes are deliberately refused and vendor GET support is unverified ;; Clients must send a POST form and pass the same-origin browser checks instead of putting a write in a GET URL ;; A FileMaker Server run confirms vendor GET behavior, while Tabularius retains its POST-only security rule -->
+
+On `-edit`, `TO::Field.<related recid>=value` changes a row in a portal;
+`TO::Field.0=value` creates one using the relationship's match fields. These
+spellings are **unverified** against FileMaker Server. They map to the store's
+existing Data API `portalData` path and its related-record privileges. The
+occurrence must identify exactly one portal on the layout (otherwise error 3),
+and the field must be shown in it (102). Related rows must belong to the parent.
+All parent and portal changes commit together or roll back together. Portal
+suffixes on commands other than `-edit` are refused with error 3.
+<!-- known-difference: XML publishing ;; Portal row suffixes and zero-id creation are unverified against FileMaker Server ;; Tabularius maps TO::Field.recid and TO::Field.0 on edits to Data API portalData, refusing ambiguous portals and other commands ;; A FileMaker Server run of existing and new related-row XML edits -->
+
+Scripts remain unavailable: `-script` and its variants give 960 (or 9 when
+script access is denied), including when attached to a write. The existing
+script refusal text is unchanged. Script execution is a separate feature.
 
 **How many people?** `node scripts/loadtest.ts <file.fmp12> --users 50` hosts
 a copy of a file and has 50 simulated people browse, open, find and edit
