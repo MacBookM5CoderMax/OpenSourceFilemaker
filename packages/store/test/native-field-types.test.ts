@@ -26,8 +26,8 @@ test('native scalar fields write, read, validate, find, sort and calculate witho
       assert.deepEqual([a.Flag, a.Count, a.Price, a.Payload, a.Key], [1, -12, '12.34', '{"a":{"a":1,"b":2},"z":1}', key.toLowerCase()]);
       assert.match(String(a.Generated), /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/);
       assert.equal(store.evaluate('Items', 'GetAsText ( Price )', first).value, '12.34');
-      assert.equal(store.evaluate('Items', 'GetAsText ( Price + 0.2 )', third).value, '0.5');
-      assert.equal(store.evaluate('Items', 'GetAsText ( 0.1 + 0.2 )', first).value, '0.3');
+      assert.equal(store.evaluate('Items', 'GetAsText ( Price + 0.2 )', third).value, '.5');
+      assert.equal(store.evaluate('Items', 'GetAsText ( 0.1 + 0.2 )', first).value, '.3');
       assert.equal(store.evaluate('Items', 'GetAsNumber ( Count )', first).value, '-12');
       assert.equal(store.evaluate('Items', 'GetAsNumber ( Flag )', first).value, '1');
       assert.equal(store.evaluate('Items', 'GetAsText ( Payload )', first).value, a.Payload);

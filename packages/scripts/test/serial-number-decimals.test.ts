@@ -43,5 +43,5 @@ test('serial numbers with a decimal increment or a negative start count exactly'
     assert.equal(result.error, 0);
     values.push(String(result.result));
   }
-  assert.deepEqual(values, ['0.5/-2', '0.6/-1', '0.7/0', '0.8/1']);
+  assert.deepEqual(values, ['.5/-2', '.6/-1', '.7/0', '.8/1']);
 });

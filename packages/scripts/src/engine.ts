@@ -32,7 +32,7 @@ import { LayoutPrinter, type PrintItem, type PrintSource } from './print.ts';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { foldCase } from '../../calc/src/collation.ts';
 import {
-  CalcError, CalcNestingError, ERR, NameTable, pdfText, asBoolean, asNumber, asText, compile, cosineSimilarity, embeddingFile, embeddingOf, evaluate, fromStored, num, text, toStored, dayNumber,
+  CalcError, CalcNestingError, ERR, NameTable, pdfText, asBoolean, asNumber, asText, compile, cosineSimilarity, embeddingFile, embeddingOf, evaluate, formatNumber, fromStored, num, text, toStored, dayNumber,
   type CalcContext, type DeviceLocation, type PluginFiles, type PluginOutbound, type PluginNetwork, type PluginMailer, type PluginResponse, type MbsCurlRequest, type PluginFtpRequest, type PluginFtpResponse, type FieldRef as CalcFieldRef, type Value, type ValueType,
   HostWait, markExecutionRefusal, rethrowExecutionRefusal,
   beginMbsReplay, rewindMbsReplay, endMbsReplay,
@@ -7675,6 +7675,10 @@ export class ScriptEngine {
       const rows = function* (): Generator<Value[]> {
         for (const record of records) yield record.map((values) => values[0]);
       }();
+      // Export Records has its own number-field spelling; its FileMaker parity for fractions is unverified.
+      const exportText = (v: Value) => v.type === 'number'
+        ? v.decimal ?? (v.exact !== undefined ? v.exact.toString() : formatNumber(v.value))
+        : asText(v, win.store.dateOrder);
       if (format === 'XLXE') {
         // Numbers stay numbers; dates, timestamps and times of day use Excel cells. A time outside one day is duration text.
         if (fs.ids.length > 1_048_576) throw new ScriptError(ERROR.unavailable, 'Excel allows at most 1,048,576 rows; no file was written');
@@ -7722,7 +7726,7 @@ export class ScriptEngine {
             for (const record of records) {
               await this.checkpoint(f);
               writeSync(fd, fmpXmlRow({ recordId: fs.ids[fs.index], modId: 0,
-                cells: record.map((values) => values.map((v) => v.type === 'date' || v.type === 'time' || v.type === 'timestamp' ? String(toStored(v, v.type) ?? '') : asText(v, win.store.dateOrder))) }));
+                cells: record.map((values) => values.map((v) => v.type === 'date' || v.type === 'time' || v.type === 'timestamp' ? String(toStored(v, v.type) ?? '') : exportText(v))) }));
             }
             writeSync(fd, fmpXmlFooter());
           } finally { closeSync(fd); }
@@ -7735,7 +7739,7 @@ export class ScriptEngine {
           await this.checkpoint(f);
           out.push({
             recordId: fs.ids[fs.index], modId: 0,
-            cells: record.map((values) => values.map((v) => v.type === 'date' || v.type === 'time' || v.type === 'timestamp' ? String(toStored(v, v.type) ?? '') : asText(v, win.store.dateOrder))),
+            cells: record.map((values) => values.map((v) => v.type === 'date' || v.type === 'time' || v.type === 'timestamp' ? String(toStored(v, v.type) ?? '') : exportText(v))),
           });
         }
         const grammar = p.xmlGrammar === 'FMPDSORESULT'
@@ -7755,7 +7759,7 @@ export class ScriptEngine {
           put(`<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>${esc(info.table)}</title></head><body>\n<table border="1">\n<tr>${refs.map((r) => `<th>${esc(heading(r))}</th>`).join('')}</tr>\n`);
           for (const row of rows) {
             await this.checkpoint(f);
-            put(`<tr>${row.map((v) => `<td>${esc(asText(v, win.store.dateOrder))}</td>`).join('')}</tr>\n`);
+            put(`<tr>${row.map((v) => `<td>${esc(exportText(v))}</td>`).join('')}</tr>\n`);
           }
           put('</table>\n</body></html>\n');
         } finally {
@@ -7790,7 +7794,7 @@ export class ScriptEngine {
         // Claris: "Values in repeating fields are separated by the group separator character."
         for (const record of records) {
           await this.checkpoint(f);
-          line(record.map((values) => cell(values.map((v) => asText(v, win.store.dateOrder)), values[0]?.type)).join(sep));
+          line(record.map((values) => cell(values.map(exportText), values[0]?.type)).join(sep));
         }
       } finally {
         closeSync(fd);

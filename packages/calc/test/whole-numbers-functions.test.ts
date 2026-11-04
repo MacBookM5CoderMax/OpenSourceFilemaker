@@ -116,6 +116,6 @@ test('2,000 fixed-seed small cases match the previous double expressions', () =>
       [`GetAsNumber ( "${x}" )`, x], [`${x} / ${y}`, tidy(x / y)],
       [`${x} ^ 2`, tidy(Math.pow(x, 2))],
     ];
-    for (const [formula, expected] of cases) assert.equal(run(formula), formatNumber(expected), formula);
+    for (const [formula, expected] of cases) assert.equal(run(formula), formatNumber(expected).replace(/^(-?)0\./, '$1.'), formula);
   }
 });

@@ -69,7 +69,7 @@ test('the variance functions of whole numbers past 2^53 use exact sums', () => {
   for (const [formula, expected] of [
     ['Variance ( 2^70 ; 2^70 + 2 )', '2'], ['VarianceP ( 2^70 ; 2^70 + 2 )', '1'],
     ['StDevP ( 2^70 ; 2^70 + 4 )', '2'], ['StDev ( 2^70 ; 2^70 + 2 )', '1.414213562373095'],
-    ['Variance ( 2^70 ; 2^70 + 1 )', '0.5'],
+    ['Variance ( 2^70 ; 2^70 + 1 )', '.5'],
     ['Variance ( 2^70 ; 2^70 + 1 ; 2^70 + 3 )', '2.333333333333333'],
     ['StDev ( 2^70 )', '?'], ['Variance ( 2^70 )', '?'],
   ]) assert.equal(f(formula), expected);
@@ -77,8 +77,8 @@ test('the variance functions of whole numbers past 2^53 use exact sums', () => {
 
 test('the variance functions of ordinary numbers are unchanged', () => {
   for (const [formula, expected] of [
-    ['Variance ( 1 ; 2 ; 3 )', '1'], ['VarianceP ( 1 ; 2 ; 3 )', '0.6666666666666666'],
-    ['StDevP ( 1 ; 2 ; 3 )', '0.816496580927726'],
-    ['Variance ( 0.1 ; 0.2 ; 0.3 )', '0.01'], ['StDev ( 5 )', '?'],
+    ['Variance ( 1 ; 2 ; 3 )', '1'], ['VarianceP ( 1 ; 2 ; 3 )', '.6666666666666666'],
+    ['StDevP ( 1 ; 2 ; 3 )', '.816496580927726'],
+    ['Variance ( 0.1 ; 0.2 ; 0.3 )', '.01'], ['StDev ( 5 )', '?'],
   ]) assert.equal(f(formula), expected);
 });

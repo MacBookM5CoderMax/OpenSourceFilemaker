@@ -5,24 +5,24 @@ import { asText, CalcError, evaluate, evaluateText, num, parse, nodeText } from 
 const result = (formula: string) => evaluateText(formula);
 
 test('Claris SetPrecision examples and unchanged plain arithmetic', () => {
-  assert.equal(result('SetPrecision(5/9;30)'), '0.555555555555555555555555555556');
+  assert.equal(result('SetPrecision(5/9;30)'), '.555555555555555555555555555556');
   assert.equal(result('SetPrecision(1.321321321321321321321321321;0)'), '1.3213213213213213');
   assert.equal(result('SetPrecision(If(field1>5;Exp(50);Average(5/9;1/7;5/7));25)'), '?');
   const formula = 'SetPrecision(If(field1>5;Exp(50);Average(5/9;1/7;5/7));25)';
   const context = (n: number) => ({ field: () => num(n) });
   assert.equal(asText(evaluate(formula, context(6))), '5184705528587072464087.4533229334853848274691006');
-  assert.equal(asText(evaluate(formula, context(5))), '0.4708994708994708994708995');
-  assert.equal(result('5/9'), '0.5555555555555556');
+  assert.equal(asText(evaluate(formula, context(5))), '.4708994708994708994708995');
+  assert.equal(result('5/9'), '.5555555555555556');
   assert.equal(result('SetPrecision(1/3*3;30)'), '1');
-  assert.equal(result('SetPrecision(If(1;5/9;MissingField);30)'), '0.555555555555555555555555555556');
-  assert.equal(result('SetPrecision(Case(1;5/9;MissingField);30)'), '0.555555555555555555555555555556');
+  assert.equal(result('SetPrecision(If(1;5/9;MissingField);30)'), '.555555555555555555555555555556');
+  assert.equal(result('SetPrecision(Case(1;5/9;MissingField);30)'), '.555555555555555555555555555556');
 });
 
 function roundedRatio(a: bigint, b: bigint, places: number): string {
   const scale = 10n ** BigInt(places);
   const q = (a * scale * 2n / b + 1n) / 2n;
   const whole = q / scale, fraction = (q % scale).toString().padStart(places, '0').replace(/0+$/, '');
-  return `${whole}${fraction ? '.' + fraction : ''}`;
+  return `${whole === 0n && fraction ? '' : whole}${fraction ? '.' + fraction : ''}`;
 }
 
 test('generated rational arithmetic agrees with independent BigInt division', () => {
@@ -43,7 +43,8 @@ function sqrtScaled(n: bigint, places: number): string {
   }
   const rounded = (x + 5n) / 10n;
   const scale = 10n ** BigInt(places);
-  return `${rounded / scale}.${(rounded % scale).toString().padStart(places, '0')}`;
+  const whole = rounded / scale;
+  return `${whole === 0n ? '' : whole}.${(rounded % scale).toString().padStart(places, '0')}`;
 }
 
 test('square root powers agree with independent BigInt Newton reference', () => {
@@ -56,11 +57,11 @@ test('square root powers agree with independent BigInt Newton reference', () => 
 test('documented numeric and aggregate functions retain decimal inputs', () => {
   assert.equal(result('SetPrecision(Sqrt(2);50)'), sqrtScaled(2n, 50));
   assert.equal(result('SetPrecision(Exp(Ln(2));50)'), '2');
-  assert.equal(result('SetPrecision(Sum(0.1;0.2;0.3);50)'), '0.6');
-  assert.equal(result('SetPrecision(Average(1/3;2/3);50)'), '0.5');
+  assert.equal(result('SetPrecision(Sum(0.1;0.2;0.3);50)'), '.6');
+  assert.equal(result('SetPrecision(Average(1/3;2/3);50)'), '.5');
   assert.equal(result('SetPrecision(Div(7;3)+Mod(7;3);30)'), '3');
-  assert.equal(result('SetPrecision(Round(5/9;3);30)'), '0.556');
-  assert.equal(result('SetPrecision(Truncate(5/9;3);30)'), '0.555');
+  assert.equal(result('SetPrecision(Round(5/9;3);30)'), '.556');
+  assert.equal(result('SetPrecision(Truncate(5/9;3);30)'), '.555');
   assert.equal(result('SetPrecision(Let([x=5/9];x+x);30)'), '1.111111111111111111111111111111');
   assert.equal(result('SetPrecision(1/0+1;30)'), '?');
   assert.equal(result('SetPrecision(Pi;50)'), '3.14159265358979323846264338327950288419716939937511');
@@ -120,7 +121,7 @@ test('text operands use normal FileMaker number conversion', () => {
 });
 
 test('numbers crossing into text lose guard digits at the requested precision', () => {
-  const third = '0.333333333333333333333333333333';
+  const third = '.333333333333333333333333333333';
   assert.equal(result('SetPrecision("abc" & 1/3;30)'), `abc${third}`);
   assert.equal(result('SetPrecision(Length(1/3);30)'), String(third.length));
   assert.equal(result('SetPrecision(GetAsText(1/3);30)'), third);
@@ -149,7 +150,7 @@ test('large integer powers preserve finite results and underflow', () => {
     ['1^20000', '1'],
     ['0.5^20000', '0'],
     ['(-1)^10001', '-1'],
-    ['1.0001^-20000', '0.13534881653937754818'],
+    ['1.0001^-20000', '.13534881653937754818'],
     ['1.0000001^1000000', '1.10517091254979341664'],
     ['(-1)^-10001', '-1'],
   ];
@@ -169,7 +170,7 @@ test('long period finance functions retain decimal precision', () => {
   assert.ok(fv.startsWith('1718417.74141790738652406844138063785076743403148564289045'));
   assert.equal(fv.split('.')[1]?.length, 400);
   assert.ok(performance.now() - start < 1000, 'FV took over 1 s');
-  assert.equal(result('SetPrecision(PMT(100;0.0001;10001);20)'), '0.01581930677214072635');
+  assert.equal(result('SetPrecision(PMT(100;0.0001;10001);20)'), '.01581930677214072635');
   assert.equal(result('SetPrecision(PV(100;0.0001;10001);20)'), '632138.95172770351975402283');
   for (const name of ['PMT', 'PV']) {
     const highPrecisionStart = performance.now();

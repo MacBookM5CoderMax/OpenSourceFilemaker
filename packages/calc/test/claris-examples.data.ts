@@ -35,7 +35,7 @@ export const CASES: Record<string, [string, string][]> = {
     ["GetAsNumber ( \"2(2)\" )", "22"],
     ["GetAsNumber ( \"-22\" )", "-22"],
     ["GetAsNumber ( \"(22)\" )", "-22"],
-    ["GetAsNumber ( \".(22)\" )", "0.22"],
+    ["GetAsNumber ( \".(22)\" )", ".22"],
     ["GetAsNumber ( \"TKV35FRG6HH84\" )", "35684"],
     ["GetAsNumber ( Date ( 10 ; 10 ; 2019 ) )", "737342"],
     ["GetAsNumber ( \"QTjPLeRMaCV\" )", ""],

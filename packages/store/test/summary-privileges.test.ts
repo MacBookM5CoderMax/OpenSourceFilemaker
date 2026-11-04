@@ -60,7 +60,7 @@ for (const access of ['none', 'masked', 'viewOnly'] as const) {
     const formulas = ['SumS', 'GetSummary ( SumS ; Public )', 'GetSummary ( SumS ; SumS )', 'Leak1', 'Leak2',
       'CountS', 'Fraction', 'GetSummary ( Fraction ; Public )', 'SumP'];
     const full = ['TOPSECRETZ\rTOPSECRETA', '', 'TOPSECRETZ\rTOPSECRETA', 'TOPSECRETZ\rTOPSECRETA', '',
-      '2', '0.25', '', '|a\r|b'];
+      '2', '.25', '', '|a\r|b'];
     const hidden = ['', '', '', '', '', '0', '', '', '|a\r|b'];
     for (const [i, formula] of formulas.entries()) {
       assert.equal(store.evaluate('T', formula, a, { privileges: admin }).value, full[i], `Admin: ${formula}`);

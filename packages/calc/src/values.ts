@@ -266,6 +266,12 @@ export function formatNumber(n: number): string {
   return s;
 }
 
+/** FileMaker calculation number-to-text spelling. The negative form is inferred from the verified 1/2 result. */
+export function fileMakerNumberText(value: string): string {
+  return /^-?0\.\d+$/.test(value) && /[1-9]/.test(value.slice(value.indexOf('.') + 1))
+    ? value.replace(/^(-?)0\./, '$1.') : value;
+}
+
 const pad = (n: number, w = 2) => String(Math.trunc(n)).padStart(w, '0');
 
 export function formatDate(day: number, order: DateStyle = 'MDY'): string {
@@ -317,7 +323,7 @@ export function formatTimestamp(ts: number, order: DateStyle = 'MDY'): string {
 export function asText(v: Value, order: DateStyle = 'MDY'): string {
   switch (v.type) {
     case 'text': case 'container': return v.value;
-    case 'number': return v.decimal ?? (v.exact !== undefined ? v.exact.toString() : formatNumber(v.value));
+    case 'number': return fileMakerNumberText(v.decimal ?? (v.exact !== undefined ? v.exact.toString() : formatNumber(v.value)));
     case 'date': return formatDate(v.value, order);
     case 'time': return formatTime(v.value);
     case 'timestamp': return formatTimestamp(v.value, order);

@@ -4,7 +4,7 @@ import { evaluateText } from '../src/index.ts';
 
 const calc = (formula: string) => evaluateText(formula);
 
-test('decimal addition avoids binary floating point residue', () => assert.equal(calc('0.1 + 0.2'), '0.3'));
+test('decimal addition avoids binary floating point residue', () => assert.equal(calc('0.1 + 0.2'), '.3'));
 test('Round rounds decimal half cases away from zero', () => {
   assert.equal(calc('Round ( 2.675 ; 2 )'), '2.68');
   assert.equal(calc('Round ( 1.005 ; 2 )'), '1.01');
@@ -22,4 +22,4 @@ test('less-than uses text ordering for text and numeric ordering for numbers', (
   assert.equal(calc('10 < 9'), '0');
 });
 test('GetAsNumber reads grouped currency text', () => assert.equal(calc('GetAsNumber ( "$1,234.50" )'), '1234.5'));
-test('SetPrecision formats the requested decimal precision', () => assert.equal(calc('SetPrecision ( 1/3 ; 30 )'), '0.333333333333333333333333333333'));
+test('SetPrecision formats the requested decimal precision', () => assert.equal(calc('SetPrecision ( 1/3 ; 30 )'), '.333333333333333333333333333333'));

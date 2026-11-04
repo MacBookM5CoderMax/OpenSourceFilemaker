@@ -29,7 +29,7 @@ test('#114: Div and Mod of decimals that are exact multiples give the decimal re
 test('#114: Div and Mod of two-decimal amounts equal the exact integer answer over a grid', () => {
   // Amounts are whole hundredths, so the exact answer is integer maths on the hundredths.
   const floorDiv = (x: number, y: number) => Math.floor(x / y);
-  const cents = (n: number) => (n === 0 ? '0' : String(n / 100));
+  const cents = (n: number) => (n === 0 ? '0' : String(n / 100).replace(/^(-?)0\./, '$1.'));
   const as = [-1999, -1150, -820, -700, -75, -1, 0, 1, 5, 7, 99, 115, 430, 820, 1150, 1999, 4350, 12345, 100000];
   const bs = [-50, -10, -5, -1, 1, 2, 5, 10, 20, 25, 50, 100, 250];
   for (const a of as) {
@@ -44,14 +44,14 @@ test('#114: Div and Mod of two-decimal amounts equal the exact integer answer ov
 
 test('#114: ordinary Mod and Div results are unchanged', () => {
   assert.equal(e('Mod ( 7.5 ; 2 )'), '1.5');
-  assert.equal(e('Mod ( -7.5 ; 2 )'), '0.5');
-  assert.equal(e('Mod ( 7.5 ; -2 )'), '-0.5');
+  assert.equal(e('Mod ( -7.5 ; 2 )'), '.5');
+  assert.equal(e('Mod ( 7.5 ; -2 )'), '-.5');
   assert.equal(e('Div ( -7.5 ; 2 )'), '-4');
   assert.equal(e('Mod ( 10 ; 3 )'), '1');
   assert.equal(e('Mod ( -10 ; 3 )'), '2');
   assert.equal(e('Div ( 10 ; 3 )'), '3');
   assert.equal(e('Mod ( 1 ; 3 )'), '1');
-  assert.equal(e('Mod ( 0.5 ; 0.3 )'), '0.2');
+  assert.equal(e('Mod ( 0.5 ; 0.3 )'), '.2');
   assert.equal(e('Div ( 0.5 ; 0.3 )'), '1');
   assert.equal(e('Mod ( 5 ; 0 )'), '?');
   assert.equal(e('Div ( 5 ; 0 )'), '?');
@@ -88,9 +88,9 @@ test('#121: decimalSum does not round a long whole number plus decimals to a wro
 });
 
 test('#121: Sum and Average retain decimal digits beyond the fifteenth significant digit', () => {
-  assert.equal(e('Sum ( 0.1234567890123456 )'), '0.1234567890123456');
+  assert.equal(e('Sum ( 0.1234567890123456 )'), '.1234567890123456');
   assert.equal(e('Sum ( 1234.5678901234567 )'), '1234.5678901234567');
-  assert.equal(e('Average ( 0.1234567890123456 ; 0.1234567890123456 )'), '0.1234567890123456');
+  assert.equal(e('Average ( 0.1234567890123456 ; 0.1234567890123456 )'), '.1234567890123456');
 });
 
 test('#121: decimalSum agrees with a BigInt scaled-decimal reference over seeded inputs', () => {
@@ -130,10 +130,10 @@ test('#121: decimalSum takes a sum over more values than a call can pass as argu
 });
 
 test('#114: Variance and StDev use decimal-clean aggregate arithmetic', () => {
-  assert.equal(e('Variance ( 0.1 ; 0.2 ; 0.3 )'), '0.01');
-  assert.equal(e('VarianceP ( 0.1 ; 0.2 ; 0.3 )'), '0.006666666666666667');
-  assert.equal(e('StDev ( 0.1 ; 0.2 ; 0.3 )'), '0.1');
-  assert.equal(e('StDevP ( 0.1 ; 0.2 ; 0.3 )'), '0.08164965809277261');
+  assert.equal(e('Variance ( 0.1 ; 0.2 ; 0.3 )'), '.01');
+  assert.equal(e('VarianceP ( 0.1 ; 0.2 ; 0.3 )'), '.006666666666666667');
+  assert.equal(e('StDev ( 0.1 ; 0.2 ; 0.3 )'), '.1');
+  assert.equal(e('StDevP ( 0.1 ; 0.2 ; 0.3 )'), '.08164965809277261');
 });
 
 test('#121: sums of ordinary values are unchanged', () => {

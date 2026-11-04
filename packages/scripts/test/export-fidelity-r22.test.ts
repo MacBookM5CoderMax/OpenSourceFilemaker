@@ -35,6 +35,25 @@ const step = (id: number, name: string, file: string, format: string): ScriptSte
 const run = (store: Store, dir: string, ids: number[], entry: ScriptStep) => runScript(store,
   { id: 991, name: 'Fidelity export', steps: [entry] } as Script, { layout: 'Rows', foundSet: ids, documents: dir });
 
+test('number fields in record exports retain their existing leading zero', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'openhbam-number-export-'));
+  createStore(join(dir, 'Synthetic.sqlite'));
+  const store = new Store(join(dir, 'Synthetic.sqlite'), 'Synthetic');
+  try {
+    store.applyDesign([{ op: 'createTable', name: 'Rows', fields: [{ name: 'Fraction', type: 'number' }] }]);
+    const id = store.create('Rows', { Fraction: '0.5' }).recordId;
+    for (const [format, file] of [['COMS', 'out.csv'], ['XML', 'out.xml'], ['HTML', 'out.html']] as const) {
+      const entry = { ...step(36, 'Export Records', file, format), params: {
+        filePaths: [file], exportFormat: format, exportFields: [ref('Fraction')],
+      } as StepParams };
+      assert.equal((await run(store, dir, [id], entry)).error, 0, format);
+      const output = readFileSync(join(dir, file), 'utf8');
+      assert.ok(output.includes('0.5'), format);
+      assert.ok(!output.includes('>.5<'), format);
+    }
+  } finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('Save Records as Excel is a valid OPC workbook and its imported rows retain supported values', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'openhbam-fidelity-'));
   createStore(join(dir, 'Synthetic.sqlite'));

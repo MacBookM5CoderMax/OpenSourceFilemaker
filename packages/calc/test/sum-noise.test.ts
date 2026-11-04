@@ -7,11 +7,11 @@ import { evaluateText } from '../src/index.ts';
 const e = (f: string) => evaluateText(f);
 
 test('a difference of nearly equal short decimals has no binary noise', () => {
-  assert.equal(e('123.45 - 123'), '0.45');
-  assert.equal(e('19.99 - 20'), '-0.01');
-  assert.equal(e('1.1 - 1'), '0.1');
-  assert.equal(e('100.10 - 99.99'), '0.11');
-  assert.equal(e('1234.56 + 0.01 - 1234.56'), '0.01');
+  assert.equal(e('123.45 - 123'), '.45');
+  assert.equal(e('19.99 - 20'), '-.01');
+  assert.equal(e('1.1 - 1'), '.1');
+  assert.equal(e('100.10 - 99.99'), '.11');
+  assert.equal(e('1234.56 + 0.01 - 1234.56'), '.01');
   assert.equal(e('73799.54 - 46742.73'), '27056.81');
   assert.equal(e('81449.10 - 86202.22'), '-4753.12');
 });
@@ -23,8 +23,8 @@ test('comparisons and rounding of those differences follow', () => {
 });
 
 test('sums and differences that need more digits keep them', () => {
-  assert.equal(e('1 / 3 + 0.1'), '0.4333333333333333');
-  assert.equal(e('Sqrt ( 2 ) - 1'), '0.4142135623730951');
+  assert.equal(e('1 / 3 + 0.1'), '.4333333333333333');
+  assert.equal(e('Sqrt ( 2 ) - 1'), '.4142135623730951');
   assert.equal(e('0.1234567890123456 + 1'), '1.123456789012346');
   assert.equal(e('1e20 + 0.5'), '100000000000000000000');
   assert.equal(e('3 - 1'), '2');
@@ -47,7 +47,7 @@ function* amounts(count: number): Generator<[bigint, bigint, string, string]> {
 /** Cents as the text FileMaker shows: no trailing zeros. */
 const shown = (cents: bigint) => {
   const s = `${cents < 0n ? '-' : ''}${(cents < 0n ? -cents : cents) / 100n}.${String((cents < 0n ? -cents : cents) % 100n).padStart(2, '0')}`;
-  return s.replace(/0+$/, '').replace(/\.$/, '');
+  return s.replace(/0+$/, '').replace(/\.$/, '').replace(/^(-?)0\./, '$1.');
 };
 
 test('20,000 random amounts to the cent add and subtract exactly', () => {

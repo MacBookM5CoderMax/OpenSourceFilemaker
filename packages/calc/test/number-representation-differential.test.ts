@@ -13,7 +13,7 @@ const formatAt = (scaled: bigint, scale: bigint): string => {
   const whole = magnitude / scale;
   const places = scale.toString().length - 1;
   const fraction = (magnitude % scale).toString().padStart(places, '0').replace(/0+$/, '');
-  return `${negative ? '-' : ''}${whole}${fraction ? `.${fraction}` : ''}`;
+  return `${negative ? '-' : ''}${whole === 0n && fraction ? '' : whole}${fraction ? `.${fraction}` : ''}`;
 };
 const format = (scaled: bigint) => formatAt(scaled, SCALE);
 const longDecimal = (value: bigint) => {
@@ -109,7 +109,7 @@ test('number operators and functions agree with a seeded scaled-integer oracle',
     const increment = b / SCALE;
     check('SerialIncrement', `SerialIncrement ( "${serial}" ; ${increment} )`, String(serial + increment).padStart(serial.toString().length, '0'), i);
   }
-  assert.equal(evaluate('Sum ( 0.1234567890123456 )'), '0.1234567890123456');
+  assert.equal(evaluate('Sum ( 0.1234567890123456 )'), '.1234567890123456');
   assert.equal(evaluate('Average ( 100000000000000000007 ; 100000000000000000008 )'), '100000000000000000000');
   assert.deepEqual(Object.fromEntries(disagreements), {}, `differential disagreements: ${JSON.stringify(Object.fromEntries(disagreements))}`);
 });
@@ -117,7 +117,7 @@ test('number operators and functions agree with a seeded scaled-integer oracle',
 test('a decimal literal shows without trailing zeros, as a number does', () => {
   assert.equal(evaluate('1.50'), '1.5');
   assert.equal(evaluate('2.0'), '2');
-  assert.equal(evaluate('.5'), '0.5');
+  assert.equal(evaluate('.5'), '.5');
   assert.equal(evaluate('1.20 & "x"'), '1.2x');
   assert.equal(evaluate('GetAsText ( 100.00 )'), '100');
   assert.equal(evaluate('Let ( x = 1.50 ; x )'), '1.5');

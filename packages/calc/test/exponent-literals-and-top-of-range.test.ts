@@ -28,12 +28,12 @@ test('a whole number written with an exponent keeps every digit, as one written 
 });
 
 test('numbers written with an exponent that are not whole numbers, or that are small, are unchanged', () => {
-  assert.equal(f('1e-7 * 3'), '0.0000003');
+  assert.equal(f('1e-7 * 3'), '.0000003');
   assert.equal(f('1.5e3'), '1500');
   assert.equal(f('1.25e1 + 1'), '13.5');
   assert.equal(f('2e15 + 1'), '2000000000000001');
   assert.equal(f('1e22'), '1' + '0'.repeat(22));
-  assert.equal(f('1.5e-30 * 2'), '0.' + '0'.repeat(29) + '3');
+  assert.equal(f('1.5e-30 * 2'), '.' + '0'.repeat(29) + '3');
   assert.equal(f('1e399'), '1' + '0'.repeat(399));
   assert.equal(f('1e399 * 10'), '?');
   assert.equal(f('1e400'), '?');

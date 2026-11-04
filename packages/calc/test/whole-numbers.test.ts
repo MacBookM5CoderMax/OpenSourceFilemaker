@@ -20,7 +20,7 @@ test('text of digits counts as a whole number, and such numbers compare digit fo
 });
 
 test('numbers that fit a double are unchanged, and past 400 digits it is "?"', () => {
-  assert.equal(t('0.1 + 0.2'), '0.3');
+  assert.equal(t('0.1 + 0.2'), '.3');
   assert.equal(t('2 + 3'), '5');
   assert.equal(t('9007199254740991 + 1'), '9007199254740992');
   assert.equal(t('10000000000 * 10000000000'), '100000000000000000000');

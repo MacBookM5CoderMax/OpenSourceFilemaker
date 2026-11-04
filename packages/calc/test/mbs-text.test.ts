@@ -183,7 +183,7 @@ test('MBS Text: accents, ASCII, distances, sound and file types', () => {
   assert.equal(mbs('Text.FilterASCII', 'Wörld ‘x’ ½ ¶'), "World 'x' 1/2 ");
   assert.ok(Math.abs(Number(mbs('Text.JaroWinklerDistance', 'Hello', 'Hallo')) - 0.12) < 0.001);
   assert.equal(mbs('Text.JaroWinklerDistance', 'same', 'same'), '0');
-  assert.equal(mbs('Text.LevenshteinDistance', 'Hello', 'Hallo'), '0.2');
+  assert.equal(mbs('Text.LevenshteinDistance', 'Hello', 'Hallo'), '.2');
   assert.throws(() => MBS_TEXT['text.levenshteindistance'](['x'.repeat(6000), 'y'.repeat(6000)]), /too long/);
   // The Mayers sound alike, as the page says; Robert and Rupert are Soundex's own example.
   assert.deepEqual(['Mayer', 'Maier', 'Meyer', 'Meier'].map((n) => mbs('Text.SoundEx', n)), ['M600', 'M600', 'M600', 'M600']);

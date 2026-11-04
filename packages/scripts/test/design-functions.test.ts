@@ -41,7 +41,7 @@ before(() => {
     field: { tableOccurrenceId: to(table), tableOccurrence: table, fieldId: fid(table, name), field: name, display: 'edit', repetitions: 1, ...extra },
   });
   store.applyDesign([{ op: 'updateLayout', layout: 'Customers', design: { objects: [
-    { ...field(1, 'Customers', 'Name', { left: 36, top: 48, right: 295, bottom: 65 }), name: 'nameField' },
+    { ...field(1, 'Customers', 'Name', { left: 0.5, top: 48, right: 295, bottom: 65 }), name: 'nameField' },
     field(2, 'Customers', 'Phones', { left: 36, top: 70, right: 200, bottom: 130 }, { repetitions: 2, display: 'radio', valueListId: kinds }),
     field(3, 'Customers', 'id', { left: 300, top: 48, right: 340, bottom: 65 }, { display: 'popup', valueList: 'Kinds' }),
     { ...base, id: 10, kind: 'tab-control', type: 11, name: 'tabs', bounds: { left: 20, top: 150, right: 500, bottom: 400 }, children: [
@@ -99,7 +99,7 @@ test('FieldStyle, FieldRepetitions and FieldBounds describe a field on a layout'
   assert.equal(await run('FieldStyle ( "C" ; "Customers" ; "id" )'), 'Popupmenu Kinds');
   assert.equal(await run('FieldRepetitions ( "C" ; "Customers" ; "Phones" )'), '2 vertical');
   assert.equal(await run('FieldRepetitions ( "C" ; "Customers" ; "Name" )'), '1 vertical');
-  assert.equal(await run('FieldBounds ( "C" ; "Customers" ; "Name" )'), '36 48 295 65 0');
+  assert.equal(await run('FieldBounds ( "C" ; "Customers" ; "Name" )'), '.5 48 295 65 0');
   assert.equal(await run('FieldBounds ( "C" ; "Customers" ; "Invoices::Total" )'), '30 180 100 197 0');
   assert.equal(await run('FieldBounds ( "C" ; "Customers" ; "Today" )'), '', 'not on the layout');
 });

@@ -7,13 +7,13 @@ import { evaluateText } from '../src/index.ts';
 const e = (f: string) => evaluateText(f);
 
 test('sums, differences and products of short decimals are exact', () => {
-  assert.equal(e('0.7 + 0.1'), '0.8');
-  assert.equal(e('1 - 0.9'), '0.1');
+  assert.equal(e('0.7 + 0.1'), '.8');
+  assert.equal(e('1 - 0.9'), '.1');
   assert.equal(e('4.35 * 100'), '435');
   assert.equal(e('1.1 * 1.1'), '1.21');
   assert.equal(e('100 * 1.07'), '107');
   assert.equal(e('0.3 / 0.1'), '3');
-  assert.equal(e('10 ^ -2'), '0.01');
+  assert.equal(e('10 ^ -2'), '.01');
 });
 
 test('comparisons and rounding follow', () => {
@@ -27,9 +27,9 @@ test('comparisons and rounding follow', () => {
 });
 
 test('a result that needs all its digits keeps them', () => {
-  assert.equal(e('1 / 3'), '0.3333333333333333');
+  assert.equal(e('1 / 3'), '.3333333333333333');
   assert.equal(e('2 / 3 * 3'), '2');
-  assert.equal(e('1 / 3 + 0.1'), '0.4333333333333333');
+  assert.equal(e('1 / 3 + 0.1'), '.4333333333333333');
   assert.equal(e('2 ^ 0.5'), '1.414213562373095');
   assert.equal(e('Sqrt ( 2 ) * Sqrt ( 2 )'), '2');
 });

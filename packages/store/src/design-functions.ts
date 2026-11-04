@@ -2,7 +2,7 @@
 // and a layout's. What only a script's window knows (WindowNames, GetRecordIDsFromFoundSet, a value list's related
 // values for the window's record) stays with the caller.
 
-import { asText, text, formatNumber, type Value } from '../../calc/src/index.ts';
+import { asText, text, formatNumber, fileMakerNumberText, type Value } from '../../calc/src/index.ts';
 import type { Field, LayoutObject, Table } from '../../fmp12/src/index.ts';
 import { dataSourceFile } from './import.ts';
 import type { Store } from './store.ts';
@@ -87,7 +87,7 @@ export function designFunction(store: Store, name: string, args: Value[], here: 
       if (!hit) return undefined;
       const o = hit.object;
       const f = o.field!;
-      if (name.toLowerCase() === 'fieldbounds') return text([o.bounds.left, o.bounds.top, o.bounds.right, o.bounds.bottom, 0].map((n) => formatNumber(n)).join(' '));
+      if (name.toLowerCase() === 'fieldbounds') return text([o.bounds.left, o.bounds.top, o.bounds.right, o.bounds.bottom, 0].map((n) => fileMakerNumberText(formatNumber(n))).join(' '));
       // The orientation isn't decoded from files; FileMaker's default is vertical.
       if (name.toLowerCase() === 'fieldrepetitions') return text(`${Math.max(1, f.repetitions || 1)} vertical`);
       const style = FIELD_STYLES[f.display] ?? 'Standard';

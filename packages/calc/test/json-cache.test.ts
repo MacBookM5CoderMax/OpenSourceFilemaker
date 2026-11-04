@@ -33,10 +33,10 @@ test('a JSON text built a key at a time reads the same as the text parsed afresh
   assert.ok(cached.length > 64, 'long enough to be kept');
 });
 
-test('a number rounded when written reads back as written', () => {
+test('JSON writes a valid number and reading it back uses calculation number text', () => {
   const json = set('{"pad":"' + 'x'.repeat(80) + '"}', 'n', '0.1 + 0.2', 'JSONNumber');
   assert.match(json, /"n":0\.3\b/);
-  assert.equal(get(json, 'n'), '0.3');
+  assert.equal(get(json, 'n'), '.3');
   assert.equal(evaluateText(`JSONGetElement ( ${lit(json)} ; "n" ) = .3`), '1');
 });
 
