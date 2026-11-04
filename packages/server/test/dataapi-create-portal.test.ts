@@ -122,3 +122,19 @@ test('a create the account can\'t then see still answers with its recordId and m
   assert.equal(contacts(), before + 1);
   assert.equal(store.get('Contacts', Number(r.body.response.recordId)).portalData![portal()][0]['Calls::Note'], 'n');
 });
+
+test('a new portal row can\'t set a field that prohibits modification unless prohibitmode is "script"', async () => {
+  const auth = await login('Admin');
+  const calls = () => store.findIds('Calls').length;
+  const before = calls();
+  const contactsBefore = contacts();
+  const made = await call(L, auth, 'POST', { fieldData: { Id: 60 }, portalData: { [portal()]: [{ 'Calls::Note': 'n', 'Calls::Locked': 'typed' }] } });
+  assert.equal(made.body.messages[0].code, '201', JSON.stringify(made.body.messages));
+  assert.equal(contacts(), contactsBefore, 'the record and its rows are made together or not at all');
+  const edit = await call(`${L}/1`, auth, 'PATCH', { fieldData: {}, portalData: { [portal()]: [{ 'Calls::Note': 'n', 'Calls::Locked': 'typed' }] } });
+  assert.equal(edit.body.messages[0].code, '201', JSON.stringify(edit.body.messages));
+  assert.equal(calls(), before);
+  const script = await call(`${L}/1`, auth, 'PATCH', { fieldData: {}, portalData: { [portal()]: [{ 'Calls::Note': 'n', 'Calls::Locked': 'by script' }] }, options: { prohibitmode: 'script' } });
+  assert.equal(script.status, 200, JSON.stringify(script.body.messages));
+  assert.equal(calls(), before + 1);
+});

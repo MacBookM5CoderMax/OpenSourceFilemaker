@@ -10572,7 +10572,9 @@ export class Store {
         } else {
           const keys = relatedKeys(this, plan.occurrenceId, row, p.occurrenceId);
           if (!keys) throw new StoreError(102, `Cannot create records through portal "${name}"`);
-          // The match fields are filled in, not typed: "prohibit modification" doesn't stop them.
+          // What the person typed into the new row follows data-entry rules, as on a record made directly: a field that
+          // prohibits modification refuses it. The match fields are filled in, not typed: "prohibit modification" doesn't stop them.
+          if (opts.dataEntry) occ.store.checkEntry(occ.store.table(rinfo), values);
           const made = occ.store.create(rinfo, { ...values, ...Object.fromEntries(Object.entries(keys).map(([k, v]) => [k, v ?? ''])) }, { ...opts, dataEntry: false });
           created.push({ portal: p.name, ...(made.id ? { id: made.id } : {}), recordId: made.recordId, modId: made.modId });
         }
