@@ -8,6 +8,12 @@ Use this guide when a repeatable task should run from a button or a supported ev
 4. In the layout or trigger settings, choose the event that matches the task. Avoid triggers that write data on every keystroke unless that is necessary.
 5. Test both the normal path and a cancelled or invalid input path.
 
+## File transaction trigger
+
+In **Design → Layouts → File options**, choose an **OnWindowTransaction script** and, if needed, enter its **Field name**. The script runs after a window commits a new, changed or deleted record. It receives a JSON script parameter grouped by file and base table, for example `{"Invoices":{"Invoice":[["New",42,{"user":"a"}]]}}`. Each entry contains the operation, numeric record ID and context field content. A blank Field name selects a field named `OnWindowTransaction` in each base table; a table without it contributes `""`. Valid JSON field content is inserted as a JSON value, while other content is a string. A transaction produces one summary after Commit Transaction succeeds. Reverts produce none. Direct Data API record writes do not run this trigger; a script launched through the Data API can run it when it commits.
+
+The reader does not decode this File Options setting from an `.fmp12` file, so set it again in design mode after conversion. Entry order is unverified; Tabularius uses commit order. A context field hidden from the running account contributes `""` (inferred). A commit made by the trigger script runs the trigger again after that invocation returns, never while it is still running (inferred). <!-- known-difference: Scripts and script steps ;; OnWindowTransaction is not decoded from .fmp12, entry order is unverified, and hidden context fields plus trigger-script commits use inferred behavior ;; A converted file needs the trigger set in design mode; entries use commit order, hidden fields give empty text, and trigger commits run after the invocation returns ;; A sample file with the option and a native run of these cases -->
+
 ## Worked example
 
 This adds a script that calculates a fixed label and returns it. It is synthetic and safe to run; it does not send mail or make a network request.

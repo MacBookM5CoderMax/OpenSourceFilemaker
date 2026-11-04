@@ -222,7 +222,7 @@ export interface Design {
   containerDirectories?: { id: number; path: string; fields: { table: string; field: string; tableId: number; fieldId: number }[] }[];
   containerData?: { files: number; bytes: number };
   /** File Options: the layout the file opens on and its open and close scripts. */
-  fileOptions?: { openLayoutId?: number; openLayout?: string; onFirstWindowOpen?: { scriptId: number; script?: string }; onLastWindowClose?: { scriptId: number; script?: string }; onWindowOpen?: { scriptId: number; script?: string }; onWindowClose?: { scriptId: number; script?: string } };
+  fileOptions?: { openLayoutId?: number; openLayout?: string; onFirstWindowOpen?: { scriptId: number; script?: string }; onLastWindowClose?: { scriptId: number; script?: string }; onWindowOpen?: { scriptId: number; script?: string }; onWindowClose?: { scriptId: number; script?: string }; onWindowTransaction?: { scriptId: number; script?: string }; onWindowTransactionField?: string };
   valueLists: DesignValueList[];
   customFunctions: { id: number; name: string; parameters: string[]; formula?: string; language?: 'javascript' }[];
   /** Deleted tables and fields whose data is kept, newest first. */

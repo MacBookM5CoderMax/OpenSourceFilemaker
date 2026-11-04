@@ -140,7 +140,7 @@ export type DesignOp =
   /** The menu set the file opens with; null for FileMaker's standard menus. */
   | { op: 'setDefaultMenuSet'; menuSet: Ref | null }
   /** File Options: the scripts run when the first window opens and the last closes, and the layout the file opens on (null clears one). */
-  | { op: 'setFileOptions'; onFirstWindowOpen?: Ref | null; onLastWindowClose?: Ref | null; onWindowOpen?: Ref | null; onWindowClose?: Ref | null; openLayout?: Ref | null }
+  | { op: 'setFileOptions'; onFirstWindowOpen?: Ref | null; onLastWindowClose?: Ref | null; onWindowOpen?: Ref | null; onWindowClose?: Ref | null; onWindowTransaction?: Ref | null; onWindowTransactionField?: string | null; openLayout?: Ref | null }
   /** A theme: a copy of another (`from`), or one with no styles yet. */
   | { op: 'createTheme'; id?: number; name: string; from?: Ref; /** Manage Themes' Import: a theme exported from another file. */ content?: ThemeContent }
   /** Rename a theme, or change the look of its elements: element type (see STYLE_ELEMENTS) -> rules, null to drop them. */
@@ -844,7 +844,7 @@ function renameDataSource(s: Schema, id: number, from: string, to: string): void
 function renameItem(st: DesignState, kind: 'layout' | 'script', id: number, from: string, to: string): void {
   const s = st.schema;
   if (kind === 'script' && s.fileOptions) {
-    for (const key of ['onFirstWindowOpen', 'onLastWindowClose', 'onWindowOpen', 'onWindowClose'] as const) {
+    for (const key of ['onFirstWindowOpen', 'onLastWindowClose', 'onWindowOpen', 'onWindowClose', 'onWindowTransaction'] as const) {
       const ref = s.fileOptions[key];
       if (ref?.scriptId === id) ref.script = to;
     }
@@ -2219,6 +2219,7 @@ function applyOneOp(st: DesignState, op: DesignOp, deleted?: DeletedLookup): { o
     case 'deleteScript': {
       const script = find(s.scripts, op.script, 'Script', 104);
       renameItem(st, 'script', script.id, script.name, '<Script Missing>');
+      if (s.fileOptions?.onWindowTransaction?.scriptId === script.id) delete s.fileOptions.onWindowTransaction;
       retire(s, 'scripts', script.id);
       rekeyAccess(st, 'script', script.name, null);
       s.scripts.splice(s.scripts.indexOf(script), 1);
@@ -2300,7 +2301,7 @@ function applyOneOp(st: DesignState, op: DesignOp, deleted?: DeletedLookup): { o
     case 'setFileOptions': {
       const fo = { ...s.fileOptions };
       const resolved: Record<string, unknown> = { op: 'setFileOptions' };
-      for (const key of ['onFirstWindowOpen', 'onLastWindowClose', 'onWindowOpen', 'onWindowClose'] as const) {
+      for (const key of ['onFirstWindowOpen', 'onLastWindowClose', 'onWindowOpen', 'onWindowClose', 'onWindowTransaction'] as const) {
         const ref = op[key];
         if (ref === undefined) continue;
         if (ref === null) delete fo[key];
@@ -2309,6 +2310,14 @@ function applyOneOp(st: DesignState, op: DesignOp, deleted?: DeletedLookup): { o
           fo[key] = { scriptId: sc.id, script: sc.name };
         }
         resolved[key] = ref === null ? null : fo[key]!.scriptId;
+      }
+      if (op.onWindowTransactionField !== undefined) {
+        if (op.onWindowTransactionField === null) delete fo.onWindowTransactionField;
+        else {
+          if (typeof op.onWindowTransactionField !== 'string') throw invalid('OnWindowTransaction Field name must be text');
+          fo.onWindowTransactionField = op.onWindowTransactionField.trim();
+        }
+        resolved.onWindowTransactionField = op.onWindowTransactionField;
       }
       if (op.openLayout !== undefined) {
         if (op.openLayout === null) {

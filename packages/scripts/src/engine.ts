@@ -1239,6 +1239,19 @@ export function redactorCacheStats(store: Store): { nameTableBuilds: number; fie
     formulaParses: entry.cache.formulaParses, inspections: entry.cache.inspections } : undefined;
 }
 
+interface WindowTransactionEntry {
+  info: LayoutInfo;
+  id: number;
+  operation: 'New' | 'Modified' | 'Deleted';
+  context?: unknown;
+  canceled?: boolean;
+}
+
+interface WindowTransactionBatch {
+  entries: WindowTransactionEntry[];
+  byRecord: Map<string, WindowTransactionEntry>;
+}
+
 export class ScriptEngine {
   private readonly session: ScriptSession;
   /** This run's global field values, for the store to read and write. */
@@ -1656,6 +1669,7 @@ export class ScriptEngine {
         if (halted && (this.stopSignal?.aborted || this.budgetHalted)) this.revert(w);
         else this.commitOrDrop(w, true);
       }
+      if (this.rootFrame && !this.tx) await this.drainWindowTransactions(this.rootFrame);
     } catch (e) {
       // A run that fails leaves no record locked behind it.
       for (const w of this.windows) this.unlockEdits(w);
@@ -2271,7 +2285,7 @@ export class ScriptEngine {
    * Not while that same trigger is running: an OnRecordCommit script that sets a field and commits, or an OnLayoutExit
    * script that goes to a layout, would otherwise set itself off without end.
    */
-  private async runTrigger(f: Frame, w: Window, triggers: ScriptTrigger[] | undefined, where: string, event: string, mode: TriggerMode): Promise<Value | undefined> {
+  private async runTrigger(f: Frame, w: Window, triggers: ScriptTrigger[] | undefined, where: string, event: string, mode: TriggerMode, suppliedParameter?: Value): Promise<Value | undefined> {
     const t = triggers?.find((x) => x.event === event && (x.modes ?? ['browse']).includes(mode));
     const script = t && w.store.schema.scripts.find((x) => x.id === t.scriptId);
     if (!t || !script) return undefined;
@@ -2291,7 +2305,7 @@ export class ScriptEngine {
     const caller = this.current;
     try {
       // In the window's file, on its record (a step may have gone to another file's window).
-      const parameter = t.parameter ? this.eval(w.store === f.store ? f : { ...f, store: w.store, window: w, locals: new Map() }, t.parameter) : text('');
+      const parameter = suppliedParameter ?? (t.parameter ? this.eval(w.store === f.store ? f : { ...f, store: w.store, window: w, locals: new Map() }, t.parameter) : text(''));
       this.actions.push({ step: 'Script Trigger', script: script.name, event });
       running.add(key);
       // A trigger runs in its own window (Get ( WindowName ), Get ( LayoutName ), the found set), also when another
@@ -2317,21 +2331,76 @@ export class ScriptEngine {
 
   /** File Options triggers of a window running now (file and event), so an OnWindowOpen script that opens a window doesn't set itself off again. */
   private readonly runningWindowTriggers = new Set<string>();
+  private readonly windowTransactionEntries = new Map<Window, WindowTransactionBatch>();
+  private readonly transactionEntries: WindowTransactionBatch = { entries: [], byRecord: new Map() };
+  private readonly uncommittedTransactionRecords = new Set<string>();
+  private rootFrame?: Frame;
+
+  private transactionRecordKey(info: LayoutInfo, id: number): string {
+    return `${info.owner.name}\u0000${info.table}\u0000${id}`;
+  }
+
+  private transactionContext(win: Window, info: LayoutInfo, id: number): unknown {
+    const wanted = win.store.schema.fileOptions?.onWindowTransactionField || 'OnWindowTransaction';
+    const field = info.owner.schema.tables.find((t) => t.name === info.table)?.fields.find((f) => f.name.toLowerCase() === wanted.toLowerCase());
+    if (!field || this.privileges?.in(info.owner).field(info.table, field.name) === 'none') return '';
+    try {
+      const content = info.owner.get(info, id, 'iso', undefined, this.privileges, { fields: [field.name], fresh: true }).fieldData[field.name];
+      const value = content === undefined || content === null ? '' : String(content);
+      try { return JSON.parse(value); } catch { return value; }
+    } catch (e) {
+      rethrowExecutionRefusal(e);
+      return '';
+    }
+  }
+
+  private noteTransactionWrite(info: LayoutInfo, id: number, operation: 'New' | 'Modified' | 'Deleted', context?: unknown): void {
+    const win = this.current;
+    if (!win.store.schema.fileOptions?.onWindowTransaction) return;
+    const entries: WindowTransactionBatch = this.tx?.window === win ? this.transactionEntries : (this.windowTransactionEntries.get(win) ?? { entries: [], byRecord: new Map() });
+    if (entries !== this.transactionEntries) this.windowTransactionEntries.set(win, entries);
+    const key = this.transactionRecordKey(info, id);
+    const prior = entries.byRecord.get(key);
+    if (prior) {
+      if (operation === 'Deleted' && prior.operation === 'New') { prior.canceled = true; entries.byRecord.delete(key); }
+      else if (operation === 'Deleted') { prior.operation = operation; prior.context = context; }
+      return;
+    }
+    const entry = { info, id, operation, ...(operation === 'Deleted' ? { context } : {}) };
+    entries.entries.push(entry);
+    entries.byRecord.set(key, entry);
+  }
+
+  private async drainWindowTransactions(f: Frame): Promise<void> {
+    for (;;) {
+      const next = [...this.windowTransactionEntries].find(([w, entries]) => entries.byRecord.size && !this.runningWindowTriggers.has(`${w.store.name}\u0000OnWindowTransaction`));
+      if (!next) return;
+      const [win, entries] = next;
+      this.windowTransactionEntries.delete(win);
+      const summary: Record<string, Record<string, [string, number, unknown][]>> = Object.create(null);
+      for (const e of entries.entries) {
+        if (e.canceled) continue;
+        const file = summary[e.info.owner.name] ??= Object.create(null);
+        (file[e.info.table] ??= []).push([e.operation, e.id, e.operation === 'Deleted' ? e.context : this.transactionContext(win, e.info, e.id)]);
+      }
+      await this.runWindowTrigger(f, win, 'OnWindowTransaction', JSON.stringify(summary));
+    }
+  }
 
   /**
    * The file's OnWindowOpen or OnWindowClose script (File Options), run in window `w` as the file's own windows run
    * their layout triggers: its result, or undefined when the file has none, the account can't run it, or it is
    * already running.
    */
-  private async runWindowTrigger(f: Frame, w: Window, event: 'OnWindowOpen' | 'OnWindowClose'): Promise<Value | undefined> {
-    const option = w.store.schema.fileOptions?.[event === 'OnWindowOpen' ? 'onWindowOpen' : 'onWindowClose'];
+  private async runWindowTrigger(f: Frame, w: Window, event: 'OnWindowOpen' | 'OnWindowClose' | 'OnWindowTransaction', parameter?: string): Promise<Value | undefined> {
+    const option = w.store.schema.fileOptions?.[event === 'OnWindowOpen' ? 'onWindowOpen' : event === 'OnWindowClose' ? 'onWindowClose' : 'onWindowTransaction'];
     const key = `${w.store.name}\u0000${event}`;
     if (!option || this.runningWindowTriggers.has(key) || this.unwinding) return undefined;
     const caller = this.current;
     this.current = w;
     this.runningWindowTriggers.add(key);
     try {
-      return await this.runTrigger(f, w, [{ event, scriptId: option.scriptId }], '', event, 'browse');
+      return await this.runTrigger(f, w, [{ event, scriptId: option.scriptId }], '', event, 'browse', parameter === undefined ? undefined : text(parameter));
     } finally {
       this.runningWindowTriggers.delete(key);
       this.current = this.windows.includes(caller) ? caller : this.current;
@@ -3534,6 +3603,9 @@ export class ScriptEngine {
     const tx = this.tx;
     if (!tx) return;
     this.tx = undefined;
+    this.transactionEntries.entries.length = 0;
+    this.transactionEntries.byRecord.clear();
+    this.uncommittedTransactionRecords.clear();
     const slot = writer.getStore()?.transaction;
     if (slot?.open === tx.state) slot.open = undefined;
     for (const w of this.windows) {
@@ -3572,18 +3644,35 @@ export class ScriptEngine {
   private via(info: LayoutInfo): Store {
     const file = info.layoutId !== undefined && info.home ? info.home : info.owner;
     const tx = this.tx;
-    if (!tx || tx.window === this.current) return file;
+    const trackTransactions = !!this.current.store.schema.fileOptions?.onWindowTransaction;
+    if (!trackTransactions && (!tx || tx.window === this.current)) return file;
     const writes = new Set(['create', 'duplicate', 'update', 'delete', 'setContainer']);
     return new Proxy(file, { get: (target, property, receiver) => {
       const value = Reflect.get(target, property, receiver);
-      if (typeof property !== 'string' || !writes.has(property) || typeof value !== 'function') return value;
+      if (typeof property !== 'string' || !writes.has(property) || typeof value !== 'function') return typeof value === 'function' ? value.bind(target) : value;
       return (...args: unknown[]) => {
         const targetInfo = args[0] as LayoutInfo;
         const id = typeof args[1] === 'number' ? args[1] : undefined;
         if (id !== undefined && this.txRecordLocked(targetInfo, id)) throw new StoreError(301, 'Record is in use by the originating transaction window');
+        const key = id === undefined ? undefined : this.transactionRecordKey(targetInfo, id);
+        const deleting = property === 'delete' && id !== undefined;
+        const before = trackTransactions && deleting && key && !this.uncommittedTransactionRecords.has(key) ? this.transactionContext(this.current, targetInfo, id!) : undefined;
         const write = () => Reflect.apply(value, target, args);
-        return targetInfo.owner.independentWindowWrite(tx.state, () => target === targetInfo.owner
-          ? write() : target.independentWindowWrite(tx.state, write));
+        const result = tx && tx.window !== this.current ? targetInfo.owner.independentWindowWrite(tx.state, () => target === targetInfo.owner
+          ? write() : target.independentWindowWrite(tx.state, write)) : write();
+        if (!trackTransactions) return result;
+        if (property === 'create' || property === 'duplicate') {
+          const made = (result as { recordId: number }).recordId;
+          if (property === 'create' && (args[2] as { uncommitted?: boolean } | undefined)?.uncommitted) this.uncommittedTransactionRecords.add(this.transactionRecordKey(targetInfo, made));
+          else this.noteTransactionWrite(targetInfo, made, 'New');
+        } else if (key && property === 'update') {
+          const firstCommit = (args[4] as { firstCommit?: boolean } | undefined)?.firstCommit;
+          if (firstCommit && this.uncommittedTransactionRecords.delete(key)) this.noteTransactionWrite(targetInfo, id!, 'New');
+          else if (!this.uncommittedTransactionRecords.has(key)) this.noteTransactionWrite(targetInfo, id!, 'Modified');
+        } else if (key && property === 'delete') {
+          if (!this.uncommittedTransactionRecords.delete(key)) this.noteTransactionWrite(targetInfo, id!, 'Deleted', before);
+        } else if (key && property === 'setContainer' && !this.uncommittedTransactionRecords.has(key)) this.noteTransactionWrite(targetInfo, id!, 'Modified');
+        return result;
       };
     } });
   }
@@ -3694,6 +3783,7 @@ export class ScriptEngine {
       script, store, locals, parameter, result: text(''), window: win,
       originalLayout: win.layoutName,
     };
+    this.rootFrame ??= frame;
     const limited = this.limitedFrames.at(-1)?.limits;
     if (script.limits || limited) {
       const own = { steps: this.steps + (script.limits?.steps ?? Infinity), busy: this.busy() + (script.limits?.seconds ?? Infinity) * 1000 };
@@ -3865,6 +3955,7 @@ export class ScriptEngine {
           });
           this.canceled(script.name);
           if (jump === 'exit') {
+            if (!this.tx) await this.drainWindowTransactions(frame);
             timed(0);
             this.traceStep(script, pc, step, 0);
             return frame.result;
@@ -3918,6 +4009,7 @@ export class ScriptEngine {
         this.modified = undefined;
         if (modified?.length && !error && !this.unwinding) await this.modifyTriggers(frame, modified);
         if (!error && !QUICK_STEPS.has(step.stepId)) await this.layoutTriggers(frame, step.stepId);
+        if (!this.tx) await this.drainWindowTransactions(frame);
         if (this.unwinding) {
           if (this.unwinding.frame !== frame) return frame.result;
           next = this.unwinding.to;
@@ -4192,6 +4284,7 @@ export class ScriptEngine {
         const after = (b.commit.get(pc) ?? f.script.steps.length - 1) + 1;
         try {
           for (const w of this.windows) this.commit(w);
+          await this.drainWindowTransactions(f);
         } catch (e) {
           rethrowExecutionRefusal(e);
           if (!(e instanceof StoreError || e instanceof PrivilegeError)) throw e;
@@ -4212,6 +4305,14 @@ export class ScriptEngine {
         const slot = writer.getStore()?.transaction;
         if (slot?.open === tx.state) slot.open = undefined;
         endTransaction(tx.state, true);
+        if (tx.window.store.schema.fileOptions?.onWindowTransaction && this.transactionEntries.byRecord.size) {
+          const entries: WindowTransactionBatch = this.windowTransactionEntries.get(tx.window) ?? { entries: [], byRecord: new Map() };
+          for (const entry of this.transactionEntries.entries) entries.entries.push(entry);
+          for (const [key, entry] of this.transactionEntries.byRecord) entries.byRecord.set(key, entry);
+          this.windowTransactionEntries.set(tx.window, entries);
+        }
+        this.transactionEntries.entries.length = 0;
+        this.transactionEntries.byRecord.clear();
         return undefined;
       }
       case 207: { // Revert Transaction [ Condition ; Error code ; Error message ]

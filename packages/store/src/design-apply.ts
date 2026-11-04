@@ -447,7 +447,7 @@ export function planDesignApply(files: Map<string, string>, src: DesignSource, o
   let relText: string | undefined;
   const exportedPathOf = (o: { kind: string; id: number }) => [...objects].find(([, x]) => x.kind === o.kind && x.id === o.id)![0];
   if (opts.remove && !files.has('file.json') && ![...files.keys()].some((p) => KINDS.some((k) => p.startsWith(k)))) throw new DesignApplyError('--remove needs a design folder; this one has no design files, and everything would be deleted');
-  const byKind: Record<string, DesignOp[]> = { table: [], occurrence: [], relationship: [], customFunction: [], valueList: [], script: [], layout: [] };
+  const byKind: Record<string, DesignOp[]> = { table: [], occurrence: [], relationship: [], customFunction: [], valueList: [], script: [], layout: [], fileOptions: [] };
   const push = (kind: string, op: DesignOp, line: string) => { byKind[kind].push(op); plan.lines.push(line); };
 
   for (const [path, raw] of [...files].sort(([a], [b]) => a.localeCompare(b))) {
@@ -457,7 +457,39 @@ export function planDesignApply(files: Map<string, string>, src: DesignSource, o
     const kindOf = path.startsWith('tables/') ? 'table' : path.startsWith('scripts/') ? 'script' : path.startsWith('layouts/') ? 'layout' : path.startsWith('value-lists/') ? 'valueList' : path.startsWith('custom-functions/') ? 'customFunction' : undefined;
     if (!kindOf) {
       if (path === 'relationships.txt') { claimed.add(path); relText = body(text); continue; }
-      if (path === 'accounts.txt' || path === 'file.json' || path.startsWith('privilege-sets/')) plan.skipped.push(`${path}: changed, but ${path.split('/')[0].replace(/\.\w+$/, '')} aren't read back from text yet`);
+      if (path === 'file.json') {
+        let wanted: Record<string, unknown>;
+        let before: Record<string, unknown>;
+        try {
+          wanted = JSON.parse(text) as Record<string, unknown>;
+          before = JSON.parse(current.get(path) ?? '{}') as Record<string, unknown>;
+        } catch { throw fail(path, 'expected JSON'); }
+        const oldOptions = (before.fileOptions ?? {}) as Record<string, unknown>;
+        const newOptions = (wanted.fileOptions ?? {}) as Record<string, unknown>;
+        const op: Record<string, unknown> = { op: 'setFileOptions' };
+        for (const key of ['onFirstWindowOpen', 'onLastWindowClose', 'onWindowOpen', 'onWindowClose', 'onWindowTransaction']) {
+          if (stableJson(oldOptions[key]) === stableJson(newOptions[key])) continue;
+          const ref = newOptions[key] as { scriptId?: unknown; script?: unknown } | undefined;
+          const value = ref?.scriptId ?? ref?.script;
+          if (ref && typeof value !== 'number' && typeof value !== 'string') throw fail(path, `${key} needs a script ID or name`);
+          op[key] = ref ? value : null;
+        }
+        if (stableJson(oldOptions.onWindowTransactionField) !== stableJson(newOptions.onWindowTransactionField)) {
+          const value = newOptions.onWindowTransactionField;
+          if (value !== undefined && value !== null && typeof value !== 'string') throw fail(path, 'onWindowTransactionField needs text');
+          op.onWindowTransactionField = value ?? null;
+        }
+        if (Object.keys(op).length > 1) push('fileOptions', op as DesignOp, 'Change File Options (file.json)');
+        const other = (v: Record<string, unknown>) => ({ ...v, fileOptions: { ...(v.fileOptions as Record<string, unknown> | undefined),
+          ...Object.fromEntries(['onFirstWindowOpen', 'onLastWindowClose', 'onWindowOpen', 'onWindowClose', 'onWindowTransaction', 'onWindowTransactionField'].map((key) => [key, undefined])) } });
+        if (stableJson(other(before)) !== stableJson(other(wanted))) {
+          plan.skipped.push('file.json: other file settings are not read back from text yet');
+        } else if (Object.keys(op).length === 1 && stableJson(before) === stableJson(wanted)) {
+          plan.skipped.push('file.json: text formatting is not read back from text yet');
+        }
+        continue;
+      }
+      if (path === 'accounts.txt' || path.startsWith('privilege-sets/')) plan.skipped.push(`${path}: changed, but ${path.split('/')[0].replace(/\.\w+$/, '')} aren't read back from text yet`);
       continue;
     }
     const idIn = (re: RegExp, from = text) => { const m = re.exec(from); return m?.[1] === undefined ? undefined : Number(m[1]); };
@@ -536,6 +568,6 @@ export function planDesignApply(files: Map<string, string>, src: DesignSource, o
     plan.lines.push(`Remove ${o.kind === 'customFunction' ? 'custom function' : o.kind === 'valueList' ? 'value list' : o.kind} "${o.name}" (${path})`);
   }
 
-  plan.ops = [...byKind.table, ...byKind.occurrence, ...byKind.relationship, ...byKind.customFunction, ...byKind.valueList, ...byKind.script, ...byKind.layout];
+  plan.ops = [...byKind.table, ...byKind.occurrence, ...byKind.relationship, ...byKind.customFunction, ...byKind.valueList, ...byKind.script, ...byKind.layout, ...byKind.fileOptions];
   return plan;
 }

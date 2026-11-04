@@ -551,7 +551,7 @@ export function solutionIndex(store: Store): Index {
   };
   const fo = s.fileOptions;
   if (fo) {
-    for (const [key, event] of [['onFirstWindowOpen', 'OnFirstWindowOpen'], ['onLastWindowClose', 'OnLastWindowClose'], ['onWindowOpen', 'OnWindowOpen'], ['onWindowClose', 'OnWindowClose']] as const) {
+    for (const [key, event] of [['onFirstWindowOpen', 'OnFirstWindowOpen'], ['onLastWindowClose', 'OnLastWindowClose'], ['onWindowOpen', 'OnWindowOpen'], ['onWindowClose', 'OnWindowClose'], ['onWindowTransaction', 'OnWindowTransaction']] as const) {
       const t = fo[key];
       if (t) startSite({ ...triggerSite(cat, 'File Options', { event, ...t }, undefined, `File Options ${event}`), kind: 'fileOptions' });
     }

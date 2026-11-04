@@ -68,13 +68,14 @@ export function documentSolution(store: Store, opts: DocsOptions = {}): string {
   // ---- layouts
   out.push('', '## Layouts');
   const fo = s.fileOptions;
-  if (fo?.openLayout || fo?.onFirstWindowOpen?.script || fo?.onLastWindowClose?.script || fo?.onWindowOpen?.script || fo?.onWindowClose?.script) {
+  if (fo?.openLayout || fo?.onFirstWindowOpen?.script || fo?.onLastWindowClose?.script || fo?.onWindowOpen?.script || fo?.onWindowClose?.script || fo?.onWindowTransaction?.script) {
     out.push('', [fo.openLayout ? (fo.switchToLayout === false
       ? `File Options stores ${link('layout', fo.openLayout)} as the layout to switch to, but "Switch to layout" is not ticked (inferred from the file), so the file does not open on it.`
       : `The file opens on ${link('layout', fo.openLayout)}.`) : '',
       fo.onFirstWindowOpen?.script ? `When it opens, it runs ${link('script', fo.onFirstWindowOpen.script)}.` : '',
       fo.onWindowOpen?.script ? `When a window opens, it runs ${link('script', fo.onWindowOpen.script)}.` : '',
       fo.onWindowClose?.script ? `When a window closes, it runs ${link('script', fo.onWindowClose.script)}.` : '',
+      fo.onWindowTransaction?.script ? `After a window commits a record, it runs ${link('script', fo.onWindowTransaction.script)}.` : '',
       fo.onLastWindowClose?.script ? `When it closes, it runs ${link('script', fo.onLastWindowClose.script)}.` : ''].filter(Boolean).join(' '));
   }
   const runsFrom = new Map<string, string[]>();
@@ -209,6 +210,7 @@ function triggeredBy(store: Store, script: string): string[] {
   if (fo?.onLastWindowClose?.script === script) out.push('closing the file');
   if (fo?.onWindowOpen?.script === script) out.push('opening a window');
   if (fo?.onWindowClose?.script === script) out.push('closing a window');
+  if (fo?.onWindowTransaction?.script === script) out.push('committing a window transaction');
   for (const d of store.designs().layouts) {
     for (const t of d.triggers ?? []) if (t.script === script) out.push(`${t.event} on layout ${link('layout', d.name)}`);
     walk(d.objects, (o) => {

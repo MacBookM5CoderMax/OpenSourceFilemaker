@@ -136,6 +136,8 @@ export async function listDatabases(): Promise<string[]> {
 export class Api {
   readonly db: string;
   readonly token: string;
+  /** The app window whose record operation this request belongs to. */
+  windowKey?: () => string;
   /** Called when the session expires, so the app can show the login again. */
   onExpired: () => void = () => {};
   /** Set when the account owes a password change (policy or Account Options): only changePassword works until it is done. */
@@ -361,7 +363,7 @@ export class Api {
       && new TextEncoder().encode(encoded).length < 60_000;
     const r = await fetch(path, {
       method,
-      headers: { authorization: `Bearer ${this.token}`, 'x-tabularius-client': 'web', ...(window ? { 'x-tabularius-window': window } : {}), ...(body === undefined || raw ? {} : { 'content-type': 'application/json' }) },
+      headers: { authorization: `Bearer ${this.token}`, 'x-tabularius-client': 'web', ...(window ? { 'x-tabularius-window': window } : {}), ...(this.windowKey ? { 'x-tabularius-window-id': this.windowKey() } : {}), ...(body === undefined || raw ? {} : { 'content-type': 'application/json' }) },
       body: encoded,
       signal,
       keepalive: keepalive || smallEdit,
@@ -398,7 +400,7 @@ export class Api {
     return `/fmi/data/vLatest/databases/${enc(this.db)}/layouts/${enc(layout)}`;
   }
 
-  menu(): Promise<{ database: string; version?: string; commit?: string; account?: string; scripts?: ScriptsMenuEntry[]; layouts: MenuItem[]; openLayout?: string; onFirstWindowOpen?: boolean; onLastWindowClose?: boolean; onWindowOpen?: boolean; onWindowClose?: boolean; customMenus?: boolean; menuCommands?: 'all' | 'editing' | 'minimum'; printing?: false; exporting?: false }> {
+  menu(): Promise<{ database: string; version?: string; commit?: string; account?: string; scripts?: ScriptsMenuEntry[]; layouts: MenuItem[]; openLayout?: string; onFirstWindowOpen?: boolean; onLastWindowClose?: boolean; onWindowOpen?: boolean; onWindowClose?: boolean; onWindowTransaction?: boolean; customMenus?: boolean; menuCommands?: 'all' | 'editing' | 'minimum'; printing?: false; exporting?: false }> {
     return this.call('GET', `/tabularius/app/v1/databases/${enc(this.db)}/layouts`);
   }
 

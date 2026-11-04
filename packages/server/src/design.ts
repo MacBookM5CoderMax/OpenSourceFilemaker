@@ -222,6 +222,8 @@ function fileOptionsOf(store: Store) {
     ...(fo.onLastWindowClose ? { onLastWindowClose: script(fo.onLastWindowClose) } : {}),
     ...(fo.onWindowOpen ? { onWindowOpen: script(fo.onWindowOpen) } : {}),
     ...(fo.onWindowClose ? { onWindowClose: script(fo.onWindowClose) } : {}),
+    ...(fo.onWindowTransaction ? { onWindowTransaction: script(fo.onWindowTransaction) } : {}),
+    ...(fo.onWindowTransactionField !== undefined ? { onWindowTransactionField: fo.onWindowTransactionField } : {}),
   };
 }
 

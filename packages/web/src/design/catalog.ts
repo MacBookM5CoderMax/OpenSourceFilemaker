@@ -211,6 +211,8 @@ function fileOptions(studio: Studio): HTMLElement {
     el.addEventListener('change', () => set(key, el.value));
     return field(label, el);
   };
+  const contextField = h('input', { value: fo.onWindowTransactionField ?? '', placeholder: 'OnWindowTransaction', 'aria-label': 'Field name' }) as HTMLInputElement;
+  contextField.addEventListener('change', () => void studio.apply([{ op: 'setFileOptions', onWindowTransactionField: contextField.value }], 'File options saved'));
   return h('details', { class: 'd-report' }, h('summary', {}, 'File options'),
     h('div', { class: 'd-stack' },
       pick(layouts, fo.openLayoutId, 'openLayout', 'Switch to layout on open'),
@@ -218,6 +220,8 @@ function fileOptions(studio: Studio): HTMLElement {
       pick(scripts, fo.onLastWindowClose?.scriptId, 'onLastWindowClose', 'OnLastWindowClose script'),
       pick(scripts, fo.onWindowOpen?.scriptId, 'onWindowOpen', 'OnWindowOpen script'),
       pick(scripts, fo.onWindowClose?.scriptId, 'onWindowClose', 'OnWindowClose script'),
+      pick(scripts, fo.onWindowTransaction?.scriptId, 'onWindowTransaction', 'OnWindowTransaction script'),
+      field('Field name', contextField),
       button('Make a landing page for each privilege set…', () => void makeLandingPages(studio), { title: 'A modern layout per privilege set, and the script that sends each account to its own when the file opens' })));
 }
 

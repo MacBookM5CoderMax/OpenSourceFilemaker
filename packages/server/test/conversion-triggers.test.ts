@@ -47,7 +47,7 @@ test('unnamed layout and object triggers are counted by event and layout', (t) =
   assert.equal(warning.count, 3);
   assert.deepEqual(warning.where, ['Layout "Orders"', 'Layout "Details"']);
   assert.match(warning.what, /3 triggers on 2 layouts have an event this build cannot name and will not run; open the layout in FileMaker to see which they are, then set them again in design mode/);
-  assert.ok(guide.todo.includes('If the original file used OnWindowOpen or OnWindowClose triggers, set them again in File options (design mode); they are not read from the file.'));
+  assert.ok(guide.todo.includes('If the original file used OnWindowOpen, OnWindowClose or OnWindowTransaction triggers, set them again in File options (design mode); they are not read from the file.'));
   assert.match(guide.text, /Script triggers the reader cannot name yet/);
 
   designs.layouts[0].triggers!.push({ event: 'Event109', scriptId: 1 });
@@ -55,7 +55,7 @@ test('unnamed layout and object triggers are counted by event and layout', (t) =
   designs.layouts[0].triggers!.pop();
 
   schema.fileOptions = { onWindowOpen: { scriptId: 1 } };
-  assert.ok(!conversionGuide(store, [], report).todo.some((item) => item.includes('OnWindowOpen or OnWindowClose')));
+  assert.ok(conversionGuide(store, [], report).todo.some((item) => item.includes('OnWindowClose or OnWindowTransaction')));
 
   // Locations are bounded, while the total layout count still includes all affected layouts.
   for (let id = 4; id <= 7; id++) {

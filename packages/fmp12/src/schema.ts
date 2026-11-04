@@ -466,6 +466,10 @@ export interface FileOptions {
    */
   onWindowOpen?: { scriptId: number; script?: string };
   onWindowClose?: { scriptId: number; script?: string };
+  /** Set in design mode; the source file's option bytes are not decoded. */
+  onWindowTransaction?: { scriptId: number; script?: string };
+  /** Blank selects the base table field named OnWindowTransaction. */
+  onWindowTransactionField?: string;
   /** The layout stored for "Switch to layout"; the option may be unticked even when this is set. */
   openLayoutId?: number;
   openLayout?: string;

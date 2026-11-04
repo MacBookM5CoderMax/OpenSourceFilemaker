@@ -27,8 +27,8 @@ test('new stores add AI policy and file identity; compat metadata otherwise stay
     assert.equal(rows(native).find((r) => r.key === 'aiPolicy')?.json, 'true');
     for (const path of [compat, explicitCompat, native]) assert.match(JSON.parse(rows(path).find((r) => r.key === 'fileId')!.json) as string, /^[0-9a-f-]{36}$/);
     const before = rows(compat).filter((r) => r.key !== 'aiPolicy' && r.key !== 'fileId').map(({ key, json }) => [key, key === 'source' ? json.replace(/"createdAt":"[^"]+"/, '"createdAt":"<timestamp>"') : json]);
-    // DESIGN_VERSION 49 adds shadow-table metadata to the design format.
-    assert.equal(createHash('sha256').update(JSON.stringify(before)).digest('hex'), '52c13d79487d623583454eebc75f6b9a832143235fc8cfeb34eb4e9a2002db7e');
+    // DESIGN_VERSION 49 adds shadow-table metadata and 50 the OnWindowTransaction file option to the design format.
+    assert.equal(createHash('sha256').update(JSON.stringify(before)).digest('hex'), '93cc74e7fce839a8c98899caadd054dab1d051ca64d9859c2ca7c34b5691aa74');
     assert.equal(rows(compat).some((r) => r.key === 'fileMode'), false);
     assert.equal(rows(explicitCompat).find((r) => r.key === 'fileMode')?.json, '"compat"');
     assert.equal(rows(native).find((r) => r.key === 'fileMode')?.json, '"native"');

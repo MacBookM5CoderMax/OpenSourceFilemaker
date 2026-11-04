@@ -340,9 +340,12 @@ export function conversionGuide(store: Store, hosted: string[] = [], report: Con
   if (none.length) todo.push(`Give ${none.join(', ')} a password (tabularius passwd, or Manage Security): accounts without one can't sign in.`);
   if (blank.size) todo.push(`${r.accounts.blankPassword.join(', ')} ${blank.size === 1 ? 'has' : 'have'} the file's empty password, which works only from the server's own computer: set a password.`);
   if (r.privileges.withoutSet.length) todo.push(`Give ${r.privileges.withoutSet.join(', ')} a privilege set: without one they have no access.`);
-  if ((store.schema.scripts.length || store.schema.layouts.length) && !store.schema.fileOptions?.onWindowOpen && !store.schema.fileOptions?.onWindowClose) {
-    // Whether either trigger existed in the source file is unverified: the reader does not decode them.
-    todo.push('If the original file used OnWindowOpen or OnWindowClose triggers, set them again in File options (design mode); they are not read from the file.');
+  const undecodedWindows = (['onWindowOpen', 'onWindowClose', 'onWindowTransaction'] as const)
+    .filter((key) => !store.schema.fileOptions?.[key]).map((key) => `On${key.slice(2)}`);
+  if ((store.schema.scripts.length || store.schema.layouts.length) && undecodedWindows.length) {
+    // Whether these triggers existed in the source file is unverified: the reader does not decode them.
+    const names = undecodedWindows.length === 1 ? undecodedWindows[0] : `${undecodedWindows.slice(0, -1).join(', ')} or ${undecodedWindows.at(-1)}`;
+    todo.push(`If the original file used ${names} triggers, set them again in File options (design mode); they are not read from the file.`);
   }
 
   const rank = (x: GuideItem) => SEVERITIES.indexOf(x.severity);

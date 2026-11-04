@@ -85,7 +85,7 @@ export function layoutTargets(schema: Schema): LayoutTarget[] {
 }
 
 /** Bumped when the layout designs or schema a store keeps change shape; older stores are refreshed on open. */
-export const DESIGN_VERSION = 49; // 49: SQL shadow-table metadata and mirror; earlier entries are documented in design history.
+export const DESIGN_VERSION = 50; // 50: OnWindowTransaction file option; 49: SQL shadow-table metadata and mirror; earlier entries are documented in design history.
 
 /** Design changes made in Tabularius (design mode), replayed when the design is re-read from the .fmp12. */
 export const DESIGN_LOG = '_fm_design_log';

@@ -1076,6 +1076,7 @@ class Session implements Host {
 
   constructor(api: Api) {
     this.api = api;
+    api.windowKey = () => this.frontWindow().id;
     this.locks = new Locks(api);
     this.presence = new Presence(api);
     // Closing the tab says so at once, rather than leaving others seeing this window until it times out.
@@ -1681,6 +1682,7 @@ class Session implements Host {
     const remembered = from?.layout ?? linkedState.layout ?? (opening ? menu.openLayout : sessionStorageGet(`tabularius.layout.${this.api.db}`));
     this.onLastWindowClose = !!menu.onLastWindowClose;
     this.onWindowClose = !!menu.onWindowClose;
+    this.onWindowTransaction = !!menu.onWindowTransaction;
     const first = this.menuItems.find((m) => m.open && m.name === remembered) ?? this.menuItems.find((m) => m.open);
     if (linkedState.layout && !this.menuItems.some((m) => m.open && m.name === linkedState.layout)) {
       this.content.replaceChildren(h('p', { class: 'empty', role: 'status' }, 'This link is not available to your account.'));
@@ -3889,12 +3891,13 @@ class Session implements Host {
 
   /** Whether the file has an OnWindowClose script to run when a window is closed from the menu or File > Close. */
   private onWindowClose = false;
+  private onWindowTransaction = false;
 
   /**
    * Runs one of the file's own triggers (File Options). The result is false when the script exited with False, which
    * only OnWindowClose honours: the window then stays open (Claris: a trigger that runs before its event can cancel it).
    */
-  private async fileTrigger(event: 'OnFirstWindowOpen' | 'OnLastWindowClose' | 'OnWindowOpen' | 'OnWindowClose'): Promise<boolean> {
+  private async fileTrigger(event: 'OnFirstWindowOpen' | 'OnLastWindowClose' | 'OnWindowOpen' | 'OnWindowClose' | 'OnWindowTransaction'): Promise<boolean> {
     try {
       const r = await this.runButton(undefined, undefined, event);
       return !(event === 'OnWindowClose' && r && r.result.trim() !== '' && Number(r.result) === 0);
@@ -4268,6 +4271,9 @@ class Session implements Host {
       } catch {
         // Offline, or the record went: the rows stay as they were drawn.
       }
+    }
+    if ((committed !== undefined || made === 'done') && made !== 'later' && this.onWindowTransaction && !this.api.isOffline && !this.api.copyOnly) {
+      await this.fileTrigger('OnWindowTransaction');
     }
     return true;
   }

@@ -90,7 +90,7 @@ export const CHANGES = `Design changes, applied in order as one unit (all or non
 - {op:"createDataSource", name, paths: ["file:Name"]} (Manage External Data Sources: a FileMaker file, paths tried in order:
   file:, fmnet:/host/Name, filemac:, filewin:; or one odbc:DSN entry) / updateDataSource (dataSource; name?, paths?) / deleteDataSource
   (refused while occurrences or scripts use it). Nothing connects out: a file reference finds the hosted database of that name.
-- {op:"setFileOptions", openLayout?, onFirstWindowOpen?: script, onLastWindowClose?: script, onWindowOpen?: script, onWindowClose?: script} (File Options; null clears one)
+- {op:"setFileOptions", openLayout?, onFirstWindowOpen?: script, onLastWindowClose?: script, onWindowOpen?: script, onWindowClose?: script, onWindowTransaction?: script, onWindowTransactionField?: string} (File Options; null clears one)
 - {op:"createContainerDirectory", path} / {op:"updateContainerDirectory", directory: id, path} / {op:"deleteContainerDirectory", directory}
   (Manage Containers base directories, relative to the database's folder; 0 is the default; refused while fields store there)
 - {op:"createLayout", name, occurrence, design?} (no design: a generated form) / {op:"updateLayout", layout, name?, occurrence?, design?} / deleteLayout

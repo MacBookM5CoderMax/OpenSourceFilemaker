@@ -1,4 +1,5 @@
 import { clientAddress } from './client-address.ts';
+import { beforeWebDelete, noteWebWrite, stageWebNew, unstageWebNew, type WindowWrite } from './window-transaction.ts';
 import { assertAiPolicy } from './ai-policy.ts';
 // FileMaker Data API–compatible REST endpoints, so existing integrations can
 // point at Tabularius instead of FileMaker Server. Paths, envelopes and error
@@ -113,6 +114,9 @@ export interface Session {
   scripts: ScriptSession;
   /** How the session logged in: the Data API, or Tabularius's web client. */
   client: 'rest' | 'web';
+  /** Server-derived record writes awaiting this web session's next window commit. */
+  windowTransactions?: Map<string, WindowWrite[]>;
+  windowTransactionStaged?: Set<string>;
   /** Signed in through an identity provider: the external account (group or email) whose privilege set applies. */
   via?: string;
   /** Stable identity of the external mapping selected at sign-in. */
@@ -2354,9 +2358,13 @@ export class DataApi {
               store.updatePortals(layout, made.recordId, portalData, [], { account, privileges, justCreated: true, ...entry, dateOrder: writeDateOrder(store, body.dateformats) });
               return made;
             });
+            if (uncommitted) stageWebNew(session, req, store, r.recordId);
+            else noteWebWrite(session, req, store, layout, r.recordId, 'New', privileges);
             return { ...(r.id ? { id: r.id } : {}), recordId: String(r.recordId), modId: String(r.modId) };
           }
           const r = create();
+          if (uncommitted) stageWebNew(session, req, store, r.recordId);
+          else noteWebWrite(session, req, store, layout, r.recordId, 'New', privileges);
           return { ...(r.id ? { id: r.id } : {}), recordId: String(r.recordId), modId: String(r.modId) };
         }, (r) => [Number(r.recordId)]);
       }
@@ -2399,7 +2407,10 @@ export class DataApi {
             // Tabularius's web client committing a record made with options.uncommitted: its validation, required fields included.
             const firstCommit = (body.options as { firstCommit?: unknown } | undefined)?.firstCommit === true;
             if (!Object.keys(fieldData).length && !firstCommit) return { modId: String(store.get(layout, id, 'us', undefined, privileges, { fields: [] }).modId), ...created };
-            return { modId: String(store.update(layout, id, fieldData, modId, { account, privileges, ...entry, dateOrder: writeDateOrder(store, body.dateformats), ...(styles ? { styles } : {}), ...(firstCommit ? { firstCommit: true } : {}) }).modId), ...created };
+            const updated = store.update(layout, id, fieldData, modId, { account, privileges, ...entry, dateOrder: writeDateOrder(store, body.dateformats), ...(styles ? { styles } : {}), ...(firstCommit ? { firstCommit: true } : {}) });
+            if (firstCommit && unstageWebNew(session, req, store, id)) noteWebWrite(session, req, store, layout, id, 'New', privileges);
+            else if (!session.windowTransactionStaged?.has(`${store.name}\u0000${String(req.headers['x-tabularius-window-id'] ?? '')}\u0000${id}`)) noteWebWrite(session, req, store, layout, id, 'Modified', privileges);
+            return { modId: String(updated.modId), ...created };
           }), () => [id]);
         }
         // POST .../records/{id}: duplicate it.
@@ -2408,12 +2419,15 @@ export class DataApi {
           checkCurrent();
           return withScripts(scriptArgs(body), () => {
             const r = store.duplicate(layout, id, { account, privileges });
+            noteWebWrite(session, req, store, layout, r.recordId, 'New', privileges);
             return { ...(r.id ? { id: r.id } : {}), recordId: String(r.recordId), modId: String(r.modId) };
           }, (r) => [Number(r.recordId)]);
         }
         if (method === 'DELETE') {
           return withScripts(scriptArgs(url.searchParams), () => {
+            const before = session.client === 'web' && store.schema.fileOptions?.onWindowTransaction ? beforeWebDelete(store, layout, id, privileges) : undefined;
             store.delete(layout, id, { privileges });
+            if (!unstageWebNew(session, req, store, id)) noteWebWrite(session, req, store, layout, id, 'Deleted', privileges, before);
             return {};
           }, () => []);
         }

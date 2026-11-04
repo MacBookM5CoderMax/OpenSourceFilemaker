@@ -108,6 +108,7 @@ against a FileMaker Server before relying on them.
 | `Content-Type: multipart/form-data` for container uploads | ✓ | | [globals, scripts and container upload](../packages/server/test/dataapi-shapes.test.ts) |
 | `X-FM-Data-OAuth-Request-Id`, `X-FM-Data-OAuth-Identifier` | ✓ | See OAuth above. | [Data API: an app signs someone in through the provider and logs in with the identifier, once](../packages/server/test/dataapi-oauth.test.ts) *(fixture-dependent; unverified offline)*<br>[Data API: the providers are listed where FileMaker Server lists them](../packages/server/test/dataapi-oauth.test.ts) *(fixture-dependent; unverified offline)* | <!-- known-difference-ok: this marks a limit of local test evidence, not a separate product difference -->
 | ＋ `X-Tabularius-OTP` | ＋ | The six-digit code for an account with two-factor sign-in. | [an account with two-factor needs a valid code to sign in](../packages/server/test/two-factor.test.ts) *(fixture-dependent; unverified offline)* | <!-- known-difference-ok: this marks a limit of local test evidence, not a separate product difference -->
+| ＋ `X-Tabularius-Window-Id` | ＋ | The web client sends its window ID with record writes and commit-trigger calls. The server groups successful writes for that signed-in session and window, then builds the OnWindowTransaction parameter from those records. A Data API caller that omits this header does not queue a web-window notification. | [web commit uses only server receipts](../packages/server/test/on-window-transaction.test.ts) |
 
 ## Error codes and HTTP statuses
 

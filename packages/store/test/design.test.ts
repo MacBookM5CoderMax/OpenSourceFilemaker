@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { canCreateRelated, createStore, designReport, importFmp12, upgradeDesigns, parseScriptText, Store, StoreError } from '../src/index.ts';
+import { canCreateRelated, createStore, designReport, designText, diffDesigns, planDesignApply, importFmp12, upgradeDesigns, parseScriptText, Store, StoreError } from '../src/index.ts';
 import { scriptText } from '../../fmp12/src/index.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
@@ -591,6 +591,39 @@ test('File Options: open layout and window scripts, by id so renames follow', ()
   store.applyDesign([{ op: 'setFileOptions', onWindowOpen: null, onWindowClose: null }]);
   assert.equal(store.schema.fileOptions, undefined);
   store.close();
+});
+
+test('File Options: OnWindowTransaction and its context field persist and follow script changes', () => {
+  const store = blank('TransactionOpts');
+  store.applyDesign([{ op: 'createScript', name: 'Audit', text: 'Beep' },
+    { op: 'setFileOptions', onWindowTransaction: 'Audit', onWindowTransactionField: 'Audit Context' }]);
+  assert.equal(store.schema.fileOptions?.onWindowTransaction?.script, 'Audit');
+  assert.equal(store.schema.fileOptions?.onWindowTransactionField, 'Audit Context');
+  store.applyDesign([{ op: 'updateScript', script: 'Audit', name: 'Audit Renamed' }]);
+  assert.equal(store.schema.fileOptions?.onWindowTransaction?.script, 'Audit Renamed');
+  store.applyDesign([{ op: 'deleteScript', script: 'Audit Renamed' }]);
+  assert.equal(store.schema.fileOptions?.onWindowTransaction, undefined);
+  store.close();
+});
+
+test('OnWindowTransaction File Options export, diff and import through design text', () => {
+  const store = blank('TransactionDesignText');
+  try {
+    store.applyDesign([{ op: 'createScript', name: 'Audit', text: 'Beep' }]);
+    const source = () => ({ schema: store.schema, layouts: store.designs().layouts, accounts: store.accounts(), privilegeSets: store.privilegeSets() });
+    const before = designText(source());
+    const desired = new Map(before);
+    const file = JSON.parse(desired.get('file.json')!);
+    file.fileOptions = { onWindowTransaction: { scriptId: store.schema.scripts[0].id, script: 'Audit' }, onWindowTransactionField: 'Trace' };
+    desired.set('file.json', JSON.stringify(file, null, 2) + '\n');
+    const plan = planDesignApply(desired, source());
+    assert.deepEqual(plan.ops, [{ op: 'setFileOptions', onWindowTransaction: store.schema.scripts[0].id, onWindowTransactionField: 'Trace' }]);
+    store.applyDesign(plan.ops);
+    assert.deepEqual(JSON.parse(designText(source()).get('file.json')!).fileOptions, file.fileOptions);
+    assert.match(diffDesigns(before, designText(source())).lines.join('\n'), /onWindowTransaction/);
+  } finally {
+    store.close();
+  }
 });
 
 test('Manage Containers: base directories and fields stored externally (kept for FileMaker)', () => {

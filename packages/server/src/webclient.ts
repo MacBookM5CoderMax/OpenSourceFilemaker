@@ -59,6 +59,7 @@ import { loadAsset, sendAsset, type Asset } from './static-cache.ts';
 import { Derived, WebBuild, staticImports, versionPage, versionScript } from './web-build.ts';
 import { journalDeletes, journalFieldChange, snapshotField, snapshotFields, snapshotRows } from './cleanup.ts';
 import { said } from './said.ts';
+import { takeWebWrites } from './window-transaction.ts';
 import { sameSecret } from './secrets.ts';
 
 /** Titles of FileMaker's standard menus, by the "based on" id custom menus store. */
@@ -161,7 +162,7 @@ const MAX_FILE = 50 * 1024 * 1024;
 const VALUE_LIST_MAX = 5000;
 /** What a WebDirect-style link may carry: a script name, a parameter and variables, each cut to this size. */
 /** The triggers of File Options a client runs by name, and the option each one is. */
-const FILE_TRIGGERS = { OnFirstWindowOpen: 'onFirstWindowOpen', OnLastWindowClose: 'onLastWindowClose', OnWindowOpen: 'onWindowOpen', OnWindowClose: 'onWindowClose' } as const;
+const FILE_TRIGGERS = { OnFirstWindowOpen: 'onFirstWindowOpen', OnLastWindowClose: 'onLastWindowClose', OnWindowOpen: 'onWindowOpen', OnWindowClose: 'onWindowClose', OnWindowTransaction: 'onWindowTransaction' } as const;
 const URL_SCRIPT_LIMIT = { name: 256, value: 10_000, variables: 20 };
 
 type PickedFile = { filename: string; data: Uint8Array } | undefined;
@@ -512,7 +513,7 @@ export class WebClient {
         else if (m[3] === 'history') send(200, this.history(store, session, layout, body, privileges));
         else if (m[3] === 'value-list') send(200, this.valueListFor(store, body, privileges));
         else if (m[3] === 'revert') send(200, this.revert(store, session, layout, body, privileges));
-        else send(200, await this.button(store, session, layout, body, privileges, clientAddress(req)));
+        else send(200, await this.button(store, session, layout, body, privileges, clientAddress(req), req));
       } else {
         send(200, m[2] === undefined ? this.menu(store, privileges, session.account) : this.layout(store, decodeURIComponent(m[2]), privileges, session, requestHostName(req)));
       }
@@ -799,6 +800,7 @@ export class WebClient {
       ...(options?.onLastWindowClose ? { onLastWindowClose: true } : {}),
       ...(options?.onWindowOpen ? { onWindowOpen: true } : {}),
       ...(options?.onWindowClose ? { onWindowClose: true } : {}),
+      ...(options?.onWindowTransaction ? { onWindowTransaction: true } : {}),
       // A file with menu sets can switch to one with Install Menu Set, even when it opens on the standard menus.
       ...(store.schema.customMenuSets?.length ? { customMenus: true } : {}),
       // Available menu commands for this account: the client offers fewer below 'all'.
@@ -1797,7 +1799,7 @@ export class WebClient {
    * button's record (or portal row) with the client's found set, with the
    * button's script parameter evaluated in that context.
    */
-  private async button(store: Store, session: Session, layout: string, body: Record<string, unknown>, privileges: Privileges, from: string) {
+  private async button(store: Store, session: Session, layout: string, body: Record<string, unknown>, privileges: Privileges, from: string, req: IncomingMessage) {
     const info = store.layout(layout);
     const raw = info.layoutId !== undefined ? store.design(info.layoutId) : undefined;
     const design = raw && this.resolveDesign(store, raw);
@@ -1892,6 +1894,11 @@ export class WebClient {
       : store.findIds(info, { query: queryOf(body.query), sort: sortOf(body.sort), privileges, dateOrder: store.fileMode === 'native' ? 'ISO' : 'MDY' });
     const w = { mode: String(body.mode ?? 'browse'), view: String(body.view ?? 'form'), foundCount: ids.length, totalCount: num0(body.totalCount), number: recordId === undefined ? undefined : ids.indexOf(recordId) + 1 };
     let parameter = fromPage ? said(body.parameter) : '';
+    if (event === 'OnWindowTransaction' && fileTrigger) {
+      if (session.client !== 'web') throw new ApiError(9, 'A signed-in web client session is required', 403);
+      parameter = takeWebWrites(session, req, store, privileges) ?? '';
+      if (!parameter) throw new ApiError(3, 'There is no committed window transaction to report', 400);
+    }
     if (action?.parameter && !timer?.file && !fromPage) {
       // A button in a portal row evaluates its parameter on that row's record.
       const row = body.row as { portal?: string; recordId?: unknown } | undefined;
