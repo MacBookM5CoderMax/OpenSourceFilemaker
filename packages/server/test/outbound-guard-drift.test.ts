@@ -42,6 +42,7 @@ const ALLOWED: Record<string, Allowed> = {
   'packages/cli/src/doctor.ts': { reason: 'the doctor command checking the certificate at the address the administrator typed after --url (or the server on this machine): run from a command line, never by a script or a request' },
   'packages/cli/src/exposure.ts': { reason: 'the doctor command\'s exposure check: it tries this computer\'s own addresses and ports, and the address the administrator typed after --url, to say who can reach the server; run from a command line, never by a script or a request' },
   'packages/calc/src/javascript.ts': { reason: 'the JavaScript sandbox: this file REPLACES net, tls, dgram, dns and http2 connect functions with a refusal; it makes no connection' },
+  'packages/store/src/ess/mysql.ts': { reason: 'the MySQL and MariaDB client for an ESS data source: the server is the administrator\'s; the socket\'s lookup is the guard\'s and a host written as an address is checked with hostRefusal', guardedBy: /socketLookup\(/ },
 };
 
 function sources(dir: string): string[] {

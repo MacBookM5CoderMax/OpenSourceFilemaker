@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**274 entries in 34 areas.** Unverified: 137. Waiting on: 24 on a sample file, 162 on a FileMaker run or Design Report, 15 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
+**275 entries in 35 areas.** Unverified: 138. Waiting on: 24 on a sample file, 162 on a FileMaker run or Design Report, 15 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -65,6 +65,12 @@ part of it.
 | Refresh timing, whole-table row limit, record-id reuse and ESS error number are unverified against FileMaker | An ESS read may refresh or fail differently and report another error number | A comparison of refresh, row-cap and failure cases in FileMaker | [docs/guides/running/external-sql-sources.md › Refresh and limits](guides/running/external-sql-sources.md) — “…The FileMaker error number for an ESS failure is unverified; this core consistently uses 8310. Refresh timing,…” |
 | Shadow-table writes are unavailable in this core, while FileMaker ESS can write supported sources | A write accepted in FileMaker fails here | A write and transaction comparison after the SQL write item is implemented | [docs/guides/running/external-sql-sources.md › Writes](guides/running/external-sql-sources.md) — “Creating, editing and deleting rows of a shadow table are refused with an actionable error in this core. The…” |
 | Network SQL clients and their Connections binding are not present in this core, and behavior against a real server is unverified | A solution using an ODBC source cannot yet connect to one of the four network databases | A run against each real database after its client and Connections binding are added | [docs/guides/running/external-sql-sources.md › What works in this core](guides/running/external-sql-sources.md) — “The store has a SQL driver interface and a worker bridge. The supplied sqlite driver can use a separate SQLite…” |
+
+## External SQL Sources
+
+| What differs or is unknown | How it shows | What would settle it | Where it is written |
+| --- | --- | --- | --- |
+| The standalone MySQL/MariaDB ESS client is not yet connected to ODBC data sources, and its protocol behavior is unverified against a real server | An ODBC data source cannot use this client yet | Register the client with the ESS bridge and test it against real MySQL and MariaDB servers | [docs/design-mode.md › Changes](design-mode.md) — “The standalone MySQL/MariaDB ESS client is not yet connected to odbc:DSN data sources. Its protocol behavior…” |
 
 ## File system races
 

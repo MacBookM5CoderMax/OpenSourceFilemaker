@@ -525,6 +525,8 @@ of changes applies as one unit: if any fails, none are made.
 | `createScript`, `updateScript`, `deleteScript` | `text`: the script as FileMaker's workspace shows it, one step per line (see below); or `steps: [{name or stepId, params, enabled}]`. `includeInMenu: false` leaves it out of the Scripts menu. |
 | `setOrder` | `list`: `layouts` or `scripts`; `order`: a tree of `{item}`, `{folder, children}` and `{separator: true}`, as Manage Layouts and Manage Scripts show it. Items left out go at the end. A `{item}` or `{folder}` can set `includeInMenu`; otherwise moving an entry keeps its setting. In the web client, drag entries in the list (onto a folder's name to put them inside). |
 
+The standalone MySQL/MariaDB ESS client is not yet connected to `odbc:DSN` data sources. Its protocol behavior is unverified against a real server. <!-- known-difference: External SQL Sources ;; The standalone MySQL/MariaDB ESS client is not yet connected to ODBC data sources, and its protocol behavior is unverified against a real server ;; An ODBC data source cannot use this client yet ;; Register the client with the ESS bridge and test it against real MySQL and MariaDB servers -->
+
 ### Reviewing staged changes
 
 Changes can wait for a look before they are applied. `POST …/databases/<db>/pending` with `{"changes": [...]}` stages
