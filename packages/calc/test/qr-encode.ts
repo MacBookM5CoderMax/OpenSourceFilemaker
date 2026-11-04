@@ -150,6 +150,16 @@ export function png(pic:{width:number;height:number;rgba:Uint8Array}):Uint8Array
   return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',ihdr),chunk('IDAT',deflateSync(raw)),chunk('IEND',Buffer.alloc(0))]);
 }
 
+/** Small valid IDAT with caller supplied IHDRs, for header validation and budget tests. */
+export function pngWithIhdrs(sizes:readonly [number,number][],afterData=false,beforeHeader=false,extraChunks=0):Uint8Array{
+  const chunk=(kind:string,body:Uint8Array)=>{const head=Buffer.alloc(8),tail=Buffer.alloc(4);head.writeUInt32BE(body.length,0);head.write(kind,4,'ascii');tail.writeUInt32BE(crc([head.subarray(4),body]),0);return Buffer.concat([head,body,tail]);};
+  const headers=sizes.map(([w,h])=>{const body=Buffer.alloc(13);body.writeUInt32BE(w,0);body.writeUInt32BE(h,4);body[8]=8;body[9]=2;return chunk('IHDR',body);});
+  const idat=chunk('IDAT',deflateSync(Buffer.from([0,255,255,255])));
+  const ordered=afterData?[headers[0],idat,...headers.slice(1)]:[...headers,idat];
+  const extras=Array.from({length:extraChunks},()=>chunk('tEXt',Buffer.from([97,0,98])));
+  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),...(beforeHeader?[chunk('tEXt',Buffer.from([97,0,98]))]:[]),ordered[0],...extras,...ordered.slice(1),chunk('IEND',Buffer.alloc(0))]);
+}
+
 const ZZ=[0,1,8,16,9,2,3,10,17,24,32,25,18,11,4,5,12,19,26,33,40,48,41,34,27,20,13,6,7,14,21,28,35,42,49,56,57,50,43,36,29,22,15,23,30,37,44,51,58,59,52,45,38,31,39,46,53,60,61,54,47,55,62,63];
 /** Minimal baseline JPEG writer: a shared quantiser and canonical DC/AC tables. */
 export function jpeg(pic:{width:number;height:number;rgba:Uint8Array},sampling:'444'|'422'|'420'='444',restart=0):Uint8Array{

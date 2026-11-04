@@ -1,8 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { NameTable, evaluateText, type CalcContext, type Value } from '../src/index.ts';
-import { decodeImage } from '../src/image-decode.ts';
-import { encodeQr, picture, png, jpeg, type Level, type Mode } from './qr-encode.ts';
+import { decodeImage, decodePng, decodeGif, decodeJpeg } from '../src/image-decode.ts';
+import { imageInfo } from '../src/image-info.ts';
+import { ResourceLimitError } from '../src/work-budget.ts';
+import { Env } from '../src/evaluate.ts';
+import { encodeQr, picture, png, pngWithIhdrs, jpeg, type Level, type Mode } from './qr-encode.ts';
 
 function read(bytes:Uint8Array):string {
   const field:Value={type:'container',value:'scan.png',data:bytes};
@@ -89,6 +92,84 @@ test('a picture at the pixel cap is refused by the calculation work budget befor
   assert.ok(performance.now()-started<3000,'the pixel limit must be checked before allocating the picture');
 });
 
+test('duplicate or misplaced PNG IHDR is rejected by the size gate and decoder',()=>{
+  for(const bytes of [pngWithIhdrs([[1,1],[7000,8000]]),pngWithIhdrs([[1,1],[7000,8000]],true),pngWithIhdrs([[1,1]],false,true)]){
+    assert.equal(imageInfo(bytes),undefined);
+    assert.equal(decodePng(bytes),undefined);
+    assert.equal(read(bytes),'');
+  }
+});
+
+test('PNG metadata scanning obeys the work-budget callback',()=>{
+  const bytes=pngWithIhdrs([[1,1]],false,false,300);
+  let calls=0;
+  assert.throws(()=>imageInfo(bytes,()=>{calls++;throw new ResourceLimitError('too much work');}),/Calculation resource limit: too much work/);
+  assert.equal(calls,1);
+});
+
+test('a 36-megapixel PNG header exhausts the work budget before decode',()=>{
+  // Its IDAT only holds one pixel, so entering the decoder would return empty instead.
+  const bytes=pngWithIhdrs([[6000,6000]]);
+  const original=Env.prototype.checkWorkBudget;
+  const charges:number[]=[];
+  Env.prototype.checkWorkBudget=function(n=1){
+    charges.push(n);
+    if(charges.length===2)throw new ResourceLimitError('too much work');
+    return original.call(this,n);
+  };
+  const started=performance.now();
+  try{
+    assert.throws(()=>read(bytes),/Calculation resource limit: too much work/);
+    assert.deepEqual(charges.length,2,'only the input-byte charge and dimension charge run');
+    assert.ok(charges[1]>=5_000_000,'the dimension charge must exceed the work limit');
+    assert.ok(performance.now()-started<250,'the header charge must refuse before decoding');
+  }finally{Env.prototype.checkWorkBudget=original;}
+  // Damaging the compressed stream makes a missing precharge cheap to test as well.
+  const damaged=Buffer.from(bytes);
+  damaged[damaged.indexOf('IDAT')+4]=0;
+  assert.throws(()=>read(damaged),/Calculation exceeds the supported work budget/);
+});
+
+test('an unsupported image format still returns empty without a decode charge',()=>{
+  const bmp=Buffer.alloc(54);
+  bmp.write('BM');bmp.writeUInt32LE(40,14);bmp.writeUInt32LE(6000,18);bmp.writeUInt32LE(6000,22);bmp.writeUInt16LE(1,26);
+  assert.equal(imageInfo(bmp)?.width,6000);
+  assert.equal(read(bmp),'');
+});
+
+test('PNG row metering stops decoding on the first refused row',()=>{
+  const bytes=png({width:64,height:80,rgba:new Uint8Array(64*80*4)});
+  let rows=0,units=0;
+  assert.throws(()=>decodePng(bytes,(n)=>{rows++;units+=n;if(rows===4)throw new ResourceLimitError('too much work');}),/Calculation resource limit: too much work/);
+  assert.equal(rows,4);
+  assert.ok(rows<80 && units>=rows);
+});
+
+test('ReadQRCode propagates a work refusal from PNG decoding',()=>{
+  const bytes=png({width:64,height:80,rgba:new Uint8Array(64*80*4)});
+  const original=Env.prototype.checkWorkBudget;
+  let calls=0;
+  Env.prototype.checkWorkBudget=function(n=1){
+    calls++;
+    if(calls===4)throw new ResourceLimitError('too much work');
+    return original.call(this,n);
+  };
+  try{
+    assert.throws(()=>read(bytes),/Calculation resource limit: too much work/);
+    assert.equal(calls,4);
+  }finally{Env.prototype.checkWorkBudget=original;}
+});
+
+test('GIF and JPEG decoding use the dimensions reported by imageInfo and meter work',()=>{
+  const gif=Buffer.from('47494638396101000100800000000000ffffff2c00000000010001000002024401003b','hex');
+  gif.writeUInt16LE(3,6);gif.writeUInt16LE(3,8);
+  assert.deepEqual([decodeGif(gif)?.width,decodeGif(gif)?.height],[imageInfo(gif)?.width,imageInfo(gif)?.height]);
+  assert.throws(()=>decodeGif(gif,()=>{throw new ResourceLimitError('too much work');}),/Calculation resource limit: too much work/);
+  const bytes=jpeg(picture(encodeQr('METER',1,0,0),21));
+  assert.deepEqual([decodeJpeg(bytes,true)?.width,decodeJpeg(bytes,true)?.height],[imageInfo(bytes)?.width,imageInfo(bytes)?.height]);
+  assert.throws(()=>decodeJpeg(bytes,true,()=>{throw new ResourceLimitError('too much work');}),/Calculation resource limit: too much work/);
+});
+
 test('random numeric, alphanumeric and byte payloads round-trip through PNG and baseline JPEG',()=>{
   let state=0x12345678;
   const random=(alphabet:string,length:number)=>Array.from({length},()=>{
@@ -145,4 +226,14 @@ test('kanji mode and default byte fallback read their encoded text',()=>{
   assert.equal(read(png(picture(latin1,21))),'\u0080A');
   const declaredUtf8=encodeQr('\u0080A',1,0,0,'byte',true,undefined,invalidUtf8);
   assert.equal(read(png(picture(declaredUtf8,21))),'');
+});
+
+test('imageInfo reads the size of a file given only its first bytes (a container head), as before', () => {
+  const whole = png(picture(new Uint8Array(21 * 21), 21, 8));
+  const head = whole.subarray(0, 60);
+  assert.ok(head.length < whole.length);
+  const info = imageInfo(head);
+  assert.ok(info, 'a PNG prefix with a complete header has a size');
+  assert.equal(imageInfo(whole)?.width, info.width);
+  assert.equal(imageInfo(whole)?.height, info.height);
 });

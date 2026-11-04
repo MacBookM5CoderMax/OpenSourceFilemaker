@@ -1265,12 +1265,21 @@ eager('ReadQRCode', 1, 1, (v, env) => {
   const c = v[0];
   if (c.type !== 'container' || !c.data?.length) return EMPTY;
   env.checkWorkBudget(Math.ceil(c.data.length / 1024));
-  const info = imageInfo(c.data);
+  const info = imageInfo(c.data, (n) => env.checkWorkBudget(n));
   if (!info || info.width * info.height > 60_000_000) return EMPTY;
-  const jpeg = c.data[0] === 0xff && c.data[1] === 0xd8;
-  env.checkWorkBudget(Math.ceil(info.width * info.height * (jpeg ? 1 : 1 / 8)));
+  const bytes = c.data;
+  if (!((bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47)
+    || (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46)
+    || (bytes[0] === 0xff && bytes[1] === 0xd8))) return EMPTY;
+  // A few-megapixel QR photo fits; a 36 MP decode is refused before native inflation or plane allocation.
+  env.checkWorkBudget(Math.ceil(info.width * info.height / 4));
   let pic: ReturnType<typeof decodeImage>;
-  try { pic = decodeImage(c.data, true); } catch { return EMPTY; }
+  try { pic = decodeImage(c.data, true, (n) => env.checkWorkBudget(n)); }
+  catch (error) {
+    rethrowExecutionRefusal(error);
+    if (error instanceof ComplexityError) throw error;
+    return EMPTY;
+  }
   if (!pic) return EMPTY;
   env.checkWorkBudget(Math.ceil(pic.width * pic.height / 16));
   return text(readQrCode(pic, () => env.checkWorkBudget(1024)));

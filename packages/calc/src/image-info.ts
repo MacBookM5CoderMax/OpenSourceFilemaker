@@ -33,39 +33,55 @@ export function isImageHeader(d: Uint8Array): boolean {
     || a(0, 2) === 'BM' || (a(0, 4) === 'RIFF' && a(8, 4) === 'WEBP') || a(0, 4) === 'II*\0' || a(0, 4) === 'MM\0*';
 }
 
-export function imageInfo(d: Uint8Array): ImageInfo | undefined {
-  const info = read(d);
+export function imageInfo(d: Uint8Array, check?: (units: number) => void): ImageInfo | undefined {
+  const info = read(d, check);
   // An image has pixels; a header that says otherwise isn't one.
   return info && info.width > 0 && info.height > 0 ? info : undefined;
 }
 
-function read(d: Uint8Array): ImageInfo | undefined {
+function read(d: Uint8Array, check?: (units: number) => void): ImageInfo | undefined {
+  let checkFailed = false;
+  const meter = check && ((units: number) => {
+    try { check(units); }
+    catch (error) { checkFailed = true; throw error; }
+  });
   try {
-    if (d.length >= 24 && be32(d, 0) === 0x89504e47 && be32(d, 4) === 0x0d0a1a0a) return png(d);
+    if (d.length >= 24 && be32(d, 0) === 0x89504e47 && be32(d, 4) === 0x0d0a1a0a) return png(d, meter);
     if (d.length >= 13 && (ascii(d, 0, 6) === 'GIF87a' || ascii(d, 0, 6) === 'GIF89a')) return gif(d);
     if (d.length >= 4 && d[0] === 0xff && d[1] === 0xd8) return jpeg(d);
     if (d.length >= 30 && d[0] === 0x42 && d[1] === 0x4d) return bmp(d);
     if (d.length >= 30 && ascii(d, 0, 4) === 'RIFF' && ascii(d, 8, 4) === 'WEBP') return webp(d);
     if (d.length >= 8 && (ascii(d, 0, 4) === 'II*\0' || ascii(d, 0, 4) === 'MM\0*')) return tiff(d);
-  } catch {
+  } catch (error) {
+    if (checkFailed) throw error;
     // A truncated header reads past the end; it isn't an image we can measure.
   }
   return undefined;
 }
 
-function png(d: Uint8Array): ImageInfo | undefined {
-  if (ascii(d, 12, 4) !== 'IHDR') return undefined;
+function png(d: Uint8Array, check?: (units: number) => void): ImageInfo | undefined {
+  if (ascii(d, 12, 4) !== 'IHDR' || be32(d, 8) !== 13) return undefined;
   const info: ImageInfo = { width: be32(d, 16), height: be32(d, 20), transparency: d[25] === 4 || d[25] === 6 };
+  let first = true;
+  let beforeData = true;
+  let chunks = 0;
   for (let at = 8; at + 8 <= d.length;) {
+    if (++chunks % 256 === 0) check?.(4096);
     const len = be32(d, at);
     const type = ascii(d, at + 4, 4);
-    if (type === 'tRNS') info.transparency = true;
+    if (type === 'IHDR' && !first) return undefined;
+    // Callers may pass only the start of a file (a container's first bytes): a chunk that runs past what was given ends the walk
+    // with what was read. The decoder, which needs the whole file, refuses an overrunning chunk itself.
+    if (len > d.length - at - 12) break;
+    first = false;
+    if (beforeData && type === 'tRNS') info.transparency = true;
     // pHYs: pixels per unit on each axis, and unit 1 for metres (0 is an aspect ratio only).
-    if (type === 'pHYs' && len >= 9 && d[at + 16] === 1) {
+    if (beforeData && type === 'pHYs' && len >= 9 && d[at + 16] === 1) {
       info.dpiWidth = perInch(be32(d, at + 8));
       info.dpiHeight = perInch(be32(d, at + 12));
     }
-    if (type === 'IDAT' || type === 'IEND') break;
+    if (type === 'IDAT') beforeData = false;
+    if (type === 'IEND') break;
     at += 12 + len;
   }
   return info;

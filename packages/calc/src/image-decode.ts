@@ -19,37 +19,43 @@ const MAX_SCANS = 64;
 const MAX_GIF_DECODED_BYTES = MAX_PIXELS * 4;
 
 /** A picture decoded from PNG, GIF or JPEG bytes; undefined for other formats. */
-export function decodeImage(data: Uint8Array, fullResolution = false): Picture | undefined {
-  if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) return decodePng(data);
-  if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) return decodeGif(data);
-  if (data[0] === 0xff && data[1] === 0xd8) return decodeJpeg(data, fullResolution);
+export function decodeImage(data: Uint8Array, fullResolution = false, check?: (units: number) => void): Picture | undefined {
+  if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) return decodePng(data, check);
+  if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) return decodeGif(data, check);
+  if (data[0] === 0xff && data[1] === 0xd8) return decodeJpeg(data, fullResolution, check);
   return undefined;
 }
 
-export function decodePng(data: Uint8Array): Picture | undefined {
+export function decodePng(data: Uint8Array, check?: (units: number) => void): Picture | undefined {
   const buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  if (buf.length < 33 || !buf.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return undefined;
   let pos = 8;
   let w = 0, h = 0, depth = 0, type = 0, interlace = 0;
+  let seenIhdr = false;
   let palette: Uint8Array | undefined;
   let trns: Buffer | undefined;
   const idat: Buffer[] = [];
   while (pos + 8 <= buf.length) {
     const len = buf.readUInt32BE(pos);
     const kind = buf.toString('latin1', pos + 4, pos + 8);
+    if (len > buf.length - pos - 12) return undefined;
     const body = buf.subarray(pos + 8, pos + 8 + len);
     pos += 12 + len;
     if (kind === 'IHDR') {
+      if (seenIhdr || pos !== 8 + 12 + 13 || len !== 13) return undefined;
+      seenIhdr = true;
       w = body.readUInt32BE(0);
       h = body.readUInt32BE(4);
       depth = body[8];
       type = body[9];
       interlace = body[12];
-    } else if (kind === 'PLTE') palette = body;
+    } else if (!seenIhdr) return undefined;
+    else if (kind === 'PLTE') palette = body;
     else if (kind === 'tRNS') trns = body;
     else if (kind === 'IDAT') idat.push(body);
     else if (kind === 'IEND') break;
   }
-  if (!w || !h || w * h > MAX_PIXELS) return undefined;
+  if (!seenIhdr || !w || !h || w * h > MAX_PIXELS) return undefined;
   const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[type as 0 | 2 | 3 | 4 | 6];
   if (!channels || ![1, 2, 4, 8, 16].includes(depth)) return undefined;
   const bitsPP = channels * depth;
@@ -72,6 +78,7 @@ export function decodePng(data: Uint8Array): Picture | undefined {
     const stride = Math.ceil((pw * bitsPP) / 8);
     let prev = new Uint8Array(stride);
     for (let r = 0; r < ph; r++) {
+      check?.(Math.ceil((stride + pw * 4) / 8));
       const filter = raw[at];
       const line = new Uint8Array(raw.subarray(at + 1, at + 1 + stride));
       at += stride + 1;
@@ -119,7 +126,7 @@ export function decodePng(data: Uint8Array): Picture | undefined {
 
 // --- GIF (the first frame) ----------------------------------------------------------
 
-export function decodeGif(d: Uint8Array): Picture | undefined {
+export function decodeGif(d: Uint8Array, check?: (units: number) => void): Picture | undefined {
   if (d.length < 13 || !['GIF87a', 'GIF89a'].includes(Buffer.from(d.subarray(0, 6)).toString('ascii'))) return undefined;
   const w = d[6] | (d[7] << 8);
   const h = d[8] | (d[9] << 8);
@@ -166,10 +173,11 @@ export function decodeGif(d: Uint8Array): Picture | undefined {
         pos += d[pos] + 1;
       }
       if (pos >= d.length) return undefined;
-      const indices = lzw(Buffer.concat(parts), minCode, iw * ih);
+      const indices = lzw(Buffer.concat(parts), minCode, iw * ih, check);
       const rows = flags & 0x40 ? interlacedRows(ih) : undefined;
       const rgba = new Uint8Array(w * h * 4);
       for (let r = 0; r < ih; r++) {
+        check?.(Math.ceil(iw / 8));
         const y = top + (rows ? rows[r] : r);
         if (y >= h) continue;
         for (let x = 0; x < iw && left + x < w; x++) {
@@ -195,7 +203,7 @@ function interlacedRows(h: number): Uint32Array {
   return rows;
 }
 
-function lzw(data: Uint8Array, minCode: number, count: number): Uint8Array {
+function lzw(data: Uint8Array, minCode: number, count: number, check?: (units: number) => void): Uint8Array {
   const out = new Uint8Array(count);
   const clear = 1 << minCode;
   const end = clear + 1;
@@ -236,7 +244,10 @@ function lzw(data: Uint8Array, minCode: number, count: number): Uint8Array {
       }
       stack[sp++] = c;
       const head = c;
-      while (sp && n < count) out[n++] = stack[--sp];
+      while (sp && n < count) {
+        if ((n & 1023) === 0) check?.(128);
+        out[n++] = stack[--sp];
+      }
       if (prev !== -1 && next < 4096) {
         prefix[next] = prev;
         suffix[next] = head;
@@ -280,7 +291,7 @@ function huffman(counts: Uint8Array, symbols: Uint8Array): Huffman {
 
 interface Component { id: number; h: number; v: number; tq: number; bw: number; bh: number; dc: Int32Array; td: number; ta: number; pred: number; coeff?: Int16Array }
 
-export function decodeJpeg(d: Uint8Array, fullResolution = false): Picture | undefined {
+export function decodeJpeg(d: Uint8Array, fullResolution = false, check?: (units: number) => void): Picture | undefined {
   const quant: Uint16Array[] = [];
   const dcTables: Huffman[] = [];
   const acTables: Huffman[] = [];
@@ -364,24 +375,28 @@ export function decodeJpeg(d: Uint8Array, fullResolution = false): Picture | und
         }
         const o = 1 + n * 2;
         const ss = seg[o], se = seg[o + 1], ah = seg[o + 2] >> 4, al = seg[o + 2] & 15;
-        pos = progressive && ss > 0 ? skipScan(d, pos) : decodeScan(d, pos, scan, { progressive, ss, se, ah, al, restart, dcTables, acTables, mcusX: Math.ceil(width / (8 * hmax)), hmax, vmax, width, height });
+        pos = progressive && ss > 0 ? skipScan(d, pos) : decodeScan(d, pos, scan, { progressive, ss, se, ah, al, restart, dcTables, acTables, mcusX: Math.ceil(width / (8 * hmax)), hmax, vmax, width, height }, check);
         break;
       }
     }
   }
   if (!width || !comps.length || (fullResolution && progressive)) return undefined;
-  if (fullResolution) return fullJpeg(comps, quant, width, height, hmax, vmax, adobe, orientation);
+  if (fullResolution) return fullJpeg(comps, quant, width, height, hmax, vmax, adobe, orientation, check);
 
   // Each block's average, from its DC coefficient: one pixel per 8x8 block.
   const w = Math.ceil(width / 8), h = Math.ceil(height / 8);
   const planes = comps.map((c) => {
     const q = quant[c.tq]?.[0] ?? 1;
     const plane = new Uint8Array(c.bw * c.bh);
-    for (let i = 0; i < plane.length; i++) plane[i] = clamp((c.dc[i] * q) / 8 + 128);
+    for (let i = 0; i < plane.length; i++) {
+      if ((i & 1023) === 0) check?.(128);
+      plane[i] = clamp((c.dc[i] * q) / 8 + 128);
+    }
     return plane;
   });
   const rgba = new Uint8Array(w * h * 4);
   for (let y = 0; y < h; y++) {
+    check?.(Math.ceil(w / 8));
     for (let x = 0; x < w; x++) {
       const v = comps.map((c, i) => planes[i][Math.floor((y * c.v) / vmax) * c.bw + Math.floor((x * c.h) / hmax)]);
       const o = (y * w + x) * 4;
@@ -401,7 +416,7 @@ export function decodeJpeg(d: Uint8Array, fullResolution = false): Picture | und
       rgba[o + 3] = 255;
     }
   }
-  return orient({ width: w, height: h, rgba }, orientation);
+  return orient({ width: w, height: h, rgba }, orientation, check);
 }
 
 
@@ -414,7 +429,7 @@ const COS = Array.from({ length: 8 }, (_, k) =>
   Array.from({ length: 8 }, (_, x) => Math.round((k === 0 ? Math.SQRT1_2 : 1) * Math.cos((2 * x + 1) * k * Math.PI / 16) * 256)));
 
 function fullJpeg(comps: Component[], quant: Uint16Array[], width: number, height: number,
-  hmax: number, vmax: number, adobe: number, orientation: number): Picture | undefined {
+  hmax: number, vmax: number, adobe: number, orientation: number, check?: (units: number) => void): Picture | undefined {
   const planes = comps.map((c) => {
     if (!c.coeff || !quant[c.tq]) return undefined;
     const plane = new Uint8Array(c.bw * 8 * c.bh * 8);
@@ -422,6 +437,7 @@ function fullJpeg(comps: Component[], quant: Uint16Array[], width: number, heigh
     const q = quant[c.tq];
     const tmp = new Float64Array(64);
     for (let by = 0; by < c.bh; by++) for (let bx = 0; bx < c.bw; bx++) {
+      if (bx === 0) check?.(c.bw * 16);
       const base = (by * c.bw + bx) * 64;
       for (let u = 0; u < 8; u++) for (let x = 0; x < 8; x++) {
         let sum = 0;
@@ -442,6 +458,7 @@ function fullJpeg(comps: Component[], quant: Uint16Array[], width: number, heigh
   if (planes.some((p) => !p)) return undefined;
   const rgba = new Uint8Array(width * height * 4);
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    if (x === 0) check?.(Math.ceil(width / 8));
     const v = comps.map((c, i) => planes[i]![Math.floor(y * c.v / vmax) * c.bw * 8 + Math.floor(x * c.h / hmax)]);
     const o = (y * width + x) * 4;
     let r: number, g: number, b: number;
@@ -454,7 +471,7 @@ function fullJpeg(comps: Component[], quant: Uint16Array[], width: number, heigh
     }
     rgba[o] = clamp(r); rgba[o + 1] = clamp(g); rgba[o + 2] = clamp(b); rgba[o + 3] = 255;
   }
-  return orient({ width, height, rgba }, orientation);
+  return orient({ width, height, rgba }, orientation, check);
 }
 
 const u16Of = (b: Uint8Array, p: number) => (b[p] << 8) | b[p + 1];
@@ -477,7 +494,7 @@ function skipScan(d: Uint8Array, pos: number): number {
 function decodeScan(d: Uint8Array, start: number, scan: Component[], o: {
   progressive: boolean; ss: number; se: number; ah: number; al: number; restart: number;
   dcTables: Huffman[]; acTables: Huffman[]; mcusX: number; hmax: number; vmax: number; width: number; height: number;
-}): number {
+}, check?: (units: number) => void): number {
   // Bits wait in `acc` (the low `bits` of it); past the scan's end they read as zeros, the lowest `fake` of them.
   let pos = start, acc = 0, bits = 0, ended = false, fake = 0;
   const fill = () => {
@@ -561,6 +578,7 @@ function decodeScan(d: Uint8Array, start: number, scan: Component[], o: {
   for (const c of scan) c.pred = 0;
   try {
     for (let m = 0; m < total; m++) {
+      if (m % perRow === 0) check?.(perRow * (single ? 1 : scan.reduce((n, c) => n + c.h * c.v, 0)) * 8);
       if (o.restart && m && m % o.restart === 0) {
         // Restart: realign to the RSTn marker and reset predictions.
         bits = 0;
@@ -581,7 +599,8 @@ function decodeScan(d: Uint8Array, start: number, scan: Component[], o: {
       if (single) block(scan[0], row, col);
       else for (const c of scan) for (let v = 0; v < c.v; v++) for (let h = 0; h < c.h; h++) block(c, row * c.v + v, col * c.h + h);
     }
-  } catch {
+  } catch (error) {
+    if (check) throw error;
     // A damaged scan: keep what was read.
   }
   return skipScan(d, pos);
@@ -609,12 +628,13 @@ function exifOrientation(seg: Uint8Array): number | undefined {
 }
 
 /** A picture turned upright by its EXIF orientation. */
-export function orient(pic: Picture, orientation: number): Picture {
+export function orient(pic: Picture, orientation: number, check?: (units: number) => void): Picture {
   if (orientation <= 1 || orientation > 8) return pic;
   const swap = orientation >= 5;
   const w = swap ? pic.height : pic.width, h = swap ? pic.width : pic.height;
   const out = new Uint8Array(pic.rgba.length);
   for (let y = 0; y < pic.height; y++) {
+    check?.(Math.ceil(pic.width / 8));
     for (let x = 0; x < pic.width; x++) {
       let nx: number, ny: number;
       switch (orientation) {
