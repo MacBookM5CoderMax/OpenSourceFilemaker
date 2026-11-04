@@ -687,8 +687,11 @@ Each `.param` supplies `Get ( ScriptParameter )`, defaulting to empty text.
 Phases share request-local globals and variables, discarded when the request
 ends. Each uses the Data API's engine options and default 60-second time limit,
 without client windows; `Get ( ScriptResult )` starts empty in each phase.
-Script browser requests must pass the same-origin checks; write commands still
-require a POST form. Phase timing and parameter compatibility with FileMaker
+Script browser requests must pass the same-origin checks. A request that names
+any script key (`-script`, `-script.prefind`, `-script.presort` or their `.param`)
+is treated like a write: it must be a POST form (`application/x-www-form-urlencoded`),
+or it gets error 3 before any phase runs, because a script can write and a link, an
+image tag or a prefetcher can send a GET with a browser's cached credentials. Phase timing and parameter compatibility with FileMaker
 Server are **unverified** offline.
 <!-- known-difference: XML publishing ;; XML script phase timing and parameter compatibility are unverified against FileMaker Server ;; Tabularius runs prefind before the query, presort before sorting and paging, then script, with separate parameter text and the shared Data API engine ;; A FileMaker Server comparison of all phases on read and write commands -->
 

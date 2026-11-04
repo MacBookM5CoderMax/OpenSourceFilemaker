@@ -449,6 +449,9 @@ export class CwpXmlEndpoint {
     }
     const { privileges: p, readOnlyToken, via } = await signIn(req, store, this.api, this.verified, 'fmxml', 'XML publishing');
     if (scripts.length) {
+      // A script can write, so a request that names any -script key follows the write rule: a POST form, never a GET (a link,
+      // an image tag or a prefetcher can send a same-origin GET with the browser's cached Basic credentials). Checked before any phase.
+      if (enabled && (req.method !== 'POST' || !params.hasBody)) throw new CwpError(3, 'Command is unavailable: send XML scripts as a POST form (application/x-www-form-urlencoded)');
       for (const [key, name] of scripts) {
         if (['-script', '-script.prefind', '-script.presort'].includes(key.toLowerCase()) && p.script(name) === 'none') {
           throw new CwpError(9, `Insufficient privileges to run script "${name}"`);

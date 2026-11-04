@@ -62,7 +62,7 @@ after(async () => {
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
 
-async function xml(params: string, authorization = auth, post = false, extra: Record<string, string> = {}) {
+async function xml(params: string, authorization = auth, post = true, extra: Record<string, string> = {}) {
   const body = '-db=X&-lay=Items&' + params;
   const response = await fetch(`${app.url}/fmi/xml/fmresultset.xml${post ? '' : '?' + body}`, {
     method: post ? 'POST' : 'GET', headers: { authorization, ...(post ? { 'content-type': 'application/x-www-form-urlencoded' } : {}), ...extra },
@@ -163,4 +163,16 @@ test('findany, findquery and record-id finds support script phases', async () =>
     const r = await xml(query + '&-script.presort=After&-script=After');
     assert.equal(r.code, '0', r.text);
   }
+});
+
+test('a GET that names any script key is refused with error 3 before any phase runs, and nothing is written', async () => {
+  const before = JSON.stringify(rows());
+  for (const param of ['-script=Touch&-script.param=x', '-script.prefind=Create&-script.prefind.param=x', '-script.presort=Sort&-script.presort.param=Z', '-script=Touch']) {
+    const r = await xml('-findall&' + param, auth, false);
+    assert.equal(r.code, '3', r.text);
+    assert.match(r.text, /POST form/);
+  }
+  assert.equal(JSON.stringify(rows()), before, 'a GET changed a record');
+  // The same request as a POST form still runs.
+  assert.equal((await xml('-findall&-script=Touch&-script.param=viaPost')).code, '0');
 });
