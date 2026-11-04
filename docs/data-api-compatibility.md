@@ -49,7 +49,7 @@ against a FileMaker Server before relying on them.
 
 | Endpoint | Status | Notes | Test |
 | --- | --- | --- | --- |
-| `POST /databases/{db}/sessions` (log in) | ◐ | HTTP Basic `Authorization`. Answers `{token}` and the `X-FM-Data-Access-Token` header. `fmDataSource` with an account and password for each other hosted file. Or OAuth, with the `X-FM-Data-OAuth-*` headers (see OAuth below). **Missing:** OAuth for `fmDataSource`. ＋ `passwordChangeRequired: true` when the account must change its password first. | [sessions: log in, the token header, log out](../packages/server/test/dataapi-shapes.test.ts)<br>[fmDataSource signs in to the other file with its own account](../packages/server/test/dataapi-data-source.test.ts)<br>[a must-change account signs in, is gated, then clears it by changing the password](../packages/server/test/password-policy.test.ts) *(fixture-dependent; unverified offline)* | <!-- known-difference-ok: fixture-dependent test availability is an evidence note, not a new product difference -->
+| `POST /databases/{db}/sessions` (log in) | ◐ | HTTP Basic `Authorization`. Answers `{token}` and the `X-FM-Data-Access-Token` header. `fmDataSource` with an account/password or OAuth request ID/identifier for each other hosted file. Or OAuth, with the `X-FM-Data-OAuth-*` headers (see OAuth below). ＋ `passwordChangeRequired: true` when the account must change its password first. | [sessions: log in, the token header, log out](../packages/server/test/dataapi-shapes.test.ts)<br>[fmDataSource signs in to the other file with its own account](../packages/server/test/dataapi-data-source.test.ts)<br>[a must-change account signs in, is gated, then clears it by changing the password](../packages/server/test/password-policy.test.ts) *(fixture-dependent; unverified offline)* | <!-- known-difference-ok: fixture-dependent test availability is an evidence note, not a new product difference -->
 | `DELETE /databases/{db}/sessions/{token}` (log out) | ✓ | No `Authorization` header needed. Answers `{}`. | [signing in: no body and no content type, an empty JSON body, a password with a colon, and signing out without a header](../packages/server/test/dataapi-client-shapes.test.ts) |
 | `GET /validateSession` | ✓ | Answers `{isSessionInUse}` for a live token and error 952 / HTTP 401 otherwise. Checking a token doesn't keep it alive (fixed here; it used to). `isSessionInUse` is `true` while a call made with that token (a script, say) is still running, else `false`. A call using a scoped API token or another session's token doesn't count. | [validateSession: answers for a live token, and doesn't keep it alive](../packages/server/test/dataapi-shapes.test.ts)<br>[isSessionInUse is true while a call on the session is running](../packages/server/test/dataapi-session-in-use.test.ts) |
 | `GET /productInfo` | ✓ | `name` (`tabularius`), `dateFormat`, `timeFormat`, `timeStampFormat`. ＋ `buildDate` and `version`; the [Claris example](https://help.claris.com/en/data-api-guide/content/get-product-information.html) does not contain them. | [productInfo and databases](../packages/server/test/dataapi-shapes.test.ts) |
@@ -162,15 +162,31 @@ FileMaker errors, with the FileMaker code in `messages[0].code`.
   change fields that prohibit modification during data entry. Both default to
   `user`, and any other value is error 960. These follow the guide's
   description; they haven't been compared with a real FileMaker Server.
-- **`fmDataSource`** on log in: `[{database, username, password}]` for other
+- **`fmDataSource`** on log in: `[{database, username, password}]` or
+  `[{database, oAuthRequestId, oAuthIdentifier}]` for other
   hosted files whose tables the file's layouts show. Each is checked at log
   in, and a wrong one fails it with error 212 (a file that isn't hosted is
   802). In those files, that account's privileges apply. Without it, the
   session's own account name is used there, as before.
 
-## Missing, by how much clients use it
+  OAuth uses the same request ID and identifier as the direct sign-in headers;
+  each must be a nonempty string of at most 16 KiB. Mixed or incomplete entries
+  return 960 (400), before any credential is checked. Unknown, used or expired
+  grants return 212 (401); a grant is consumed once even across repeated entries
+  or the main file's OAuth sign-in. The other file's external email, domain or
+  group mapping determines access, with its identity, local-only and second-factor
+  checks; an external mapping does not owe a local password change.
 
-1. **OAuth for `fmDataSource`** (an identity-provider sign-in for each other hosted file at log in).
+  **Difference:** Tabularius checks both password and OAuth data-source credentials
+  at sign-in, giving an earlier error. The supplied guide summary describes external
+  files being opened when needed, so their login error may appear later; this timing
+  remains unverified against a running FileMaker Server offline.
+  <!-- known-difference: Data API ;; External data-source password and OAuth credentials are checked at sign-in instead of when the file is needed; vendor timing is unverified offline ;; Bad credentials fail the initial login with an earlier error and no session token ;; Compare against a running FileMaker Server using the external-data-source guide -->
+
+  Grants retain provider identity but no target file or app binding: any fresh grant
+  issued by this server can be used for any named file whose external accounts allow
+  it, exactly as for the direct OAuth headers. Vendor binding behavior is unverified.
+  <!-- known-difference: Data API ;; OAuth grants have no target file or app binding, for either headers or fmDataSource; vendor binding is unverified ;; A fresh server grant can sign in to any named file whose external accounts permit it ;; A vendor contract or captured run establishing grant binding -->
 
 ## Sources
 

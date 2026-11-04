@@ -68,14 +68,27 @@ import { sameSecret } from './secrets.ts';
 /** The longest a web-client session whose set turns idle-disconnect off may sit idle: a hard cap, so none lives forever. */
 const KEEP_ALIVE_MAX_MS = 24 * 60 * 60 * 1000;
 
-/** Bound login work and validate every entry before checking any password, including the primary file's. */
-function dataSourceList(value: unknown): { database: string; username: string; password: string }[] | undefined {
+type DataSourceLogin = { database: string } & (
+  { username: string; password: string } | { oAuthRequestId: string; oAuthIdentifier: string }
+);
+
+/** Bound login work and validate every entry before checking any credential, including the primary file's. */
+function dataSourceList(value: unknown): DataSourceLogin[] | undefined {
   if (value === undefined || value === null) return undefined;
   if (!Array.isArray(value) || value.length > 20) throw new ApiError(960, 'Parameter is invalid: fmDataSource', 400);
   return value.map((x: unknown) => {
-    const { database, username, password } = (x ?? {}) as Record<string, unknown>;
-    // Only accounts and passwords: OAuth for an external data source isn't supported.
-    if (typeof database !== 'string' || typeof username !== 'string' || typeof password !== 'string' || !database || !username) {
+    const entry = (x ?? {}) as Record<string, unknown>;
+    const { database, username, password, oAuthRequestId, oAuthIdentifier } = entry;
+    if (typeof database !== 'string' || !database) throw new ApiError(960, 'Parameter is invalid: fmDataSource', 400);
+    if ('oAuthRequestId' in Object(entry) || 'oAuthIdentifier' in Object(entry)) {
+      // Match the transport's 16 KiB header budget; JSON must not allow unbounded credential strings.
+      const bounded = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && Buffer.byteLength(v) <= 16 * 1024;
+      if ('username' in Object(entry) || 'password' in Object(entry) || !bounded(oAuthRequestId) || !bounded(oAuthIdentifier)) {
+        throw new ApiError(960, 'Parameter is invalid: fmDataSource', 400);
+      }
+      return { database, oAuthRequestId, oAuthIdentifier };
+    }
+    if (typeof username !== 'string' || !username || typeof password !== 'string') {
       throw new ApiError(960, 'Parameter is invalid: fmDataSource', 400);
     }
     return { database, username, password };
@@ -128,7 +141,7 @@ export interface Session {
   /** The web client's window and device, as it last said: for Get ( Device ), Get ( WindowWidth ) and the like. */
   window?: ClientWindow;
   /** fmDataSource at log in: the authenticated account generation in each other hosted file (by lowercased name). */
-  dataSources?: Record<string, { account: string; principalId: string }>;
+  dataSources?: Record<string, Pick<Session, 'account' | 'principalId' | 'via' | 'viaId' | 'personId' | 'externalIdentity'>>;
 }
 
 /** Extended privileges that let a client log in: FileMaker's for the Data API, and FileMaker Pro or WebDirect access for the web client. */
@@ -162,8 +175,8 @@ export function sessionPrivileges(store: Store, session: Session): Privileges {
       const binding = sources[(file as Store).name.toLowerCase()];
       const source = file as Store;
       if (binding === undefined) return own.in(file);
-      if (!source.identityAllowed(binding.account, undefined, undefined, undefined, binding.principalId)) throw new ApiError(952, 'Invalid FileMaker Data API token (*)', 401);
-      return source.privileges(binding.account);
+      if (!source.identityAllowed(binding.account, binding.via, binding.viaId, binding.externalIdentity?.person, binding.principalId, binding.personId)) throw new ApiError(952, 'Invalid FileMaker Data API token (*)', 401);
+      return source.privileges(binding.account, binding.via, binding.externalIdentity?.person, binding.externalIdentity?.groups);
     }).withVia(own.via);
   }
   if (!CLIENT_PRIVILEGES[session.client].some((e) => p.has(e))) {
@@ -1516,7 +1529,7 @@ export class DataApi {
   }
 
   /**
-   * fmDataSource at log in (the guide's "Log in to an external data source"): an account and password for each other
+   * fmDataSource at log in (the guide's "Log in to an external data source"): password or OAuth credentials for each other
    * hosted file whose tables the file's layouts show. Each is checked against that file now, and a wrong one fails
    * the log in, as a wrong password for the file itself does. Without it, a file is used with the same account name.
    */
@@ -1525,11 +1538,37 @@ export class DataApi {
     if (!list) return undefined;
     const out: NonNullable<Session['dataSources']> = Object.create(null);
     const seen = new Set<string>([store.name.toLowerCase()]);
-    for (const { database, username, password } of list) {
-      const other = this.store(database);
+    const successes: { file: Store; account: string }[] = [];
+    for (const entry of list) {
+      const other = this.store(entry.database);
       const name = other.name.toLowerCase();
+      if ('oAuthRequestId' in entry) {
+        // Consume even repeated files: the same grant cannot authorize two entries or the primary file and a source.
+        const { grant, via, account } = this.oauthAccount(other, entry.oAuthRequestId, entry.oAuthIdentifier, from);
+        const viaId = other.externalIdentityId(via);
+        const principalId = other.accountIdentityId(account);
+        if (!viaId || !other.identityAllowed(account, via, viaId, grant.email, principalId, principalId)) {
+          other.auditSignIn(account, from, false);
+          this.host.logs?.write('Access', 'Warning', from, `${account} could not sign in to ${other.name} (a data source of ${store.name}): this account is not active`);
+          throw new ApiError(212, 'Invalid user account and/or password; please try again', 401);
+        }
+        if (localOnlyRefused(other, account, from) || localOnlyRefused(other, via, from)) {
+          this.host.logs?.write('Access', 'Warning', from, `${account} could not sign in to ${other.name} (a data source of ${store.name}): this account may sign in only from the server itself`);
+          throw new ApiError(212, 'Invalid user account and/or password; please try again', 401);
+        }
+        this.checkSecondFactor(other, via, from, code);
+        if (account !== via) this.checkSecondFactor(other, account, from, code);
+        // External mappings do not owe a local password change, as in oauthLogin.
+        if (!seen.has(name)) {
+          seen.add(name);
+          out[name] = { account, principalId, via, viaId, personId: principalId, externalIdentity: { issuer: grant.issuer, sub: grant.sub, person: grant.email, groups: grant.groups, mapping: via } };
+          successes.push({ file: other, account });
+        }
+        continue;
+      }
       if (seen.has(name)) continue;
       seen.add(name);
+      const { username, password } = entry;
       const principalId = other.accountIdentityId(username);
       if (!(await other.verifyAsync(username, password, from)) || !principalId || !other.identityAllowed(username, undefined, undefined, undefined, principalId)) {
         other.auditSignIn(username, from, false);
@@ -1544,9 +1583,11 @@ export class DataApi {
       }
       this.checkSecondFactor(other, username, from, code);
       if (other.mustChangePassword(username)) throw new ApiError(212, `This account must change its password in ${other.name} before continuing; sign in to that file directly, change it, then try again`, 403);
-      other.auditSignIn(username, from, true);
+      successes.push({ file: other, account: username });
       out[name] = { account: username, principalId };
     }
+    // A later refused entry must not leave a successful data-source sign-in in the audit trail.
+    for (const { file, account } of successes) file.auditSignIn(account, from, true);
     return Object.keys(out).length ? out : undefined;
   }
 
@@ -1556,6 +1597,16 @@ export class DataApi {
    * group). The identifier is good once, whatever the outcome.
    */
   private async oauthLogin(store: Store, requestId: string, identifier: string, body: Record<string, unknown>, client: Session['client'], from: string, device?: string, code = ''): Promise<string> {
+    const { grant, via, account } = this.oauthAccount(store, requestId, identifier, from);
+    const sources = await this.dataSources(store, body, from, code);
+    store.auditSignIn(account, from, true);
+    return this.open(store, account, client, via, from, device, sources, { issuer: grant.issuer, sub: grant.sub, person: grant.email, groups: grant.groups, mapping: via });
+  }
+
+  /** Resolve both header and fmDataSource grants against the target file's external mappings. */
+  private oauthAccount(store: Store, requestId: string, identifier: string, from: string): { grant: OAuthGrant; via: string; account: string } {
+    // Grants retain provider identity but no file or app binding. Any fresh grant of this server can name any
+    // file, as the header path has always allowed; vendor binding behavior is unverified offline.
     const grant = requestId && identifier ? this.oauth?.take(requestId, identifier) : undefined;
     if (grant && !grant.email) {
       store.auditSignIn(grant.sub, from, false);
@@ -1571,9 +1622,7 @@ export class DataApi {
       throw new ApiError(212, 'Invalid user account and/or password; please try again', 401);
     }
     const account = grant.email ?? grant.sub;
-    const sources = await this.dataSources(store, body, from, code);
-    store.auditSignIn(account, from, true);
-    return this.open(store, account, client, via, from, device, sources, { issuer: grant.issuer, sub: grant.sub, person: grant.email, groups: grant.groups, mapping: via });
+    return { grant, via, account };
   }
 
   /**

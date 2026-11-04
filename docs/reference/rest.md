@@ -91,7 +91,7 @@ Signs in to a hosted file with an account name and password and returns a sessio
 | --- | --- | --- | --- | --- |
 | `version` | path | string | yes | vLatest, v1 or v2 (all answer the same) |
 | `database` | path | string | yes | The hosted file's name |
-| `fmDataSource` | body | array | no | External file credentials: {database, username, password}. At most 20 entries; a longer list is 960 (400) before any password check. Repeated database names are ignored case-insensitively after the first entry. |
+| `fmDataSource` | body | array | no | External file credentials: {database, username, password} or {database, oAuthRequestId, oAuthIdentifier}. OAuth values are nonempty strings of at most 16 KiB each. Mixed or incomplete entries and lists over 20 entries are 960 (400), validated before any credentials are checked. All credentials are checked at sign-in; unknown, used or expired OAuth grants are 212 (401). Repeated password database names are ignored case-insensitively after the first entry; OAuth grants are always consumed and checked, even for repeated files. Grants have no target file or app binding, as with the OAuth headers. |
 | `Authorization` | header | string | yes | Basic base64(account:password) |
 | `X-Tabularius-OTP` | header | string | no | The one-time code, for an account with an authenticator app set up |
 | `X-Tabularius-Client` | header | string | no | "web" for a web-client session (needs fmapp or fmwebdirect instead of fmrest) |

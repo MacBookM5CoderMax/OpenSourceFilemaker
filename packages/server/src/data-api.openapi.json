@@ -142,7 +142,7 @@
                 "properties": {
                   "fmDataSource": {
                     "type": "array",
-                    "description": "External file credentials: {database, username, password}. At most 20 entries; a longer list is 960 (400) before any password check. Repeated database names are ignored case-insensitively after the first entry."
+                    "description": "External file credentials: {database, username, password} or {database, oAuthRequestId, oAuthIdentifier}. OAuth values are nonempty strings of at most 16 KiB each. Mixed or incomplete entries and lists over 20 entries are 960 (400), validated before any credentials are checked. All credentials are checked at sign-in; unknown, used or expired OAuth grants are 212 (401). Repeated password database names are ignored case-insensitively after the first entry; OAuth grants are always consumed and checked, even for repeated files. Grants have no target file or app binding, as with the OAuth headers."
                   }
                 }
               },
