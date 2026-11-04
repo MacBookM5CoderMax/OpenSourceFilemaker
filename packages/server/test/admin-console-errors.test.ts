@@ -37,6 +37,22 @@ async function setup(t: TestContext) {
   return { ...hosted, dir, call };
 }
 
+/**
+ * Takes a backup and waits for the check the server starts on it in the background. The check opens each copy in the set and
+ * removes the -wal and -shm files that leaves (on Windows a just-closed file can stay busy for a moment); a restore that looks
+ * at the set meanwhile finds them and refuses with "not listed in the backup set", and answers 500.
+ */
+async function backUp(call: Awaited<ReturnType<typeof setup>>['call']) {
+  const made = await call('/backup', {});
+  assert.equal(made.status, 200, JSON.stringify(made));
+  for (let i = 0; i < 600; i++) {
+    const status = await call('/status');
+    if (status.body.backups?.sets?.[0]?.check) return;
+    await new Promise((done) => setTimeout(done, 50));
+  }
+  assert.fail('the check of the backup did not finish');
+}
+
 test('#33 missing reconvert source is actionable on both routes', async (t) => {
   const { call } = await setup(t);
   for (const route of ['reconvert-preview', 'reconvert']) {
@@ -68,7 +84,7 @@ test('#38 an SSO mapping named test can be removed and preview still works', asy
 
 test('#34 wrong body types on connections, records and restore return 400', async (t) => {
   const { call, host } = await setup(t);
-  assert.equal((await call('/backup', {})).status, 200);
+  await backUp(call);
   const cases: [string, unknown][] = [
     ['/connections', []], ['/connections', null],
     ['/connections', { name: ['bad'], type: 's3', config: { bucket: 'generated' } }],
@@ -175,7 +191,7 @@ test('#32 serving on a bad settings file fails at once and says to fix or remove
 
 test('#30 replace restore refuses closed and paused files before disrupting them', async (t) => {
   const { call, host } = await setup(t);
-  assert.equal((await call('/backup', {})).status, 200);
+  await backUp(call);
   for (const state of ['paused', 'closed']) {
     if (state === 'paused') await host.pauseFileEverywhere('Test');
     else await host.closeFileEverywhere('Test');
@@ -188,7 +204,7 @@ test('#30 replace restore refuses closed and paused files before disrupting them
 
 test('#35 a backup set with no backup.json still restores, as an unsigned set does without a backup key', async (t) => {
   const { call, dir, host } = await setup(t);
-  assert.equal((await call('/backup', {})).status, 200);
+  await backUp(call);
   const dest = defaultBackupDir(dir);
   const set = readdirSync(dest).find((n) => /^\d/.test(n))!;
   rmSync(join(dest, set, 'backup.json'));
@@ -204,7 +220,7 @@ test('#35 external container copy restore is refused without disrupting the live
   const { call, dir, host } = await setup(t);
   mkdirSync(join(dir, 'Files', 'Test'), { recursive: true });
   writeFileSync(join(dir, 'Files', 'Test', 'generated.txt'), 'generated container');
-  assert.equal((await call('/backup', {})).status, 200);
+  await backUp(call);
   const before = host.get('Test');
   const r = await call('/restore', { database: 'Test', at: Date.now(), name: 'Copy' });
   assert.equal(r.status, 409, JSON.stringify(r));
