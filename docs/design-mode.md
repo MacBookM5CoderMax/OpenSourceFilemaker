@@ -596,6 +596,10 @@ through. Tabularius never connects out to any of them:
 - ODBC entries keep their DSN, for FileMaker. Tabularius doesn't connect to them
   and keeps no user name or password; the Design Report lists them without one.
 
+Tables from those external SQL sources have no records here: layouts and portals
+are empty, and scripts that go to a missing layout report error 105; scripts
+that access a missing table report error 106. <!-- known-difference: Cross-file access ;; Tabularius does not connect to external SQL databases used as ESS sources ;; Layouts, portals and scripts on ESS tables find no records ;; An owner decision on connecting to outside SQL databases -->
+
 An interface file can place layouts and value lists over another hosted file's
 tables. Tabularius checks the account's privileges in that data file before
 returning values, and hides its layouts from an account without data-file

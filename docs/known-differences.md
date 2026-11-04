@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**284 entries in 35 areas.** Unverified: 144. Waiting on: 24 on a sample file, 171 on a FileMaker run or Design Report, 15 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
+**285 entries in 35 areas.** Unverified: 144. Waiting on: 24 on a sample file, 171 on a FileMaker run or Design Report, 15 on a Claris answer, 14 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -20,6 +20,7 @@ part of it.
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
 | Compatibility of cross-file privilege and missing-layout responses is unverified | An account without data-file access sees a missing layout and no values in Tabularius | Compare equivalent two-file accounts and layouts in FileMaker | [docs/design-mode.md › External data sources](design-mode.md) — “FileMaker is unverified offline.” |
+| Tabularius does not connect to external SQL databases used as ESS sources | Layouts, portals and scripts on ESS tables find no records | An owner decision on connecting to outside SQL databases | [docs/design-mode.md › External data sources](design-mode.md) — “that access a missing table report error 106.” |
 
 ## Data API
 
