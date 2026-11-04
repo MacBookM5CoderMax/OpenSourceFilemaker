@@ -30,8 +30,10 @@ test('Data API, OData, SCIM, /mcp and the product routes answer no-store and nos
   const get = async (path: string, headers: Record<string, string> = {}) => answers.push([`GET ${path}`, await fetch(`${base}${path}`, { headers })]);
   const login = await fetch(`${base}/fmi/data/vLatest/databases/Local/sessions`, { method: 'POST', headers: { authorization: basic, 'content-type': 'application/json' }, body: '{}' });
   assert.equal(login.status, 200, 'the sign-in that hands out a session token');
+  // Read once, without clone(): on Node 22.20 (undici 6.21) a clone that is garbage collected cancels the
+  // original's body, so reading the original afterwards fails as "Body has already been read".
+  const token = (await login.json()).response.token as string;
   answers.push(['POST sessions', login]);
-  const token = (await login.clone().json()).response.token as string;
   await get('/fmi/data/vLatest/databases/Local/layouts', { authorization: `Bearer ${token}` });
   await get('/fmi/data/vLatest/databases/Nowhere/layouts', { authorization: `Bearer ${token}` });
   await get('/odata/v4/Local', { authorization: basic });
@@ -43,7 +45,7 @@ test('Data API, OData, SCIM, /mcp and the product routes answer no-store and nos
   for (const [what, response] of answers) {
     assert.equal(response.headers.get('cache-control'), 'no-store', what);
     assert.equal(response.headers.get('x-content-type-options'), 'nosniff', what);
-    await response.arrayBuffer();
+    if (!response.bodyUsed) await response.arrayBuffer();
   }
 });
 
