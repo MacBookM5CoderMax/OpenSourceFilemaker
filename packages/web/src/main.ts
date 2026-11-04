@@ -37,7 +37,7 @@ import { PREVIEW_MAX, pageNumbers, pageSize, paginate, paginateColumns, printLim
 import { responsiveDesign, stackBreakpoint } from './responsive.ts';
 import type { RefreshData, CustomMenu, CustomMenuItem, DataRecord, FindRequest, GroupRun, LayoutDesign, LayoutMeta, LayoutPart, LayoutObject, MenuItem, PortalRow, ScriptRun, ScriptsMenuEntry, ScriptWindow, SortSpec, Value, FormulaState } from './types.ts';
 import { moveCaret } from './caret.ts';
-import { linkedScript } from './url-script.ts';
+import { linkedScript, parseFmpUrl, fmpTarget } from './url-script.ts';
 import { macroScript, type MacroAction } from './macro.ts';
 import { macroDialog } from './macro-view.ts';
 import type { ScriptDryRun } from './design/client.ts';
@@ -1126,10 +1126,18 @@ class Session implements Host {
     };
     // Typing in a record locks it, as in FileMaker, so two people can't edit it at once.
     window.addEventListener('message', (e) => {
-      if (!e.data || !['navigation', 'scroll'].includes(e.data.tabularius)) return;
+      if (!e.data || !['navigation', 'scroll', 'fmp'].includes(e.data.tabularius)) return;
       if (e.data.tabularius === 'navigation' && (typeof e.data.hash !== 'string' || e.data.hash.length > 4096)) return;
       const frame = [...this.content.querySelectorAll<HTMLIFrameElement>('iframe.fm-webviewer')].find((f) => f.contentWindow === e.source);
       if (!frame?.dataset.viewerKey || !viewerMessage(e, frame)) return;
+      if (e.data.tabularius === 'fmp') {
+        if (typeof e.data.url !== 'string') return;
+        const now = Date.now();
+        if (now - Number(frame.dataset.lastFmpMessage ?? 0) < 250) return;
+        frame.dataset.lastFmpMessage = String(now);
+        this.handleFmpUrl(e.data.url);
+        return;
+      }
       const state = this.viewerStates.get(frame.dataset.viewerKey);
       if (String(state?.generation) !== frame.dataset.viewerGeneration) return;
       if (e.data.tabularius === 'scroll') state?.scrolled(e.data.x, e.data.y);
@@ -1180,6 +1188,26 @@ class Session implements Host {
       while (p && !p.el.contains(t) && !t.closest(`[data-id="${p.button}"]`)) p = p.parent;
       if (p !== this.popover) this.closePopover(p?.id);
     }, { signal: this.sessionLifetime.signal });
+  }
+
+  private handleFmpUrl(input: unknown): void {
+    if (typeof input !== 'string') return;
+    const parsed = parseFmpUrl(input);
+    if (!parsed) return;
+    const target = fmpTarget(parsed, { hostname: location.hostname, port: location.port, currentFile: this.api.db });
+    if (target === 'invalid') { toast('This link has no file name to open.'); return; }
+    if (target === 'local-file') { toast('This link opens a file on the person\'s own computer, which a browser can\'t open.'); return; }
+    if (target === 'other-host') { toast(`This link opens "${parsed.file}" on another server (${parsed.host}), which this web client can\'t reach. Open that server\'s web client instead.`); return; }
+    if (target === 'this-file') {
+      if (parsed.script) void this.runButton(undefined, undefined, undefined, { urlScript: true, script: parsed.script, parameter: parsed.parameter, variables: parsed.variables, ...(parsed.option !== undefined ? { option: parsed.option } : {}) }).catch((e) => toast(errorText(e)));
+      return;
+    }
+    const query = new URLSearchParams();
+    if (parsed.script) query.set('script', parsed.script);
+    if (parsed.parameter) query.set('param', parsed.parameter);
+    if (parsed.option !== undefined) query.set('option', String(parsed.option));
+    for (const [key, value] of Object.entries(parsed.variables)) query.set(key, value);
+    window.open(`/fmi/webd/${encodeURIComponent(parsed.file)}${query.size ? `?${query}` : ''}`, '_blank', 'noopener');
   }
 
   /** The field the cursor was last in on this layout. */
@@ -5835,6 +5863,10 @@ class Session implements Host {
         } else if (act.step === 'Show Custom Dialog') {
           const lines = [act.title, act.message].filter((x) => typeof x === 'string' && x) as string[];
           alert(lines.join('\n\n'));
+        } else if (act.step === 'Open URL' && typeof act.url === 'string' && /^fmp\d*:/i.test(act.url)) {
+          // A linked script cannot start while this one runs (runButton drops a nested call): it starts when this one has ended.
+          const url = act.url;
+          void this.scriptEnded.then(() => this.handleFmpUrl(url));
         } else if ((act.step === 'Open URL' || act.step === 'Dial Phone') && typeof act.url === 'string' && /^(https?|mailto|tel):/i.test(act.url)) {
           window.open(act.url, '_blank', 'noopener');
         } else if (typeof act.clipboard === 'string') {

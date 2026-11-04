@@ -196,6 +196,22 @@ taken out of the address once it has run, so a reload doesn't run it again. Left
 Claris page doesn't document it), and a script link kept through Sign in with an identity provider (the provider's page
 returns to `/app/` without it).
 
+### `fmp://` links
+
+`fmp://$/Sales?script=Pick&param=42` and versioned forms such as `fmp26://` open a hosted file here. `$` and this server's host
+name refer to this server; a link to the current file can run its named script in this window, and a link to another hosted
+file opens that file in a new browser window. The account must have the `fmurlscript` extended privilege to run a script;
+otherwise the server's message appears in a toast. A link without a script just opens the file. Credentials embedded in a
+link are discarded; sign in to the web client as usual. `~` links refer to a file on the person's computer and cannot be
+opened by a browser. Links naming another host show a toast explaining that host's web client must be opened instead; a link
+without a file name also shows a toast.
+
+Web viewer clicks on `fmp:` and versioned `fmpNN:` links use the same handling. A sandboxed web viewer cannot intercept a
+page script that assigns `location.href = 'fmp:…'`; use `FileMaker.PerformScript` from that page instead. The URL `option` is
+not currently passed to the script runner. Repetition suffixes such as `$name[2]` are passed unchanged; the current server
+accepts only variable keys matching its plain `$name` rule, so repetitions are not applied. FileMaker's exact host and option
+semantics remain unverified. <!-- known-difference: Web client ;; fmp URLs to a local file or another server cannot be opened here; script-driven location.href in a sandboxed viewer is not intercepted; option and repeating variable semantics are unverified ;; These links show an explanatory toast or need FileMaker.PerformScript in the viewer ;; A comparison with the product described by the fmp URL help page -->
+
 ### Address, browser history and page title
 
 The `/app/` address carries the selected file, layout, record ID, browse/find/preview mode,

@@ -190,8 +190,8 @@
       "gzip": 891
     },
     "packages/web/src/url-script.ts": {
-      "raw": 1467,
-      "gzip": 732
+      "raw": 3926,
+      "gzip": 1528
     },
     "packages/web/src/brand.ts": {
       "raw": 1426,

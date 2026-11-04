@@ -5,11 +5,14 @@ export type ViewerAction = 'Reset' | 'Reload' | 'Go Back' | 'Go Forward' | 'Go t
 export function webViewerBridge(origin: string, documentId: string): string {
   const literal = (value: string) => JSON.stringify(value).replace(/</g, '\\u003c');
   return `<script>
-var parentOrigin=${literal(origin)},documentId=${literal(documentId)},restoring,previous,currentHash=location.hash,position={x:scrollX,y:scrollY};
+var parentOrigin=${literal(origin)},documentId=${literal(documentId)},restoring,previous,currentHash=location.hash,position={x:scrollX,y:scrollY},lastFmp=0;
 // srcdoc inherits the app's base URL: activate fragment links against this document instead.
 addEventListener('click',function(e){
   var a=e.target.closest&&e.target.closest('a[href]');
   var hash=a&&a.getAttribute('href');
+  if(!e.defaultPrevented&&e.button===0&&typeof hash==='string'&&/^fmp\\d*:/i.test(hash)){
+    e.preventDefault();var now=Date.now();if(now-lastFmp>=250){lastFmp=now;parent.postMessage({tabularius:'fmp',documentId:documentId,url:hash},parentOrigin)}return;
+  }
   if(e.defaultPrevented||e.button!==0||typeof hash!=='string'||!/^#[^\\x00-\\x1f]*$/.test(hash))return;
   e.preventDefault();
   previous={x:scrollX,y:scrollY};

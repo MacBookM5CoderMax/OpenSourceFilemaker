@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**273 entries in 34 areas.** Unverified: 136. Waiting on: 24 on a sample file, 162 on a FileMaker run or Design Report, 15 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
+**274 entries in 34 areas.** Unverified: 137. Waiting on: 24 on a sample file, 162 on a FileMaker run or Design Report, 15 on a Claris answer, 13 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -416,6 +416,7 @@ part of it.
 | Grand summaries run across the page in columns (inferred), what lies beyond the first column's width is not printed, and column settings are not read from converted .fmp12 files (no sample sets it) | A converted layout prints in one column | A sample file with columns set, and a FileMaker print | [docs/web-client.md › Preview mode and printing](web-client.md) — “…the count; grand summaries run across the page (inferred). What lies beyond the first column's width isn't…” |
 | The numeric form newer files store for the page number symbol ({{1015}}) is inferred | A page number may not show for a layout that stores it so | A sample file with that symbol | [docs/web-client.md › Preview mode and printing](web-client.md) — “…the numeric form newer files store ({{1015}}, inferred).” |
 | Whether FileMaker's plain word find folds é, ł, ø and ß to their plain forms remains unverified | The browser finds café, Łódź, smørrebrød and straße using cafe, lodz, smorrebrod and strasse | A FileMaker run of a word find on these letters | [docs/web-client.md › Find mode](web-client.md) — “…word find agrees for these letters remains unverified. Unique validation ignores case in every script but…” |
+| fmp URLs to a local file or another server cannot be opened here; script-driven location.href in a sandboxed viewer is not intercepted; option and repeating variable semantics are unverified | These links show an explanatory toast or need FileMaker.PerformScript in the viewer | A comparison with the product described by the fmp URL help page | [docs/web-client.md › fmp:// links](web-client.md) — “semantics remain unverified.” |
 
 ## Windows hosting
 
