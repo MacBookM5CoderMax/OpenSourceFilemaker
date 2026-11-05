@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**291 entries in 35 areas.** Unverified: 149. Waiting on: 25 on a sample file, 177 on a FileMaker run or Design Report, 15 on a Claris answer, 14 on a decision by the owner (an entry can wait on more than one).
+**291 entries in 35 areas.** Unverified: 147. Waiting on: 25 on a sample file, 177 on a FileMaker run or Design Report, 15 on a Claris answer, 14 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -62,8 +62,8 @@ part of it.
 
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
-| PostgreSQL Connections behavior is unverified against a real server and other database Connections are not yet available | Some outside databases cannot be connected and real PostgreSQL behavior may differ | A run against real PostgreSQL, MySQL, SQL Server and Oracle servers | [docs/guides/running/external-sql-sources.md › What works in this core](guides/running/external-sql-sources.md) — “…and Tabularius's own protocol server, but is unverified against a real server.” |
 | SQL column type mapping and supplemental-field behavior relative to FileMaker ESS are unverified | A source value or supplemental field may be interpreted differently | A comparison with the same schema and values in a FileMaker ESS solution | [docs/guides/running/external-sql-sources.md › Connect a PostgreSQL database](guides/running/external-sql-sources.md) — “…behavior relative to FileMaker's ESS are unverified.” |
+| The Connections, mirror and layout path has not been run against a real server, MySQL, SQL Server and Oracle Connections are not yet available and the Oracle client does not yet sign in | Some outside databases cannot be connected and Oracle cannot sign in at all | The Connections path run against real servers, and an Oracle sign-in against a real Oracle server | [docs/guides/running/external-sql-sources.md › What works in this core](guides/running/external-sql-sources.md) — “…binding is coming. The Oracle client does not yet sign in to a real Oracle server. The SQLite driver remains a…” |
 | Deleting a shadow row already gone from SQL succeeds here; FileMaker parity is unverified | A delete may report a different result in FileMaker | A comparison of already-deleted SQL rows in FileMaker ESS | [docs/guides/running/external-sql-sources.md › Writes](guides/running/external-sql-sources.md) — “…its mirror row succeeds; FileMaker parity is unverified.” |
 | Execute SQL native source and literal-text parameter decoding and fmess behavior are unverified against FileMaker | Converted steps may need their data source and SQL specified again and some accounts are refused | A generated native script parameter comparison and execution against FileMaker ESS | [docs/guides/running/external-sql-sources.md › Connect a PostgreSQL database](guides/running/external-sql-sources.md) — “…source and literal-text parameter decoding is unverified; converted steps without a decoded binding keep error…” |
 | File serial-number behavior on shadow tables is unverified against FileMaker | An auto-entered number may differ from a FileMaker ESS solution | A comparison of serial auto-enter and SQL defaults in FileMaker | [docs/guides/running/external-sql-sources.md › Writes](guides/running/external-sql-sources.md) — “…table are local values; parity with FileMaker is unverified. The outside database supplies defaults for…” |
@@ -71,13 +71,13 @@ part of it.
 | Network-backed shadow record writes are unavailable | Record create, edit and delete return an ESS error while Execute SQL can change the outside database | Implement and verify asynchronous record writes against real servers | [docs/guides/running/external-sql-sources.md › Writes](guides/running/external-sql-sources.md) — “Network-backed record writes are currently refused with “Changing records of this SQL table is not available…” |
 | Shadow writes across connections, or between an outside database and the mirror, have no atomic commit | A later failure can leave one database committed and the other uncommitted | A recovery and transaction comparison against FileMaker ESS | [docs/guides/running/external-sql-sources.md › Writes](guides/running/external-sql-sources.md) — “One record or portal commit sends all its shadow-table changes for the same connection in one outside database…” |
 | Container uploads into a mapped BLOB column, undoing a delete and restoring a record as of an earlier time are refused on a shadow table | Those actions fail with the SQL source error instead of changing the record | A comparison with the same actions on an ESS table in FileMaker | [docs/guides/running/external-sql-sources.md › Writes](guides/running/external-sql-sources.md) — “Some changes to a shadow table are refused with the SQL source error (8310) because they would put the local…” |
-| Truncate Table on a shadow table remains unavailable | A truncate that another ESS host permits fails here | A comparison of Truncate Table on a shadow table in FileMaker | [docs/guides/running/external-sql-sources.md › Writes](guides/running/external-sql-sources.md) — “The SQLite stand-in has automated write tests. The PostgreSQL, MySQL, SQL Server and Oracle write SQL has not…” |
+| Truncate Table on a shadow table remains unavailable | A truncate that another ESS host permits fails here | A comparison of Truncate Table on a shadow table in FileMaker | [docs/guides/running/external-sql-sources.md › Writes](guides/running/external-sql-sources.md) — “The SQLite stand-in has automated write tests. The write SQL (create with a database-generated key, NULL-safe…” |
 
 ## External SQL Sources
 
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
-| The standalone MySQL/MariaDB ESS client is not yet connected to ODBC data sources, and its protocol behavior is unverified against a real server | An ODBC data source cannot use this client yet | Register the client with the ESS bridge and test it against real MySQL and MariaDB servers | [docs/design-mode.md › Changes](design-mode.md) — “The standalone MySQL/MariaDB ESS client is not yet connected to odbc:DSN data sources. Its protocol behavior…” |
+| The standalone MySQL/MariaDB ESS client is not yet connected to ODBC data sources | An ODBC data source cannot use this client yet | Register the client with the ESS bridge | [docs/design-mode.md › Changes](design-mode.md) — “The standalone MySQL/MariaDB ESS client is not yet connected to odbc:DSN data sources. It has been run against…” |
 
 ## File system races
 

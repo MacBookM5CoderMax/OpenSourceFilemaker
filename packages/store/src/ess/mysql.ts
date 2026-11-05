@@ -142,8 +142,9 @@ function checked(packet: Buffer, secrets: string[] = []): Buffer {
   if (packet[0] === 0xff) errorPacket(packet, secrets);
   return packet;
 }
+/** The OK packet carries the affected-row count first and the last insert id second; the count is what a write reports. */
 function ok(packet: Buffer): number {
-  const p = { at: 1 }; lnum(packet, p); return lnum(packet, p);
+  const p = { at: 1 }; return lnum(packet, p);
 }
 function isEnd(packet: Buffer): boolean { return packet[0] === 0xfe && packet.length < 9; }
 interface Column { name: string; type: number; flags: number; charset: number }
@@ -161,7 +162,9 @@ function integer(raw: bigint): number | bigint {
 }
 function textValue(raw: Buffer, col: Column): SqlValue {
   const s = raw.toString('utf8');
-  if (col.charset === 63 || col.type === TYPE.BIT) return raw;
+  // Charset 63 (binary) marks byte strings, but the server also gives it to every number and date column: only a string or BLOB type is bytes.
+  const byteString = [TYPE.VARCHAR, TYPE.VAR_STRING, TYPE.STRING, 249, 250, 251, TYPE.BLOB, 255].includes(col.type);
+  if ((col.charset === 63 && byteString) || col.type === TYPE.BIT) return raw;
   if ([TYPE.TINY, TYPE.SHORT, TYPE.LONG, TYPE.INT24, TYPE.LONGLONG, TYPE.YEAR].includes(col.type)) {
     try { return integer(BigInt(s)); } catch { return s; }
   }
@@ -312,7 +315,8 @@ export class MysqlDriver implements SqlDriver {
       if (secure && !(flags & CAP.SSL)) throw Error('SQL server does not offer TLS');
       let caps = CAP.PROTOCOL_41 | CAP.SECURE | CAP.PLUGIN_AUTH | CAP.TRANSACTIONS | CAP.MULTI_RESULTS | CAP.LONG_PASSWORD | CAP.FOUND_ROWS;
       if (flags & CAP.CONNECT_DB) caps |= CAP.CONNECT_DB;
-      if (flags & CAP.DEPRECATE_EOF) caps |= CAP.DEPRECATE_EOF;
+      // CLIENT_DEPRECATE_EOF is never asked for: every result below reads the classic EOF packets after column definitions, so a server that
+      // was offered the flag (MariaDB and MySQL both implement it) would leave those packets out and the first row would be read as a terminator.
       if (secure) caps |= CAP.SSL;
       const base = Buffer.concat([u32(caps), u32(MAX_MESSAGE), Buffer.from([45]), Buffer.alloc(23)]);
       if (secure) {
@@ -387,7 +391,9 @@ export class MysqlDriver implements SqlDriver {
     for (;;) {
       const packet = checked(await this.receive(), [this.options.password, ...secrets]);
       if (isEnd(packet)) break;
-      if (maxRows === undefined || rows.length < maxRows) rows.push(row(packet, columns, binary));
+      // Refused whole, with the message the bridge turns into the row-limit error; the connection is closed (the rest of the result is unread).
+      if (maxRows !== undefined && rows.length >= maxRows) throw Error(`SQL row limit of ${maxRows} exceeded`);
+      rows.push(row(packet, columns, binary));
     }
     return { columns: columns.map((c) => ({ name: c.name, type: String(c.type) })), rows };
   }

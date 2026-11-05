@@ -714,10 +714,10 @@ test('adapter catalogs use INFORMATION_SCHEMA, parameterized names and primary k
   ]);
 });
 
-test('maxRows rejects the whole result instead of returning a partial result', async (t) => {
+test('maxRows rejects the whole result instead of returning a partial result, with the row-limit message', async (t) => {
   const client = await plain(t, (_, socket) => socket.write(packet(4, Buffer.concat([metadata([{ id: 0x38 }]),
     Buffer.from([0xd1]), u32(1), Buffer.from([0xd1]), u32(2), done()]))));
-  await assert.rejects(client.query('rows', [], { maxRows: 1 }), /invalid or oversized/);
+  await assert.rejects(client.query('rows', [], { maxRows: 1 }), /^Error: SQL row limit of 1 exceeded$/);
   await assert.rejects(client.query('after cap', []), /connection closed/);
 });
 

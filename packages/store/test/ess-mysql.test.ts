@@ -90,10 +90,10 @@ function col(name: string, type: number, flags = 0, charset = 45): Buffer {
   return Buffer.concat([l(Buffer.from('def')), l(Buffer.from('test')), l(Buffer.from('t')), l(Buffer.from('t')),
     l(Buffer.from(name)), l(Buffer.from(name)), fixed]);
 }
-function result(peer: Peer, names: [string, number][], rows: Buffer[], binary = false): void {
+function result(peer: Peer, names: [string, number, number?][], rows: Buffer[], binary = false): void {
   let seq = 1;
   peer.send(Buffer.from([names.length]), seq++);
-  for (const [name, type] of names) peer.send(col(name, type), seq++);
+  for (const [name, type, charset] of names) peer.send(col(name, type, 0, charset), seq++);
   peer.send(eof, seq++);
   for (const row of rows) peer.send(binary ? Buffer.concat([Buffer.from([0, 0]), row]) : row, seq++);
   peer.send(eof, seq);
@@ -214,7 +214,7 @@ test('clear-password plugin is refused without TLS', async () => {
   finally { await f.close(); }
 });
 
-test('text result, maxRows, SQLSTATE and password redaction', async () => {
+test('text result, SQLSTATE and password redaction', async () => {
   const f = await fake(async (p) => {
     await auth(p);
     assert.equal((await p.message())[0], 3);
@@ -225,9 +225,44 @@ test('text result, maxRows, SQLSTATE and password redaction', async () => {
   });
   try {
     const d = await MysqlDriver.connect(options(f.port));
-    const r = await d.query('SELECT n, note', [], { maxRows: 1 });
-    assert.deepEqual(r.rows, [[7, 'one']]);
+    const r = await d.query('SELECT n, note', [], { maxRows: 2 });
+    assert.deepEqual(r.rows, [[7, 'one'], [8, 'two']]);
     await assert.rejects(d.query('bad', []), (e: Error & { sqlState?: string; sqlCode?: number }) => e.sqlState === '42000' && e.sqlCode === 0x1234 && !e.message.includes(password));
+    await d.close();
+  } finally { await f.close(); }
+});
+
+test('a result over maxRows is refused whole with the row-limit message, never returned cut short', async () => {
+  const f = await fake(async (p) => {
+    await auth(p);
+    assert.equal((await p.message())[0], 3);
+    result(p, [['n', 8]], [l(Buffer.from('7')), l(Buffer.from('8'))]);
+    await p.read().catch(() => undefined);
+  });
+  try {
+    const d = await MysqlDriver.connect(options(f.port));
+    await assert.rejects(d.query('SELECT n', [], { maxRows: 1 }), /^Error: SQL row limit of 1 exceeded|^SQL row limit of 1 exceeded/);
+    await assert.rejects(d.query('SELECT n', []), /connection closed/);
+  } finally { await f.close(); }
+});
+
+// A real server gives charset 63 (binary) to number columns, and puts the affected-row count before the insert id in an OK packet.
+test('text numbers decode as numbers although their charset is binary, and a write reports its affected rows', async () => {
+  const f = await fake(async (p) => {
+    await auth(p);
+    assert.equal((await p.message())[0], 3);
+    result(p, [['n', 3, 63], ['price', 246, 63], ['raw', 252, 63]], [Buffer.concat([l(Buffer.from('7')), l(Buffer.from('12.50')), l(Buffer.from([1, 2]))])]);
+    assert.equal((await p.message())[0], 3);
+    p.send(Buffer.from([0, 3, 9, 2, 0, 0, 0]), 1); // 3 rows affected, insert id 9
+    await p.read().catch(() => undefined);
+  });
+  try {
+    const d = await MysqlDriver.connect(options(f.port));
+    const r = await d.query('SELECT n', []);
+    assert.equal(r.rows[0][0], 7);
+    assert.equal(r.rows[0][1], '12.50');
+    assert.ok(r.rows[0][2] instanceof Uint8Array, 'a binary column is bytes');
+    assert.equal((await d.query('UPDATE t SET a = 1', [])).affected, 3);
     await d.close();
   } finally { await f.close(); }
 });

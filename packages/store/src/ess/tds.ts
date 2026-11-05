@@ -313,8 +313,10 @@ async function column(c: Reader, named = true): Promise<Column> {
     if (!sizes.includes(out.size)) throw protocol();
   } else if (id === 0x6a || id === 0x6c) {
     out.size = await c.u8(); out.precision = await c.u8(); out.scale = await c.u8();
+    // A real server reports the widest storage (17) for some columns and the per-precision size (5, 9, 13) for others; each value then
+    // carries its own length. The metadata size only has to be a decimal storage size that holds the precision.
     const size = out.precision <= 9 ? 5 : out.precision <= 19 ? 9 : out.precision <= 28 ? 13 : 17;
-    if (out.precision < 1 || out.precision > 38 || out.scale > out.precision || out.size !== size) throw protocol();
+    if (out.precision < 1 || out.precision > 38 || out.scale > out.precision || ![5, 9, 13, 17].includes(out.size) || out.size < size) throw protocol();
   } else if (id === 0x28) out.size = 3;
   else if ([0x29, 0x2a, 0x2b].includes(id)) {
     out.scale = await c.u8(); if (out.scale > 7) throw protocol();
@@ -388,7 +390,8 @@ async function value(c: Reader, col: Column): Promise<SqlValue> {
   if (!n) {
     n = wide.has(id) ? await c.u16() : await c.u8();
     if (wide.has(id) ? n === 65535 : n === 0) return null;
-    if (n > size || (!wide.has(id) && n !== size)) throw protocol();
+    // A decimal's value length is its storage size for the precision, which may be less than the size the metadata declared.
+    if (n > size || (!wide.has(id) && n !== size && !((id === 0x6a || id === 0x6c) && [5, 9, 13, 17].includes(n)))) throw protocol();
   }
   return scalar(await c.take(n), col);
 }
@@ -826,7 +829,9 @@ export class TdsClient implements SqlDriver {
             results.push(current); break;
           }
           case 0xd1: case 0xd2: {
-            if (!columns || !current || ++rowCount > (state?.maxRows ?? ROW_LIMIT)) throw protocol();
+            if (!columns || !current) throw protocol();
+            // A result over the caller's limit is refused whole, with the message the bridge turns into the row-limit error. The connection is closed (the rest of the result is unread).
+            if (++rowCount > (state?.maxRows ?? ROW_LIMIT)) throw new Error(`SQL row limit of ${state?.maxRows ?? ROW_LIMIT} exceeded`);
             cells += columns.length; if (cells > CELL_LIMIT) throw protocol();
             const bitmap = tag === 0xd2 ? await c.take(Math.ceil(columns.length / 8)) : undefined;
             const row: SqlValue[] = [];
