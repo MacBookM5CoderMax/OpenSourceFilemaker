@@ -310,7 +310,7 @@ part of it.
 
 | What differs or is unknown | How it shows | What would settle it | Where it is written |
 | --- | --- | --- | --- |
-| A second hosted file is reached as the same account only when the name and password match there, as in FileMaker; FileMaker then asks for that file's credentials when they do not match, which the server cannot do | A layout or query over the other file's table answers as if the account had no access there, with no prompt; signing in to the first file again after setting the same password in both files makes the proof | A FileMaker run of a two-file solution with different passwords in each, to record the prompt and what a Data API session gets | [docs/threat-model.md › Who the attacker is](threat-model.md) — “The owner of one hosted file \| Has [Full Access] in one file of a folder that hosts several \| Reaching another…” |
+| A second hosted file is reached as the same account only when the name and password match there, as in FileMaker; FileMaker then asks for that file's credentials when they do not match, which the server cannot do | A layout over the other file's table answers error 212, and a script there error 9, each saying the account's password differs between the files and how to fix it, with no prompt (a query answers as if the account had no access); signing in to the first file again after setting the same password in both files makes the proof | A FileMaker run of a two-file solution with different passwords in each, to record the prompt and what a Data API session gets | [docs/threat-model.md › Who the attacker is](threat-model.md) — “The owner of one hosted file \| Has [Full Access] in one file of a folder that hosts several \| Reaching another…” |
 
 ## Solution patterns
 

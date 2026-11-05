@@ -44,7 +44,7 @@ import { foldCase, recordSortKey, recordSortLanguage, SORT_LANGUAGE_IDS, sortFun
 import { valueListOrder } from './value-list-sort.ts';
 import { languageOrderBy } from './sql-language-order.ts';
 import { timeComparisons } from './sql-time-order.ts';
-import { authorityOf, ownPrivilegeEntry, countObjectUse, ensurePrivilegeTables, isFullAccess, privilegeSets, relaxUnverified, validateDefinition, Privileges, PrivilegeError, NO_ACCESS, maskValue, type FieldMask, type PrivilegeDefinition, type Rule } from './privileges.ts';
+import { authorityOf, ownPrivilegeEntry, countObjectUse, ensurePrivilegeTables, isFullAccess, privilegeSets, relaxUnverified, validateDefinition, Privileges, PrivilegeError, NO_ACCESS, NO_ACCOUNT, maskValue, type FieldMask, type PrivilegeDefinition, type Rule } from './privileges.ts';
 import { accessReport, explainAccess, diffPrivilegeSet, testAccount, type AccessReport, type AccessExplanation, type SetChange, type AccountTest } from './access-report.ts';
 import { accessDenialContext, denialAuditDetail, denialAuditSuppressed, type AccessDenial, type DenialAudit, type AccessOperation, type RuleOutcome } from './access-denial.ts';
 import { applyOps, DesignError, type DeletedDesign, type DesignOp, type Effect } from './design.ts';
@@ -6871,9 +6871,9 @@ export class Store {
         // name, a provider's subject) is no key in the other file, or a name alone would open it again.
         const email = person ?? (account.includes('@') ? account : undefined);
         const theirs = email === undefined && !groups.length ? undefined : other.externalAccount(email, groups);
-        return theirs !== undefined && other.identityAllowed(account, theirs, undefined, person) ? other.privileges(account, theirs, person, groups) : other.privileges('\u0000inactive-account');
+        return theirs !== undefined && other.identityAllowed(account, theirs, undefined, person) ? other.privileges(account, theirs, person, groups) : other.privileges(NO_ACCOUNT);
       }
-      return this.crossFileProven(account, other) && other.identityAllowed(account) ? other.privileges(account) : other.privileges('\u0000inactive-account');
+      return this.crossFileProven(account, other) && other.identityAllowed(account) ? other.privileges(account) : other.privileges(NO_ACCOUNT);
     }).withVia(via);
     this.privilegeCache.value.set(key, p);
     return p;
@@ -7484,6 +7484,16 @@ export class Store {
   /** Whether this file's account has proved, with its password, that it is the account of the same name in `other`. */
   crossFileProven(account: string, other: Store): boolean {
     return this.crossFile.proven(account, other);
+  }
+
+  /** Why `account` reaches nothing in `other`, when the cause is that both files have an account of that name and the passwords were not shown to be the same: a message that says how to put it right. */
+  crossFileMismatch(account: string, other: unknown): string | undefined {
+    const them = other as Store;
+    if (!account || !them || them === this || typeof them.crossFileHash !== 'function') return undefined;
+    if (this.crossFileHash(account, '', false) === undefined || them.crossFileHash(account, '', false) === undefined) return undefined;
+    if (this.crossFileProven(account, them)) return undefined;
+    return `Account "${account}" exists in "${them.name}" too, but its password there is not the same as in "${this.name}". `
+      + `Set the same password for "${account}" in both files (Manage Security) and sign in again, or sign in with the credentials for "${them.name}" (in the Data API, fmDataSource).`;
   }
 
   /** A password that opened another file was wrong for this one: counted and logged as a failed sign-in here. */

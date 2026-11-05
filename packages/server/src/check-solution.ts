@@ -9,14 +9,14 @@ import { FUNCTIONS, pluginNotInstalled } from '../../calc/src/functions.ts';
 import type { LayoutObject } from '../../fmp12/src/index.ts';
 import { lintScript, isFullAccess, type Store } from '../../store/src/index.ts';
 import { ERROR_3_STEPS, ERROR_3_UNLESS_CONFIGURED } from '../../scripts/src/unavailable-steps.ts';
-import { canVerifyUnused, checkFormula, didYouMean, solutionIndex, unhostedFileOf, type Site } from './insight.ts';
+import { canVerifyUnused, checkFormula, dataSourceHosted, didYouMean, solutionIndex, unhostedFileOf, type Site } from './insight.ts';
 
 export type Severity = 'error' | 'warning' | 'info';
 
 export type FindingKind =
   | 'formula-syntax' | 'formula-unreadable' | 'formula-problem' | 'unknown-function' | 'plugin-not-installed'
   | 'missing-table-occurrence' | 'missing-field' | 'missing-script' | 'missing-layout' | 'missing-value-list'
-  | 'layout-table-missing' | 'relationship-field-missing' | 'relationship-no-match-fields' | 'value-list-source-missing'
+  | 'layout-table-missing' | 'data-file-not-hosted' | 'relationship-field-missing' | 'relationship-no-match-fields' | 'value-list-source-missing'
   | 'script-lint' | 'step-unavailable' | 'step-needs-setup'
   | 'privilege-set-missing-object' | 'privilege-set-grants-nothing' | 'account-no-privilege-set'
   | 'account-cannot-run-script' | 'account-cannot-open-layout'
@@ -167,6 +167,17 @@ export function checkSolution(store: Store, opts: { account?: string } = {}): So
         }
       }
     }
+  }
+
+  // --- other FileMaker files (a data file under an interface file) ---------------------------------------------
+  // Their tables read as empty and their scripts fail with error 100 until the file is hosted beside this one.
+  for (const d of s.dataSources) {
+    if (!d.paths.some((p) => /^(?:file|fmnet|filemac|filewin|filelinux):/i.test(p.trim())) || dataSourceHosted(store, d.id)) continue;
+    const users = s.tableOccurrences.filter((o) => o.dataSourceId === d.id).length;
+    if (!users) continue;
+    add({ kind: 'data-file-not-hosted', severity: 'error', where: `Data source ${quoted(d.name)}`,
+      message: `The file is not hosted here, so its ${users === 1 ? 'table is' : 'tables are'} unreachable: ${users} table occurrence${users === 1 ? '' : 's'} read as empty and scripts that open it fail with error 100.`,
+      hint: `Put ${quoted(d.name)} (the .fmp12 file) in the same folder as this file, or rename the hosted copy to ${quoted(d.name)}: files are matched by name.` });
   }
 
   // --- value lists --------------------------------------------------------------------------------------------

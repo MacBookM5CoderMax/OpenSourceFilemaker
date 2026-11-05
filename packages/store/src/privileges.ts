@@ -279,6 +279,9 @@ export function countObjectUse(file: object, sink: (account: string, set: string
   objectUse.set(file, sink);
 }
 
+/** The account name of the privileges a file gives no one (an account that is missing, inactive or not proven there). */
+export const NO_ACCOUNT = '\u0000inactive-account';
+
 export class Privileges {
   readonly account: string;
   /** The external mapping this session signed in through, when it did (a directory or identity-provider sign-in). */
@@ -324,8 +327,20 @@ export class Privileges {
 
   /** The same account's privileges in another hosted file (no access when it has no account there). */
   in(file: unknown): Privileges {
-    return file === this.file ? this : this.other(file);
+    if (file === this.file) return this;
+    const theirs = this.other(file);
+    if (theirs.account !== NO_ACCOUNT) return theirs;
+    // No access in the other file: say why when the reason is a password that differs there, as FileMaker would ask for it.
+    const host = this.file as { crossFileMismatch?: (account: string, other: unknown) => string | undefined } | null;
+    const why = this.via === undefined ? host?.crossFileMismatch?.(this.account, file) : undefined;
+    if (!why) return theirs;
+    const marked: Privileges = Object.assign(Object.create(Privileges.prototype) as Privileges, theirs);
+    marked.refusal = why;
+    return marked;
   }
+
+  /** Set on the no-access privileges of a file whose same-named account has a different password: what to tell the person. */
+  refusal?: string;
 
   get name(): string {
     return this.set.name;
@@ -471,7 +486,7 @@ export class Privileges {
   /** Throws unless the layout can be used (and, with `write`, records changed through it). */
   checkLayout(name: string, write = false): void {
     const l = this.layout(name);
-    if (l.layout === 'none') throw new PrivilegeError(105, `Layout "${name}" is missing`);
+    if (l.layout === 'none') throw new PrivilegeError(this.refusal ? 212 : 105, this.refusal ?? `Layout "${name}" is missing`);
     if (write && l.records !== 'modifiable') throw new PrivilegeError(200, `Record access is denied: layout "${name}" is view only`,
       this.denial('write', 'layout-write', ownPrivilegeEntry(this.set.layoutAccess, name) ? 'layout' : 'layouts',
         ownPrivilegeEntry(this.set.layoutAccess, name) ? `layoutAccess.${name}.records` : 'layouts', l.records === 'none' ? 'none' : 'view-only'));
@@ -479,7 +494,7 @@ export class Privileges {
   }
 
   checkScript(name: string): void {
-    if (this.script(name) === 'none') throw new PrivilegeError(9, `Insufficient privileges to run script "${name}"`,
+    if (this.script(name) === 'none') throw new PrivilegeError(9, this.refusal ? `Insufficient privileges to run script "${name}": ${this.refusal}` : `Insufficient privileges to run script "${name}"`,
       this.denial('run', 'script-start', ownPrivilegeEntry(this.set.scriptAccess, name) !== undefined ? 'script' : 'scripts',
         ownPrivilegeEntry(this.set.scriptAccess, name) !== undefined ? `scriptAccess.${name}` : 'scripts', 'none'));
     this.used('script', name);
