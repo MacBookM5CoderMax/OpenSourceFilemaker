@@ -354,6 +354,28 @@ test('a Windows folder is hidden however a message spells it: any case, either s
   assert.equal(share.patterns('opened //fileserver/dept/Hosted/x.fmp12'), 'opened <folder>/x.fmp12');
 });
 
+for (const [name, url] of [
+  ['user and deeper spaces', 'file:///C:/Users/Ann%20Lee/Documents/My%20Files/a.fmp12'],
+  ['POSIX space', 'file:///Users/Ann%20Lee/Library/x'],
+  ['deeper space', 'file:///C:/Users/Ann/Documents/My%20Files/a.fmp12'],
+  ['encoded drive colon', 'file:///C%3A/Users/Ann%20Lee/Documents/My%20Files/a.fmp12'],
+  ['localhost', 'file://localhost/Users/Ann%20Lee/Documents/My%20Files/a.fmp12'],
+  ['UNC', 'file:////server/share/My%20Folder/x'],
+  ['mixed hex separators', 'file:///C%3a%2FUsers%2fAnn%20Lee%2FDocuments%2fMy%20Files%2Fa.fmp12'],
+  ['other encoded bytes', 'file:///Users/Ann%09Lee/Documents/My%2eFiles/a.fmp12'],
+]) {
+  test(`encoded file URLs hide the whole path: ${name}`, () => {
+    const s = new Scrubber({ folder: '/srv/db' });
+    for (const [before, after] of [['opened ', ' next word'], ['opened (', '), next word'], ['opened "', '"; next word'], ['opened ', '. Next sentence!']]) {
+      const out = s.patterns(`${before}${url}${after}`);
+      assert.match(out, /‹redacted›/);
+      assert.doesNotMatch(out, /Ann|Lee|Users|Documents|My|Files|Library|server|share|Folder|a\.fmp12/);
+      assert.equal(out, `${before}‹redacted›${after}`);
+      assert.equal(s.patterns(out), out);
+    }
+  });
+}
+
 test('a share is hidden whether it is written with forward slashes or as a long path, and a web address is not one', () => {
   const s = new Scrubber({ folder: '/srv/db' });
   for (const path of ['opened //fileserver/finance$/q3/x', 'opened \\\\?\\UNC\\fileserver\\finance$\\q3\\x', 'opened \\\\.\\UNC\\fileserver\\finance$']) {
