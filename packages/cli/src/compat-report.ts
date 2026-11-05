@@ -10,6 +10,16 @@
 
 import { statSync } from 'node:fs';
 import { SCRIPT_STEP_NAMES } from '../../fmp12/src/index.ts';
+import { MBS_CURL } from '../../calc/src/mbs-curl.ts';
+import { MBS_DICT } from '../../calc/src/mbs-dict.ts';
+import { MBS_JS } from '../../calc/src/mbs-js.ts';
+import { MBS_JSON } from '../../calc/src/mbs-json.ts';
+import { MBS_LIST } from '../../calc/src/mbs-list.ts';
+import { MBS_MATH } from '../../calc/src/mbs-math.ts';
+import { MBS_QUICKLIST } from '../../calc/src/mbs-quicklist.ts';
+import { MBS_REGEX } from '../../calc/src/mbs-regex.ts';
+import { MBS_TEXT } from '../../calc/src/mbs-text.ts';
+import { MBS_XML } from '../../calc/src/mbs-xml.ts';
 import { scanInChild, type FileScan } from './corpus-scan.ts';
 
 type Tally = Record<string, number>;
@@ -27,12 +37,20 @@ const COUNT_KEYS = [
 
 const STEP_NAMES = new Set(SCRIPT_STEP_NAMES);
 
+/**
+ * The MBS function names Tabularius has built in (lower case, as it keeps them). The scan reads an MBS name from the first
+ * string in the call, which is the file's own text, so only a name in these tables is shown. One that is not in them is
+ * shown only as "<namespace>.(other)" when its namespace (the part before the dot) is one of these tables', and otherwise
+ * counted without being shown: a lookalike name cannot be told from MBS's own by its shape.
+ */
+const MBS_KNOWN: ReadonlySet<string> = new Set([MBS_CURL, MBS_DICT, MBS_JS, MBS_JSON, MBS_LIST, MBS_MATH, MBS_QUICKLIST, MBS_REGEX, MBS_TEXT, MBS_XML].flatMap((t) => Object.keys(t)));
+const MBS_NAMESPACES: ReadonlySet<string> = new Set([...MBS_KNOWN].map((k) => k.split('.')[0]));
+
 /** The shape each kind of name must have to be shown. Anything else is counted, not named. */
 const SHAPES = {
   function: /^[A-Za-z][A-Za-z0-9]{0,40}$/,
   get: /^[A-Za-z][A-Za-z0-9]{0,40}$/,
   plugin: /^[A-Za-z0-9]{4}:\d{1,5}$/,
-  mbs: /^[A-Z][A-Za-z0-9]{0,30}\.[A-Za-z0-9.]{1,60}$/,
   unknownFunction: /^[0-9a-f]{1,8}$/,
   unknownGet: /^[0-9a-f]{1,8}$/,
   unknownStep: /^\d{1,5}$/,
@@ -40,8 +58,8 @@ const SHAPES = {
   trigger: /^(?:file|layout|object):[A-Za-z0-9]{1,40}$/,
 } as const;
 
-/** What FileMaker writes into a file's header as the version that saved it ("Pro 12.0"); anything else is not shown. */
-const SAVED_BY = /^[A-Za-z]{2,12} \d{1,3}(?:\.\d{1,3}){0,3}[a-z]?$/;
+/** What FileMaker writes into a file's header as the version that saved it ("Pro 12.0"): one of its product words and a version. A header is the file's own text, so any other word is not shown. */
+const SAVED_BY = /^(?:Pro|Server|Go|Advanced|Pro Advanced|Runtime|Cloud|WebDirect) \d{1,3}(?:\.\d{1,3}){0,3}[a-z]?$/;
 const SAVED_ON = /^\d{2}[A-Z]{3}\d{2}$/;
 /** The fixed class and code location `errorClass` makes ("TypeError @ fmp12/src/file.ts:120"), or one of the scan's fixed process messages. */
 const ERROR_CLASS = /^(?:(?:Range|Type)?Error(?: @ [\w-]+\/src\/[\w.-]+:\d+)?|process (?:could not start|cleanup failed|out of memory|exited with code -?\d+))$/;
@@ -116,6 +134,20 @@ function entries(tally: Tally | undefined, shape: RegExp, hidden: { n: number },
   return out.slice(0, LIST_LIMIT);
 }
 
+/** MBS function names: those Tabularius knows by name, then the others by namespace only (see MBS_KNOWN). */
+function mbsEntries(tally: Tally | undefined, hidden: { n: number }): Entry[] {
+  const merged: Tally = {};
+  for (const [name, uses] of Object.entries(tally ?? {})) {
+    const n = Number.isFinite(uses) && uses > 0 ? Math.floor(uses) : 0;
+    const key = name.toLowerCase();
+    const space = key.split('.')[0];
+    if (MBS_KNOWN.has(key)) merged[key] = (merged[key] ?? 0) + n;
+    else if (key.includes('.') && MBS_NAMESPACES.has(space)) merged[`${space}.(other)`] = (merged[`${space}.(other)`] ?? 0) + n;
+    else hidden.n += n;
+  }
+  return Object.entries(merged).map(([name, uses]) => ({ name, uses })).sort((a, b) => b.uses - a.uses || a.name.localeCompare(b.name)).slice(0, LIST_LIMIT);
+}
+
 /** Builds the report from one file's scan, keeping only what is safe to share. */
 export function buildCompatReport(scan: FileScan, env: CompatEnvironment, sizeBytes: number): CompatReport {
   const hidden = { n: 0 };
@@ -164,7 +196,7 @@ export function buildCompatReport(scan: FileScan, env: CompatEnvironment, sizeBy
       scriptSteps: entries(scan.unknownSteps, SHAPES.unknownStep, hidden),
     },
     plugins: entries(scan.plugins, SHAPES.plugin, hidden),
-    mbs: entries(scan.mbs, SHAPES.mbs, hidden),
+    mbs: mbsEntries(scan.mbs, hidden),
     functions: entries(scan.functions, SHAPES.function, hidden),
     getOptions: entries(scan.getOptions, SHAPES.get, hidden),
     scriptSteps: entries(scan.steps, /^.{1,60}$/, hidden, STEP_NAMES),

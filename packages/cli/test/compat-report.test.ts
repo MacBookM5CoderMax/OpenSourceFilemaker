@@ -36,13 +36,13 @@ test('a hostile scan comes out with its names, paths and messages left out', () 
   const scan: FileScan = {
     status: 'failed',
     error: 'Error: no table "Clients 2019" in /Users/pat/Acme Payroll.fmp12',
-    creator: 'Acme Payroll Ltd',
+    creator: 'Payroll 12.0',
     versionDate: 'last Tuesday',
     counts: { tables: 4, fields: 90, secretCount: 7 } as FileScan['counts'],
     functions: { If: 5, 'Clients 2019': 9 },
     getOptions: { LastError: 3, '/Users/pat/x': 2 },
     plugins: { 'MBSP:12': 3, 'Acme Payroll:1': 2 },
-    mbs: { 'Text.ReplaceAll': 2, 'my secret word': 4 },
+    mbs: { 'Text.ReplaceAll': 2, 'my secret word': 4, 'Payroll.SmithSalary': 3, 'Text.SmithSalary': 2, 'JSON.GetPayrollTotal': 1 },
     unknownFunctions: { f911: 2, 'Invoice Total': 5 },
     unknownSteps: { '999': 1, 'Open Acme': 3 },
     steps: { 'Set Variable': 10, 'Run Payroll': 4 },
@@ -54,7 +54,7 @@ test('a hostile scan comes out with its names, paths and messages left out', () 
   };
   const r = buildCompatReport(scan, env, 4_200_000);
   const text = compatReportMarkdown(r);
-  for (const leak of ['Clients', 'Acme', 'Payroll', 'Users', '/pat', 'secret', 'Invoice', 'Smith', 'last Tuesday', 'Run Payroll']) {
+  for (const leak of ['Clients', 'Acme', 'Payroll', 'Users', '/pat', 'secret', 'Invoice', 'Smith', 'last Tuesday', 'Run Payroll', 'SmithSalary']) {
     assert.ok(!text.includes(leak), `${leak} leaked`);
   }
   assert.deepEqual(r.counts, { tables: 4, fields: 90 });
@@ -65,6 +65,8 @@ test('a hostile scan comes out with its names, paths and messages left out', () 
   assert.equal(r.timing?.stageReached, 'unknown');
   assert.deepEqual(r.functions, [{ name: 'If', uses: 5 }]);
   assert.deepEqual(r.plugins, [{ name: 'MBSP:12', uses: 3 }]);
+  // MBS names come from the file's text: only names Tabularius knows are shown; a lookalike in a known namespace is "(other)".
+  assert.deepEqual(r.mbs, [{ name: 'text.(other)', uses: 2 }, { name: 'text.replaceall', uses: 2 }, { name: 'json.(other)', uses: 1 }].sort((a, b) => b.uses - a.uses || a.name.localeCompare(b.name)));
   assert.deepEqual(r.notYet.functions, [{ name: 'f911', uses: 2 }]);
   assert.deepEqual(r.notYet.scriptSteps, [{ name: '999', uses: 1 }]);
   assert.deepEqual(r.scriptSteps, [{ name: 'Set Variable', uses: 10 }]);
