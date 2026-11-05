@@ -1520,7 +1520,6 @@ export class Store {
     const setIdentity = this.sql.prepare('UPDATE _fm_accounts SET identity_id = ? WHERE name = ? COLLATE NOCASE AND identity_id IS NULL');
     for (const row of missingIdentity) setIdentity.run(randomUUID(), row.name);
     ensureAccountImportTables(this.sql);
-    this.switchOffLegacyConvertedNetwork();
     this.sql.prepare('INSERT OR IGNORE INTO _fm_meta (key, json) VALUES (?, ?)').run('accountImportSecret', JSON.stringify(randomBytes(32).toString('hex')));
     // created_by: for an AI agent account, the human account that created it, so
     // the trail shows who an agent acts for. NULL for ordinary accounts.
@@ -1564,6 +1563,8 @@ export class Store {
     this.ensureRecordIdHighWater();
     ensureSecurityChain(this.sql);
     ensureRecordChain(this.sql);
+    // After the security chain exists: a file older than the chain has nowhere to log the change until the line above ran.
+    this.switchOffLegacyConvertedNetwork();
     this.sql.exec(`CREATE TABLE IF NOT EXISTS _fm_api_tokens (id TEXT PRIMARY KEY, label TEXT, account TEXT NOT NULL,
       token_hash TEXT NOT NULL, read_only INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL, expires TEXT, last_used TEXT)`);
     // surfaces: a JSON array of extended-privilege keywords the token may be used on, or NULL for all the account's.
@@ -4635,26 +4636,35 @@ export class Store {
   /**
    * A file converted before the converter saved the switch has no saved setting, which reads as on. A converted file starts
    * with script network access off until an administrator turns it on, so the first open after an upgrade saves it off
-   * (and logs it). A file made new, or one whose administrator saved a choice either way, is left alone. Best effort: a
-   * read-only or damaged file keeps opening, and the switch is then read as it was.
+   * (and logs it). A file made new, or one whose administrator saved a choice either way, is left alone. If the change
+   * cannot be saved (a read-only or damaged file) the file keeps opening, but fails closed: scripts stay off for this open,
+   * and the next open tries again.
    */
   private switchOffLegacyConvertedNetwork(): void {
     try {
       if (this.meta('scriptNetwork') !== undefined) return;
       const source = this.meta('source') as { importedAt?: unknown; header?: unknown } | undefined;
       if (!source || (source.importedAt === undefined && source.header === undefined)) return;
+      this.legacyNetworkFailedClosed = true;
       this.setScriptNetwork(false, { account: 'upgrade' });
+      this.legacyNetworkFailedClosed = false;
     } catch (e) {
-      console.warn(`${this.name}: could not turn script network access off for a file converted before the switch was saved: ${(e as Error).message}`);
+      console.warn(`${this.name}: could not save script network access as off for a file converted before the switch was saved, so scripts stay off for this open: ${(e as Error).message}`);
     }
   }
+
+  /** Set when a converted file with no saved switch could not be switched off on open: the switch then reads as off until a choice is saved. */
+  private legacyNetworkFailedClosed = false;
 
   /**
    * Whether this file's scripts may reach the network (Insert from URL, Send Mail and the plug-in functions that follow
    * them). On unless an administrator turned it off: a file with no saved setting is on, a file converted from a .fmp12
    * starts off until an administrator turns it on, and the demo is off. Kept in the file, and in its security log.
    */
-  get scriptNetwork(): boolean { return this.meta('scriptNetwork') !== false; }
+  get scriptNetwork(): boolean {
+    const saved = this.meta('scriptNetwork');
+    return saved === undefined && this.legacyNetworkFailedClosed ? false : saved !== false;
+  }
 
   setScriptNetwork(on: boolean, opts: { account?: string } = {}): void {
     if (typeof on !== 'boolean') throw new StoreError(960, 'Script network access must be true or false');

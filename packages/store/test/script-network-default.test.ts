@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { createStore, importFmp12, Store } from '../src/index.ts';
 
 const fixture = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12', 'Charts.fmp12');
@@ -90,4 +91,47 @@ test('a converted file whose administrator saved a setting keeps it', (t) => {
   const store = new Store(path, 'Legacy');
   assert.equal(store.scriptNetwork, true);
   store.close();
+});
+
+test('a converted file older than the security chain is switched off on its first open, and the change is logged', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'script-network-prechain-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, 'Legacy.openhbam.sqlite');
+  legacyConverted(path);
+  // What a file from before the chain looks like: no chain state and no chain columns on the log.
+  const raw = new DatabaseSync(path);
+  raw.exec('DROP TABLE IF EXISTS _fm_security_chain_state');
+  raw.prepare('UPDATE _fm_audit SET chain_seq = NULL, prev_hash = NULL, event_hash = NULL').run();
+  raw.close();
+  const store = new Store(path, 'Legacy');
+  assert.equal(store.scriptNetwork, false);
+  assert.equal(store.sql.prepare("SELECT json FROM _fm_meta WHERE key = 'scriptNetwork'").get()?.json, 'false');
+  assert.equal(store.securityEvents({ kind: 'script-network-off' }).length, 1);
+  store.close();
+});
+
+test('when the switch cannot be saved, a converted file keeps its scripts off for that open and tries again on the next', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'script-network-failclosed-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, 'Legacy.openhbam.sqlite');
+  legacyConverted(path);
+  const raw = new DatabaseSync(path); // not a Store: opening one would do the migration this test needs to see fail
+  raw.exec("CREATE TRIGGER block_security_write BEFORE INSERT ON _fm_audit WHEN NEW.security = 1 BEGIN SELECT RAISE(ABORT, 'log is not writable'); END");
+  raw.close();
+  const warn = console.warn;
+  const warnings: string[] = [];
+  console.warn = (m: unknown) => { warnings.push(String(m)); };
+  let blocked: Store;
+  try { blocked = new Store(path, 'Legacy'); } finally { console.warn = warn; }
+  assert.equal(blocked.scriptNetwork, false, 'fails closed');
+  assert.equal(blocked.sql.prepare("SELECT json FROM _fm_meta WHERE key = 'scriptNetwork'").get(), undefined, 'nothing was saved');
+  assert.ok(warnings.some((w) => /scripts stay off/.test(w)), warnings.join('\n'));
+  blocked.sql.exec('DROP TRIGGER block_security_write');
+  blocked.close();
+  const retried = new Store(path, 'Legacy');
+  assert.equal(retried.scriptNetwork, false);
+  assert.equal(retried.sql.prepare("SELECT json FROM _fm_meta WHERE key = 'scriptNetwork'").get()?.json, 'false');
+  retried.setScriptNetwork(true, { account: 'test' });
+  assert.equal(retried.scriptNetwork, true, 'an administrator can still turn it on');
+  retried.close();
 });
