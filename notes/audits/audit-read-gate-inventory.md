@@ -174,8 +174,8 @@ The following reasons apply to the exact enumerated expressions in each named fu
 <!-- generated read-gate inventory -->
 | Function | Store read / capability (source lines) | Gate |
 | --- | --- | --- |
-| [packages/cli/src/diagnostics.ts:228](../../packages/cli/src/diagnostics.ts#L228) `designCopy` | `SQLite.all` (228); `SQLite.prepare` (228, 231) | OPERATOR |
-| [packages/cli/src/diagnostics.ts:468](../../packages/cli/src/diagnostics.ts#L468) `diagnostics` | `SQLite.get` (468); `SQLite.prepare` (468, 472); `SQLite.all` (472) | OPERATOR |
+| [packages/cli/src/diagnostics.ts:230](../../packages/cli/src/diagnostics.ts#L230) `designCopy` | `SQLite.all` (230); `SQLite.prepare` (230, 233) | OPERATOR |
+| [packages/cli/src/diagnostics.ts:470](../../packages/cli/src/diagnostics.ts#L470) `diagnostics` | `SQLite.get` (470); `SQLite.prepare` (470, 474); `SQLite.all` (474) | OPERATOR |
 | [packages/cli/src/doctor.ts:140](../../packages/cli/src/doctor.ts#L140) `accountChecks` | `SQLite.all` (140); `SQLite.prepare` (140) | OPERATOR |
 | [packages/cli/src/main.ts:757](../../packages/cli/src/main.ts#L757) `accountsWithPasswordOff` | `SQLite.all` (757); `SQLite.prepare` (757) | OPERATOR |
 | [packages/cli/src/main.ts:790](../../packages/cli/src/main.ts#L790) `hostedRead` | `SQLite.all` (790, 793); `SQLite.prepare` (790, 793); `Store.sql` (790, 793) | OPERATOR |
