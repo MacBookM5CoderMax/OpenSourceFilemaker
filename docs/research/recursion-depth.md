@@ -1,3 +1,5 @@
+> Superseded by the evaluator's own stack.
+
 # Non-tail custom-function recursion depth
 
 ## Result

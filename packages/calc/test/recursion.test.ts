@@ -22,8 +22,8 @@ test('a custom function that ends in a call to itself can recurse as deep as Fil
   assert.equal(evaluateText('Swap ( "x" ; "y" ; 5001 )', ctx), 'y,x');
 });
 
-test('FileMaker\'s limit of 10,000 levels still ends a runaway function, and SetRecursion lowers it', () => {
-  assert.throws(() => evaluate('Sum2 ( 10100 ; 0 )', ctx), /recursed too deeply/);
+test('FileMaker\'s limit of 50,000 tail calls still ends a runaway function, and SetRecursion lowers it', () => {
+  assert.throws(() => evaluate('Sum2 ( 50100 ; 0 )', ctx), /recursed too deeply/);
   assert.throws(() => evaluate('SetRecursion ( Sum2 ( 50 ; 0 ) ; 20 )', ctx), /recursed too deeply/);
   assert.equal(evaluateText('SetRecursion ( Sum2 ( 50 ; 0 ) ; 100 )', ctx), '1275');
 });

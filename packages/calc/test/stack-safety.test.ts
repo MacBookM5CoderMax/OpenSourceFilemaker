@@ -28,9 +28,9 @@ const defs = new Map<string, CustomFunctionDef>([
 ]);
 const ctx: CalcContext = { customFunction: (name) => defs.get(name.toLowerCase()) };
 const sumTo = (n: number) => String((n * (n + 1)) / 2);
-const limitOf = (name: string, limit = 10000) => (e: unknown) => e instanceof CalcError && e.code === ERR.recursion && e.message === (limit < 10000
-  ? `${name} recursed too deeply: it passed ${limit.toLocaleString('en-US')} nested calls, the limit SetRecursion set. Raise the limit in SetRecursion (up to 10,000), or rewrite ${name} as a loop with While.`
-  : `${name} recursed too deeply: it passed Tabularius's limit of 10,000 nested calls. Rewrite ${name} as a loop with While.`);
+const limitOf = (name: string, limit = 10000, ceiling = 10000) => (e: unknown) => e instanceof CalcError && e.code === ERR.recursion && e.message === (limit < ceiling
+  ? `${name} recursed too deeply: it passed ${limit.toLocaleString('en-US')} nested calls, the limit SetRecursion set. Raise the limit in SetRecursion (up to ${ceiling.toLocaleString('en-US')}), or rewrite ${name} as a loop with While.`
+  : `${name} recursed too deeply: it passed Tabularius's limit of ${ceiling.toLocaleString('en-US')} nested calls. Rewrite ${name} as a loop with While.`);
 
 test('a custom function that waits for its own call recurses as deep as FileMaker allows', () => {
   assert.equal(evaluateText('Sum1 ( 9990 )', ctx), sumTo(9990));
@@ -56,9 +56,10 @@ test('recursion through aggregates, text joins and number functions goes as deep
   assert.equal(evaluateText('AsNumber ( 9990 )', ctx), sumTo(9990));
 });
 
-test("FileMaker's limit of 10,000 calls ends a function that waits for its own call, with the same error as a tail call", () => {
+test("FileMaker's limit of 10,000 calls ends a function that waits for its own call", () => {
   assert.throws(() => evaluate('Sum1 ( 10100 )', ctx), limitOf('Sum1'));
-  assert.throws(() => evaluate('SumLet ( 10100 ; 0 )', ctx), limitOf('SumLet'));
+  assert.equal(evaluateText('SumLet ( 10100 ; 0 )', ctx), sumTo(10100));
+  assert.throws(() => evaluate('SumLet ( 50100 ; 0 )', ctx), limitOf('SumLet', 50000, 50000));
   assert.throws(() => evaluate('Forever ( 1 )', ctx), limitOf('Forever'));
   assert.throws(() => evaluate('SetRecursion ( Sum1 ( 50 ) ; 20 )', ctx), limitOf('Sum1', 20));
   assert.equal(evaluateText('SetRecursion ( Sum1 ( 50 ) ; 100 )', ctx), '1275');
@@ -68,7 +69,7 @@ test('a caught runaway leaves nothing behind: Let names, the call depth and late
   const ctx2: CalcContext = { ...ctx, setVariable: () => {}, variable: () => undefined };
   assert.equal(evaluateText('Let ( [ x = 1 ; e = EvaluationError ( Sum1 ( 10100 ) ) ] ; x & "|" & e & "|" & Sum1 ( 10 ) & "|" & x )', ctx2), '1|1200|55|1');
   // Names bound inside the failed recursion are not visible afterwards.
-  assert.equal(evaluateText('Let ( e = EvaluationError ( SumLet ( 10100 ; 0 ) ) ; IsValid ( nn ) )', { ...ctx2, field: () => undefined }), '0');
+  assert.equal(evaluateText('Let ( e = EvaluationError ( SumLet ( 50100 ; 0 ) ) ; IsValid ( nn ) )', { ...ctx2, field: () => undefined }), '0');
   // And the runaway can run again, to the same answer.
   assert.equal(evaluateText('EvaluationError ( Forever ( 1 ) ) & EvaluationError ( Forever ( 1 ) )', ctx), '12001200');
 });

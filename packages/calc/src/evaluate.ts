@@ -290,12 +290,14 @@ export interface PluginFiles {
 }
 
 const MAX_DEPTH = 10000;
-/** What a custom function says when its calls nest past the limit in force (10,000, or the lower figure SetRecursion set). */
-function recursionLimitMessage(name: string, limit: number): string {
+/** The same for a custom function whose call to itself is the last thing it does (FileMaker documents 50,000 for these). */
+const MAX_TAIL_DEPTH = 50000;
+/** What a custom function says when its calls nest past the limit in force (10,000, 50,000 for tail calls, or the lower figure SetRecursion set). */
+function recursionLimitMessage(name: string, limit: number, ceiling = MAX_DEPTH): string {
   const at = (n: number) => n.toLocaleString('en-US');
-  return limit < MAX_DEPTH
-    ? `${name} recursed too deeply: it passed ${at(limit)} nested calls, the limit SetRecursion set. Raise the limit in SetRecursion (up to ${at(MAX_DEPTH)}), or rewrite ${name} as a loop with While.`
-    : `${name} recursed too deeply: it passed Tabularius's limit of ${at(MAX_DEPTH)} nested calls. Rewrite ${name} as a loop with While.`;
+  return limit < ceiling
+    ? `${name} recursed too deeply: it passed ${at(limit)} nested calls, the limit SetRecursion set. Raise the limit in SetRecursion (up to ${at(ceiling)}), or rewrite ${name} as a loop with While.`
+    : `${name} recursed too deeply: it passed Tabularius's limit of ${at(ceiling)} nested calls. Rewrite ${name} as a loop with While.`;
 }
 
 /** The same when the server's stack ran out first (recursion through a function that reads its own arguments). */
@@ -345,6 +347,8 @@ export class Env {
   private scopes: Map<string, Value>[] = [];
   private readonly parameterFields = new WeakMap<Map<string, Value>, Map<string, string>>();
   depth = 0;
+  /** How many of the calls in `depth` wait for their own result (the rest are tail calls to the same function). */
+  private waiting = 0;
   /** SetRecursion's limit on custom function depth and While loops, while its expression is evaluated. */
   recursionLimit?: number;
   /** Guarded decimal places while evaluating SetPrecision's first argument. */
@@ -521,6 +525,7 @@ export class Env {
           this.scopes.length = i;
           break;
         case FN_END: {
+          this.waiting = d;
           // JavaScript's stack can run out before Tabularius's 10,000 levels: the same error ("?"), saying how far it got.
           const level = this.depth;
           this.scopes = a as Map<string, Value>[];
@@ -695,8 +700,12 @@ export class Env {
         const { cf, name, nodes, out } = a as CustomCall;
         const scope = this.bindValues(name, cf, out, nodes.map((a) => this.argumentFieldName(a)));
         const limit = Math.min(MAX_DEPTH, this.recursionLimit ?? MAX_DEPTH);
-        this.push(FN_END, n, d, this.depth, this.scopes);
-        if (++this.depth > limit) throw new CalcError(ERR.recursion, recursionLimitMessage(name, limit));
+        // A call to itself that is the last thing the function does needs no waiting: it may go to 50,000, not 10,000.
+        const tail = this.endsFunction(name);
+        this.push(FN_END, n, this.waiting, this.depth, this.scopes);
+        if (!tail && ++this.waiting > limit) throw new CalcError(ERR.recursion, recursionLimitMessage(name, limit));
+        const tailLimit = Math.min(MAX_TAIL_DEPTH, this.recursionLimit ?? MAX_TAIL_DEPTH);
+        if (++this.depth > tailLimit) throw new CalcError(ERR.recursion, recursionLimitMessage(name, tailLimit, MAX_TAIL_DEPTH));
         this.tick();
         const body = this.parse(cf.formula, cf.parameters.map((p) => p.trim()));
         this.scopes = [scope];
@@ -706,6 +715,7 @@ export class Env {
       case FN_END:
         this.scopes = a as Map<string, Value>[];
         this.depth = i;
+        this.waiting = d;
         return;
       case PRECISION: {
         const args = (n as Node & { k: 'call' }).args;
@@ -747,6 +757,16 @@ export class Env {
         return;
       }
     }
+  }
+
+  /** Whether a call to `name` now being applied is the last thing the custom function `name` does (through If, Case, Choose or Let). */
+  private endsFunction(name: string): boolean {
+    for (let j = this.fk.length - 1; j >= 0; j--) {
+      const k = this.fk[j];
+      if (k === SCOPE_END || k === TRACE) continue;
+      return k === FN_END && (this.fn[j] as Node & { name: string }).name.toLowerCase() === name.toLowerCase();
+    }
+    return false;
   }
 
   /** A function call: what to do before its arguments are read, and the frames that read them and apply it. */

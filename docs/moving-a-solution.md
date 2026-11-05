@@ -171,7 +171,7 @@ folder named by the base directory below `RC_Data_FMS/<name>/` (or
 `Files/<name>/`). Nothing is moved for you. A file whose name is empty, `.`, `..`
 or has a `~1` form (`ACMEIN~1`) reads no external containers.
 
-### What won't work yet
+### What will not work yet
 
 Before you invite anyone in, run:
 
