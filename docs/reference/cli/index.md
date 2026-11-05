@@ -14,6 +14,7 @@ Each command page includes the current help text, options, exit codes, and a tes
 | [`check-solution`](check-solution.md) | 3 |
 | [`compact`](compact.md) | 1 |
 | [`compat-check`](compat-check.md) | 0 |
+| [`compatibility-report`](compatibility-report.md) | 4 |
 | [`corpus-scan`](corpus-scan.md) | 8 |
 | [`ddr`](ddr.md) | 0 |
 | [`decrypt`](decrypt.md) | 0 |

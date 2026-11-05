@@ -1312,6 +1312,10 @@
       "exitCodes": "0 on success; 1 on error.",
       "example": "tabularius compact --help"
     },
+    "compatibility-report": {
+      "exitCodes": "0 on success; 1 on error.",
+      "example": "tabularius compatibility-report --help"
+    },
     "corpus-scan": {
       "exitCodes": "0 on success; 1 on error.",
       "example": "tabularius corpus-scan --help"

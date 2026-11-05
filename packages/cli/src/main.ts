@@ -58,6 +58,7 @@ import { safeExistingPath } from '../../store/src/safe-path.ts';
 import { resolveAiKey } from './ai-key.ts';
 import { readSecretFile } from './secret-file.ts';
 import { corpusScan, scanFile } from './corpus-scan.ts';
+import { compatibilityReport, compatReportMarkdown, COMPAT_REPORT_ISSUE_URL } from './compat-report.ts';
 import { pairTokenFile } from './pair-tokens.ts';
 import { databaseNameProblem } from '../../server/src/solution-builder.ts';
 import { SERVER_VERSION, versionText } from '../../server/src/version.ts';
@@ -452,6 +453,17 @@ Hosting (point it at a folder of .fmp12 files; each is converted once):
                                              of walking a folder). Writes corpus-report.json and
                                              .md: counts and masked formula shapes only, no
                                              file names, record data or names
+  tabularius compatibility-report <file.fmp12> [--out FILE] [--json] [--no-convert] [--timeout SECONDS]
+                                             Try one file and write a short report you can share:
+                                             whether it read and converted, and how many of each
+                                             function, script step, plug-in call and layout
+                                             object it uses, with the ones Tabularius does not
+                                             know yet listed first. Counts and FileMaker's own
+                                             names only: no file name, table, field, layout or
+                                             script names, no records or formulas. It prints the
+                                             report (--out also saves it; refuses to overwrite)
+                                             and sends nothing: you read it, then paste it into an
+                                             issue yourself
   tabularius layout-census <folder> [database] [--json] [--names]
                                              Per kind of layout object, how many there are and
                                              how many Tabularius can't draw or work out (missing
@@ -1236,6 +1248,29 @@ function corpusScanCommand(args: string[]): number {
   return 0;
 }
 
+/** `tabularius compatibility-report <file.fmp12>` (compat-report.ts): one file's counts, printed for a person to read and paste into an issue. Nothing is sent. */
+function compatibilityReportCommand(args: string[]): number {
+  const json = bool(args, '--json');
+  const noConvert = bool(args, '--no-convert');
+  requireValues(args, ['--out', '--timeout'], 'compatibility-report');
+  const out = flag(args, '--out');
+  const timeoutSeconds = wholeFlag(args, '--timeout', { min: 1, max: 2147483 }) ?? 300;
+  refuseStrayOptions('compatibility-report', args, '--out FILE, --json, --no-convert and --timeout SECONDS');
+  if (args.length !== 1) throw new Error('compatibility-report: give one .fmp12 file');
+  const file = resolve(args[0]);
+  if (out) refusePlantedLinks(nearestExisting(dirname(resolve(out))));
+  later(compatibilityReport(file, {
+    entry: process.argv[1], convert: !noConvert, timeoutSeconds,
+    env: { tabularius: SERVER_VERSION, node: process.versions.node, os: process.platform, arch: process.arch },
+  }).then((report) => {
+    const text = json ? JSON.stringify(report, null, 2) + '\n' : compatReportMarkdown(report);
+    if (out) writeChecked(resolve(out), text, { mode: 0o644, flag: 'wx' });
+    process.stdout.write(text.endsWith('\n') ? text : text + '\n');
+    process.stderr.write(`\nNothing was sent anywhere.${out ? ` The report is also saved in ${resolve(out)}.` : ''} Read it above first; if you are happy to share it, paste it into a new issue at ${COMPAT_REPORT_ISSUE_URL}\n`);
+  }));
+  return 0;
+}
+
 /** The web client, admin console, Data API and MCP addresses; for a server on every address, the ones other computers use too. */
 function printAddresses(url: string): void {
   const { here, others } = shownUrls(url);
@@ -1339,6 +1374,7 @@ function main(argv: string[]): number {
   }
   if (cmd === 'service' || cmd === 'upgrade') return serviceCommand(cmd, args);
   if (cmd === 'corpus-scan') return corpusScanCommand(args);
+  if (cmd === 'compatibility-report') return compatibilityReportCommand(args);
   if (cmd === 'pair-tokens') {
     if (args.length !== 2 || args.some((a) => a.startsWith('-'))) throw new Error('pair-tokens: give <file.fmp12> <clipboard.xml>');
     process.stdout.write(JSON.stringify(pairTokenFile(args[0], args[1]), null, 2) + '\n');

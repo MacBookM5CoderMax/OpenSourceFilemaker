@@ -8,6 +8,6 @@ The OpenID Connect provider's issuer address.
 | Accepted values | Issuer URL |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1526](../../../../packages/cli/src/main.ts#L1526) |
+| Code | [packages/cli/src/main.ts:1562](../../../../packages/cli/src/main.ts#L1562) |
 
 [All environment variables](../../../environment-variables.md)

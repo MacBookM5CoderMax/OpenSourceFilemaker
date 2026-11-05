@@ -9,6 +9,6 @@
 | Restart needed | Yes; serve flags are read when the server starts. |
 | Environment | [`TABULARIUS_STATS_INTERVAL`](../environment/tabularius_stats_interval.md) |
 | Explained in | [docs/hosting-for-a-team.md](../../../hosting-for-a-team.md) |
-| Code | [packages/cli/src/main.ts:1506](../../../../packages/cli/src/main.ts#L1506) |
+| Code | [packages/cli/src/main.ts:1542](../../../../packages/cli/src/main.ts#L1542) |
 
 [All serve flags](../serve-flags.md)

@@ -31,6 +31,8 @@ tabularius diagnostics /path/to/your/folder --out diagnostics.zip
 
 Its `README.txt` lists what each file holds. Hosted files appear as `file-1`, `file-2` unless you add `--include-names`. The last lines of the server log are included with quoted text, names from your solution, addresses and secrets replaced, but read them before you send them: a value a message prints bare, with nothing around it, looks like any other word.
 
+If the file opens but something does not work, or you simply tried it and want to say how it went, [`tabularius compatibility-report`](compatibility-report.md) makes a report of counts that you read and paste yourself.
+
 If you are willing, also say which FileMaker version made the file and what kind of solution it is ("a contacts file with a few portals", not its name or its customers).
 
 ## What never to send

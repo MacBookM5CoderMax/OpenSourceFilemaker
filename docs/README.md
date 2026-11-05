@@ -78,6 +78,7 @@ To read these pages offline with search, build the site: `npm run docs:build` wr
 - [Runbook](runbook.md) — When something goes wrong: forgotten passwords, lockouts, a runaway script, a damaged file, a full disk, a bad certificate, a wrong clock, a moved folder, a lost server. What you see, what to run, how to check it, what is lost.
 - [Upgrading](upgrading.md) — What a new version does to your files, what is promised across versions, and how to roll back.
 - [Reporting a file that does not open](reporting-a-file-that-does-not-open.md) — What to send, and what never to send, when a FileMaker file will not convert or open.
+- [Telling us how your own file did](compatibility-report.md) — Make a short report of counts from one of your files, read it, and paste it into an issue yourself.
 - [Performance](performance.md) — Review benchmark results for common operations on large files.
 - [In-memory lease and TTL clocks](in-memory-lease-clocks.md) — Which timers and leases use the monotonic clock, and how tests replace it.
 - [SQL writes over the PostgreSQL port](pgwire-writes.md) — Turn on INSERT, UPDATE and DELETE for the SQL connection and see how they are checked.
