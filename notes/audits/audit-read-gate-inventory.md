@@ -596,10 +596,10 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/store/src/import.ts:107](../../packages/store/src/import.ts#L107) `writeDesign` | `SQLite.prepare` (107, 111) | OPERATOR |
 | [packages/store/src/layout-speed.ts:56](../../packages/store/src/layout-speed.ts#L56) `layoutCost/recordCount` | `Store.recordCount` (56) | DESIGN |
 | [packages/store/src/layout-speed.ts:419](../../packages/store/src/layout-speed.ts#L419) `speedContext` | `Store.recordCount` (419) | DESIGN |
-| [packages/store/src/native-compat.ts:91](../../packages/store/src/native-compat.ts#L91) `dateFields` | `SQLite.all` (91); `SQLite.prepare` (91) | OPERATOR |
-| [packages/store/src/native-compat.ts:115](../../packages/store/src/native-compat.ts#L115) `inspectUpgrade` | `SQLite.get` (115); `SQLite.prepare` (115, 123); `SQLite.iterate` (123) | OPERATOR |
-| [packages/store/src/native-compat.ts:61](../../packages/store/src/native-compat.ts#L61) `storedState/meta` | `SQLite.get` (61); `SQLite.prepare` (61) | OPERATOR |
-| [packages/store/src/native-compat.ts:157](../../packages/store/src/native-compat.ts#L157) `upgradeNativeFile` | `SQLite.iterate` (157); `SQLite.prepare` (157, 158, 164) | OPERATOR |
+| [packages/store/src/native-compat.ts:112](../../packages/store/src/native-compat.ts#L112) `dateFields` | `SQLite.all` (112); `SQLite.prepare` (112) | OPERATOR |
+| [packages/store/src/native-compat.ts:136](../../packages/store/src/native-compat.ts#L136) `inspectUpgrade` | `SQLite.get` (136); `SQLite.prepare` (136, 144); `SQLite.iterate` (144) | OPERATOR |
+| [packages/store/src/native-compat.ts:82](../../packages/store/src/native-compat.ts#L82) `storedState/meta` | `SQLite.get` (82); `SQLite.prepare` (82) | OPERATOR |
+| [packages/store/src/native-compat.ts:178](../../packages/store/src/native-compat.ts#L178) `upgradeNativeFile` | `SQLite.iterate` (178); `SQLite.prepare` (178, 179, 185) | OPERATOR |
 | [packages/store/src/privileges.ts:555](../../packages/store/src/privileges.ts#L555) `ensurePrivilegeTables` | `SQLite.all` (555); `SQLite.prepare` (555) | AUTH |
 | [packages/store/src/privileges.ts:527](../../packages/store/src/privileges.ts#L527) `privilegeSets` | `SQLite.all` (527); `SQLite.prepare` (527) | AUTH |
 | [packages/store/src/reconvert.ts:222](../../packages/store/src/reconvert.ts#L222) `build` | `SQLite.get` (222); `SQLite.prepare` (222, 225, 230); `SQLite.all` (230) | OPERATOR |

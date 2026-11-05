@@ -168,3 +168,45 @@ test('check and upgrade refuse a newer store format before writing or backing up
     await assert.rejects(upgradeNativeFile(file, async () => { throw new Error('backup should not run'); }), /newer Tabularius/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('compat registry names native foreign keys and the native record identity, and a compat file has neither', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-compat-fk-'));
+  try {
+    const native = join(dir, 'native.sqlite');
+    const compat = join(dir, 'compat.sqlite');
+    const empty = join(dir, 'empty.sqlite');
+    createStore(native, { mode: 'native' });
+    createStore(compat);
+    createStore(empty, { mode: 'native' });
+    const compatStore = new Store(compat);
+    try { compatStore.applyDesign([{ op: 'createTable', name: 'CompatItems', fields: [{ name: 'ID' }] }]); }
+    finally { compatStore.close(); }
+    const store = new Store(native);
+    try {
+      store.applyDesign([
+        { op: 'createTable', name: 'Customers', fields: [{ name: 'ID' }, { name: 'Name' }] },
+        { op: 'createTable', name: 'Invoices', fields: [{ name: 'ID' }, { name: 'CustomerID' }] },
+        { op: 'createTable', name: 'Lines', fields: [{ name: 'InvoiceID' }, { name: 'Item' }] },
+        // The child on the left, then the child on the right: the finding names the child either way.
+        { op: 'createRelationship', left: 'Invoices', right: 'Customers', predicates: [{ left: 'CustomerID', right: 'ID' }],
+          foreignKey: { name: 'invoice_customer', child: { table: 'Invoices', field: 'CustomerID' }, parent: { table: 'Customers', field: 'ID' }, onDelete: 'cascade' } },
+        { op: 'createRelationship', left: 'Invoices', right: 'Lines', predicates: [{ left: 'ID', right: 'InvoiceID' }],
+          foreignKey: { name: 'line_invoice', child: { table: 'Lines', field: 'InvoiceID' }, parent: { table: 'Invoices', field: 'ID' } } },
+        // A relationship with no foreign key is not a finding.
+        { op: 'createRelationship', left: 'Customers', right: 'Lines', predicates: [{ left: 'ID', right: 'Item' }] },
+      ]);
+    } finally { store.close(); }
+    const findings = checkNativeCompat(native);
+    const keys = findings.filter((f) => f.id === 'native-foreign-key');
+    assert.deepEqual(keys.map((f) => [f.table, f.field]).sort(), [['Invoices', 'CustomerID'], ['Lines', 'InvoiceID']]);
+    assert.match(keys.find((f) => f.table === 'Invoices')!.description, /^native foreign key invoice_customer \(Invoices::CustomerID to Customers::ID, on delete cascade\) has no compat export$/);
+    assert.match(keys.find((f) => f.table === 'Lines')!.description, /line_invoice \(Lines::InvoiceID to Invoices::ID, on delete restrict\)/);
+    const identity = findings.filter((f) => f.id === 'native-record-uuid');
+    assert.equal(identity.length, 1);
+    assert.equal(identity[0].table, undefined);
+    assert.match(identity[0].description, /_fm_uuid/);
+    // A compat file has neither; a native file with no table has no record identity to name.
+    assert.deepEqual(checkNativeCompat(compat), []);
+    assert.equal(checkNativeCompat(empty).some((f) => f.id === 'native-record-uuid' || f.id === 'native-foreign-key'), false);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

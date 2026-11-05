@@ -49,6 +49,27 @@ export const nativeCompatChecks: NativeCompatEntry[] = [
       : [],
   },
   {
+    id: 'native-foreign-key', describe: 'native foreign key has no compat export',
+    test: (store) => store.fileMode === 'native'
+      ? store.schema.relationships.flatMap((rel) => {
+        const fk = rel.foreignKey;
+        if (!fk) return [];
+        const child = store.schema.tables.find((t) => t.id === fk.childTableId);
+        const parent = store.schema.tables.find((t) => t.id === fk.parentTableId);
+        const childField = child?.fields.find((f) => f.id === fk.childFieldId);
+        const parentField = parent?.fields.find((f) => f.id === fk.parentFieldId);
+        return [{
+          table: child?.name ?? '(foreign key)', field: childField?.name ?? fk.name,
+          description: `native foreign key ${fk.name} (${child?.name ?? '?'}::${childField?.name ?? '?'} to ${parent?.name ?? '?'}::${parentField?.name ?? '?'}, on delete ${fk.onDelete}) has no compat export`,
+        }];
+      })
+      : [],
+  },
+  {
+    id: 'native-record-uuid', describe: 'native record identity (_fm_uuid) has no compat export',
+    test: (store) => store.fileMode === 'native' && store.schema.tables.length > 0 ? [{}] : [],
+  },
+  {
     id: 'javascript-function', describe: 'JavaScript custom function has no verified compat export',
     test: (store) => store.fileMode === 'native'
       ? (store.schema.customFunctions ?? []).filter((fn) => fn.language === 'javascript').map((fn) => ({ table: '(custom function)', field: fn.name }))
