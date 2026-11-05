@@ -15,7 +15,7 @@
     "mutate": "nice -n 19 node --no-warnings scripts/mutate.ts",
     "test": "node --test --test-reporter=spec 'packages/*/test/*.test.ts' 'scripts/*.test.ts'",
     "test:ci": "node scripts/test-ci.ts",
-    "test:ess-real": "bash scripts/ess-real-db/run.sh all postgresql mysql mariadb sqlserver",
+    "test:ess-real": "bash scripts/ess-real-db/run.sh all postgresql mysql mariadb sqlserver oracle",
     "test:weights": "node --no-warnings scripts/test-weights.ts",
     "gates": "node scripts/test-ci.ts --gates",
     "typecheck": "tsc -p tsconfig.json && tsc -p packages/web/tsconfig.json",

@@ -45,7 +45,8 @@ export async function writeEssRow(driver: SqlDriver, write: EssWrite): Promise<E
   const params: SqlValue[] = names.map((name) => write.values[name]);
   // Mirrors retain dates as ISO text and booleans as 0/1. Bind with the actual column types,
   // including the original values in the optimistic predicate, rather than inferring integer/text.
-  const types = driver.dialect === 'postgresql' ? new Map((await driver.columns({ schema: write.schema, name: write.table })).map((c) => [c.name, c.type])) : undefined;
+  // (Oracle takes the type to send ISO text as a DATE or TIMESTAMP.)
+  const types = driver.dialect === 'postgresql' || driver.dialect === 'oracle' ? new Map((await driver.columns({ schema: write.schema, name: write.table })).map((c) => [c.name, c.type])) : undefined;
   const query = (statement: string, values: SqlValue[], columns: string[]) => driver.query(statement, values.map((value, index) =>
     /^(boolean|bool)$/i.test(types?.get(columns[index]) ?? '') && (value === 0 || value === 1) ? value === 1 : value),
   types ? { parameterTypes: columns.map((name) => types.get(name) ?? '') } : undefined);
