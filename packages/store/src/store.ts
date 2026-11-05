@@ -4346,10 +4346,17 @@ export class Store {
 
   private setPasswordOnly(account: string, password: string, privilegeSet?: string, opts: { mustChange?: boolean; keepPasskeys?: boolean } = {}): void {
     return this.securityChange(() => {
-      // Validate before SQLite can replace a lone surrogate and match a different account.
       const unusable = accountNameProblem(account);
-      if (unusable) throw new StoreError(960, unusable);
-      account = this.canonicalAccount(account) ?? account;
+      if (unusable) {
+        // Legacy names may be reset only by an exact match, before SQLite can replace a
+        // surrogate or canonicalAccount can return a NUL-truncated name. Read bytes to keep NULs.
+        const names = this.sql.prepare('SELECT CAST(name AS BLOB) AS name FROM _fm_accounts').all() as { name: Uint8Array }[];
+        const existing = names.map(({ name }) => Buffer.from(name).toString('utf8')).find((name) => name === account);
+        if (existing === undefined) throw new StoreError(960, unusable);
+        account = existing;
+      } else {
+        account = this.canonicalAccount(account) ?? account;
+      }
       this.checkPasswordLength(password);
       // Checked before anything is written, so a mistyped set name neither adds an
       // account with no privilege set nor changes an existing account's password.
