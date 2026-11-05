@@ -50,24 +50,21 @@ async function signIn(db: string, account: string, password: string): Promise<st
   return body.response.token!;
 }
 
-test('a layout of the data file says the password differs, not that the layout is missing', async () => {
+test('a layout of the data file is refused as a missing layout, the same as an absent one, and never shows the other file\'s accounts', async () => {
   const token = await signIn('UI', 'Ann', 'ann-ui-password-1');
-  const r = await fetch(`${base}/fmi/data/vLatest/databases/UI/layouts/People/records`, { headers: { authorization: `Bearer ${token}` } });
-  const body = await r.json() as { messages: { code: string; message: string }[] };
-  assert.equal(r.status, 401, JSON.stringify(body));
-  assert.equal(body.messages[0]!.code, '212');
-  assert.match(body.messages[0]!.message, /Account "Ann" exists in "Data" too, but its password there is not the same as in "UI"/);
-  assert.match(body.messages[0]!.message, /same password.*both files|fmDataSource/);
-  assert.doesNotMatch(JSON.stringify(body), /ann-data-password-2/);
+  const get = async (layout: string) => (await fetch(`${base}/fmi/data/vLatest/databases/UI/layouts/${layout}/records`, { headers: { authorization: `Bearer ${token}` } }));
+  const denied = await get('People'), absent = await get('Absent');
+  assert.equal(denied.status, absent.status);
+  assert.equal(((await denied.json()) as { messages: { code: string }[] }).messages[0]!.code, '105');
 });
 
 test('a script of the data file is refused with the same explanation (error 9)', () => {
   const p = ui.privileges('Ann').in(data);
   assert.throws(() => p.checkScript('Hello'), (e: Error & { code?: number }) => e.code === 9
-    && /Insufficient privileges to run script "Hello": Account "Ann" exists in "Data" too, but its password there is not the same as in "UI"/.test(e.message));
+    && /Insufficient privileges to run script "Hello": Account "Ann" cannot open "Data" from "UI"/.test(e.message));
 });
 
-test('with the same password in both files the reach works and no explanation is given', async () => {
+test('with the same password in both files the reach works and no refusal is given', async () => {
   data.setPassword('Ann', 'ann-ui-password-1', '[Full Access]');
   ui.setPassword('Ann', 'ann-ui-password-1', '[Full Access]');
   const token = await signIn('UI', 'Ann', 'ann-ui-password-1');
@@ -76,9 +73,13 @@ test('with the same password in both files the reach works and no explanation is
   assert.equal(ui.privileges('Ann').in(data).refusal, undefined);
 });
 
-test('an account with no namesake in the data file gets no password explanation', () => {
-  ui.setPassword('OnlyUi', 'only-ui-password-3', '[Full Access]');
-  assert.equal(ui.privileges('OnlyUi').in(data).refusal, undefined);
+test('a missing account and a different password are refused with the same words, so names in the data file are not revealed', () => {
+  // Ann has a different password in Data; Bea is in UI only.
+  data.setPassword('Ann', 'ann-data-password-2', '[Full Access]');
+  ui.setPassword('Bea', 'bea-ui-password-4', '[Full Access]');
+  const script = (account: string) => { try { ui.privileges(account).in(data).checkScript('Hello'); return ''; } catch (e) { return `${(e as Error & { code?: number }).code} ${(e as Error).message}`.replaceAll(account, '<account>'); } };
+  assert.match(script('Ann'), /^9 Insufficient privileges to run script "Hello": Account "<account>" cannot open "Data" from "UI".*password there is not the same.*fmDataSource/);
+  assert.equal(script('Bea'), script('Ann'));
 });
 
 test('Check solution reports a data file that is not hosted, and not one that is', () => {

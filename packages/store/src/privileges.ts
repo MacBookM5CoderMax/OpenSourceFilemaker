@@ -330,16 +330,17 @@ export class Privileges {
     if (file === this.file) return this;
     const theirs = this.other(file);
     if (theirs.account !== NO_ACCOUNT) return theirs;
-    // No access in the other file: say why when the reason is a password that differs there, as FileMaker would ask for it.
-    const host = this.file as { crossFileMismatch?: (account: string, other: unknown) => string | undefined } | null;
-    const why = this.via === undefined ? host?.crossFileMismatch?.(this.account, file) : undefined;
+    // No access in the other file: one message whatever the reason (no such account there, a different password, switched off), so it
+    // tells a guesser nothing about which account names exist in the other file.
+    const host = this.file as { crossFileRefusal?: (account: string, other: unknown) => string } | null;
+    const why = host?.crossFileRefusal?.(this.account, file);
     if (!why) return theirs;
     const marked: Privileges = Object.assign(Object.create(Privileges.prototype) as Privileges, theirs);
     marked.refusal = why;
     return marked;
   }
 
-  /** Set on the no-access privileges of a file whose same-named account has a different password: what to tell the person. */
+  /** Set on the no-access privileges of another file: what to tell the person, the same whatever the reason. */
   refusal?: string;
 
   get name(): string {
@@ -486,7 +487,7 @@ export class Privileges {
   /** Throws unless the layout can be used (and, with `write`, records changed through it). */
   checkLayout(name: string, write = false): void {
     const l = this.layout(name);
-    if (l.layout === 'none') throw new PrivilegeError(this.refusal ? 212 : 105, this.refusal ?? `Layout "${name}" is missing`);
+    if (l.layout === 'none') throw new PrivilegeError(105, `Layout "${name}" is missing`);
     if (write && l.records !== 'modifiable') throw new PrivilegeError(200, `Record access is denied: layout "${name}" is view only`,
       this.denial('write', 'layout-write', ownPrivilegeEntry(this.set.layoutAccess, name) ? 'layout' : 'layouts',
         ownPrivilegeEntry(this.set.layoutAccess, name) ? `layoutAccess.${name}.records` : 'layouts', l.records === 'none' ? 'none' : 'view-only'));

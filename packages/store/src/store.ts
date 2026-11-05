@@ -7486,14 +7486,11 @@ export class Store {
     return this.crossFile.proven(account, other);
   }
 
-  /** Why `account` reaches nothing in `other`, when the cause is that both files have an account of that name and the passwords were not shown to be the same: a message that says how to put it right. */
-  crossFileMismatch(account: string, other: unknown): string | undefined {
+  /** What to tell an account that reaches nothing in `other`. The same words and code whether it has no account of that name there or the password there differs, so a refusal never shows which names exist in the other file. */
+  crossFileRefusal(account: string, other: unknown): string {
     const them = other as Store;
-    if (!account || !them || them === this || typeof them.crossFileHash !== 'function') return undefined;
-    if (this.crossFileHash(account, '', false) === undefined || them.crossFileHash(account, '', false) === undefined) return undefined;
-    if (this.crossFileProven(account, them)) return undefined;
-    return `Account "${account}" exists in "${them.name}" too, but its password there is not the same as in "${this.name}". `
-      + `Set the same password for "${account}" in both files (Manage Security) and sign in again, or sign in with the credentials for "${them.name}" (in the Data API, fmDataSource).`;
+    return `Account "${account}" cannot open "${them.name}" from "${this.name}": it has no account of that name in "${them.name}", or its password there is not the same as in "${this.name}". `
+      + `Give "${them.name}" an account of that name with the same password (Manage Security) and sign in again, or sign in with the credentials for "${them.name}" (in the Data API, fmDataSource).`;
   }
 
   /** A password that opened another file was wrong for this one: counted and logged as a failed sign-in here. */

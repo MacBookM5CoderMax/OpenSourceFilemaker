@@ -2087,12 +2087,8 @@ export class DataApi {
     const inScope = (name: string) => !session.layoutScope || session.layoutScope.some((l) => l.toLowerCase() === name.toLowerCase());
     const readableLayout = (name: string) => {
       const info = store.layout(name);
-      if (info.owner !== store) {
-        const theirs = privileges.in(info.owner);
-        // A password that differs in the other file is not a missing layout: FileMaker would ask for that file's credentials.
-        if (theirs.refusal) throw new ApiError(212, theirs.refusal, 401);
-        if (theirs.table(info.table).view === false) throw new ApiError(105, `Layout "${name}" is missing`);
-      }
+      // A layout the account may not reach in the other file is refused as a missing layout, exactly as an absent one is, so the answer never shows which layouts or accounts exist there.
+      if (info.owner !== store && privileges.in(info.owner).table(info.table).view === false) throw new ApiError(105, `Layout "${name}" is missing`);
       return info;
     };
     if (p.length === 3 && method === 'GET') {
