@@ -80,3 +80,17 @@ test('allowed writes, reads and requests refused for other reasons add no privil
   await new Promise((r) => setTimeout(r, 200));
   assert.deepEqual(await denied(0), []);
 });
+
+test('a script the account may not run is a privilege-denied event, and the answer is still error 9', async (t) => {
+  const { store, send, denied } = await setup(t);
+  store.applyDesign([{ op: 'createScript', name: 'S', text: 'Set Field [ Contacts::Name ; "x" ]' }] as DesignOp[]);
+  for (const key of ['-script=S', '-script.prefind=S', '-script.presort=S']) {
+    assert.equal(await send('Cy', `-db=X&-lay=Plain&-findall&${key}`), '9', key);
+  }
+  const events = await denied(1);
+  assert.ok(events.length >= 1, 'no privilege-denied event was recorded for the refused script');
+  assert.equal(events[0].account, 'Cy');
+  assert.equal(events[0].target, 'Reader');
+  assert.equal(events[0].changes?.surface, 'xml');
+  assert.equal(store.get('Contacts', 1).fieldData.Name, 'Ada', 'the script did not run');
+});

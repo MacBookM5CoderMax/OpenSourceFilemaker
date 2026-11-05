@@ -23,7 +23,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { logFault } from './fault-log.ts';
-import { DenialCollector, denialOperation } from './denial-audit.ts';
+import { DenialCollector, captureDenial, denialOperation } from './denial-audit.ts';
 import { atomicWrites, writer, StoreError, fieldDisplayTypes, fieldMetaData, type FindOptions, type FindRequest, type LayoutInfo, type Privileges, type SortSpec, type Store, type StoredRecord } from '../../store/src/index.ts';
 import { esc } from '../../store/src/snippet-xml.ts';
 import { ApiError, maxLimit, readBody, type DataApi } from './dataapi.ts';
@@ -459,6 +459,9 @@ export class CwpXmlEndpoint {
       if (enabled && (req.method !== 'POST' || !params.hasBody)) throw new CwpError(3, 'Command is unavailable: send XML scripts as a POST form (application/x-www-form-urlencoded)');
       for (const [key, name] of scripts) {
         if (['-script', '-script.prefind', '-script.presort'].includes(key.toLowerCase()) && p.script(name) === 'none') {
+          // checkScript throws the PrivilegeError that carries the denial (the account, its set and the rule): record it as the
+          // Data API does, then answer exactly as before (a bare checkScript would answer 951, not the XML error 9).
+          try { p.checkScript(name); } catch (e) { captureDenial(e); }
           throw new CwpError(9, `Insufficient privileges to run script "${name}"`);
         }
       }
