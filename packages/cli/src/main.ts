@@ -2415,9 +2415,13 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'export-sql': {
+      // --account limits the script to what that account may read: left without its value it must not export everything.
+      requireValues(args, ['--out', '--dialect', '--account'], 'export-sql');
       const out = flag(args, '--out');
       const dialect = flag(args, '--dialect') ?? 'postgres';
       const account = flag(args, '--account');
+      refuseStrayOptions('export-sql', args, '--out FILE, --dialect postgres|sqlite and --account A');
+      if (args.length > 1) throw new Error(`export-sql: takes one database, not "${args[1]}"`);
       const [database] = args;
       if (!database) throw new Error('export-sql: give a database');
       if (!out) throw new Error('export-sql: give --out file.sql (the script is written there, with container files in a folder beside it)');
@@ -2453,9 +2457,13 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'exit-bundle': {
+      requireValues(args, ['--out', '--account'], 'exit-bundle');
       const out = flag(args, '--out');
       const account = flag(args, '--account');
       const discard = bool(args, '--discard');
+      // A mistyped --discard would write the whole file in plaintext instead of removing the unfinished copy.
+      refuseStrayOptions('exit-bundle', args, '--out FOLDER, --account A and --discard');
+      if (args.length > 1) throw new Error(`exit-bundle: takes one database, not "${args[1]}"`);
       const [database] = args;
       if (!database) throw new Error('exit-bundle: give a database');
       if (!out) throw new Error('exit-bundle: give --out <folder> (the copy is written there; it must not exist yet)');
@@ -2617,6 +2625,9 @@ function main(argv: string[]): number {
       const all = bool(args, '--all');
       const dryRun = bool(args, '--dry-run');
       const sameFile = bool(args, '--same-file');
+      // A mistyped --dry-run would convert the file for real.
+      refuseStrayOptions('reconvert', args, '--all, --dry-run, --same-file and --force');
+      if (args.length > 1) throw new Error(`reconvert: takes one database, not "${args[1]}"`);
       const [database] = args;
       if (!database && !all) throw new Error('reconvert: give a database, or --all');
       const summary = (name: string, p: ReconvertPreview, unsafe?: string) => {
