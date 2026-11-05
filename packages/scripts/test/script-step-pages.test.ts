@@ -48,6 +48,22 @@ test('Refresh Portal is documented as a handler with a missing-target error', ()
   assert.doesNotMatch(pageText(page), /does nothing|without an action/);
 });
 
+test('Execute SQL documents its account privilege and a safe unbound offline example', async () => {
+  const page = pages.find((p) => p.id === 117)!;
+  assert.equal(page.status, 'partly');
+  assert.match(page.privileges, /fmess/);
+  assert.ok(page.codes.includes(9) && page.codes.includes(8310));
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-sql-page-'));
+  const path = join(dir, 'Examples.sqlite');
+  createStore(path);
+  const store = new Store(path, 'Examples');
+  try {
+    const steps = parseScriptText(page.example, store.schema);
+    const run = await runScript(store, { id: 117, name: 'offline-sql', steps } as never);
+    assert.equal(run.error, 3);
+  } finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('every inert client-flow and dictionary step is documented as doing nothing', () => {
   // Open Settings, Open Sharing, Open File Options, Open Hosts, Open Upload to Host and Open Favorites now set error 3 (checked above).
   for (const id of [109, 129, 209]) {

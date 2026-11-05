@@ -14,6 +14,7 @@ import ts from 'typescript';
 export interface Finding { file: string; line: number; expression: string }
 export interface Allowance { file: string; expression: string; reason: string }
 const reviewed: { file: string; reason: string; expressions: string[] }[] = [
+  { file: 'packages/server/src/connections.ts', reason: 'allowPlaintextPassword is a public yes/no configuration switch, not a credential or password value.', expressions: ["config.allowPlaintextPassword === 'yes'"] },
   { file: "packages/calc/src/xslt.ts", reason: "These are grammar tokens of a language being parsed (a number-format picture, an OData path, a dependency expression), not credentials.", expressions: ["token === 'a'", "token === 'A'", "token === 'A'", "token === 'i'", "token === 'I'", "token === 'I'"] },
   { file: "packages/cli/src/corpus-scan.ts", reason: "An unkeyed public checksum or content digest, compared to detect change or corruption; it authenticates nothing.", expressions: ["hash.slice(0, 12) === id.toLowerCase()"] },
   { file: "packages/fmp12/src/schema.ts", reason: "The first byte of the verifier is a public format version number, not secret material.", expressions: ["verifier[0] === 1"] },

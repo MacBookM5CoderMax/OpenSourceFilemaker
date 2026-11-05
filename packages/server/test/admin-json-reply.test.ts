@@ -4,22 +4,38 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { NOT_TABULARIUS_DATA } from '../../web/src/json-reply.ts';
+import { CONNECTION_TYPES } from '../src/connections.ts';
 
 // Run the console's real call() helper without a browser, against a fetch that answers as a proxy or a sign-in page would.
 const page = readFileSync(new URL('../admin/index.html', import.meta.url), 'utf8');
 const script = [...page.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m => m[1]).join('\n');
 const parsed = ts.createSourceFile('admin.js', script, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
 const names = new Set(['call', 'replyJson', 'NOT_TABULARIUS_DATA', 'httpProblem', 'plainMessage', 'BROWSER_NETWORK_WORDS', 'CANT_REACH']);
+for (const name of ['esc', 'showConnectionFields', 'connectionFiles']) names.add(name);
 const code = parsed.statements.filter(statement =>
   ts.isFunctionDeclaration(statement) ? !!statement.name && names.has(statement.name.text) :
   ts.isVariableStatement(statement) && statement.declarationList.declarations.some(d => ts.isIdentifier(d.name) && names.has(d.name.text)))
   .map(statement => statement.getText(parsed)).join('\n');
 
-function consoleWith(reply: () => Response) {
-  const context = vm.createContext({ fetch: async () => reply(), showSignIn: () => {}, Error, TypeError, Object, JSON, String });
+function consoleWith(reply: () => Response, extra: Record<string, unknown> = {}) {
+  const context = vm.createContext({ fetch: async () => reply(), showSignIn: () => {}, Error, TypeError, Object, JSON, String, ...extra });
   vm.runInContext(code, context);
-  return context as unknown as { call(method: string, path: string, body?: unknown): Promise<unknown> };
+  return context as unknown as { call(method: string, path: string, body?: unknown): Promise<unknown>; showConnectionFields(): void; connectionFiles(value: string): string[] };
 }
+
+test('SQL console settings preserve PEM lines and explicitly scope hosted files', () => {
+  const controls: Record<string, { value?: string; innerHTML?: string }> = {
+    'connection-type': { value: 'postgresql' }, 'connection-fields': {}, 'connection-service': {},
+  };
+  const ui = consoleWith(() => Response.json({}), { connectionTypes: CONNECTION_TYPES, $: (id: string) => controls[id] });
+  ui.showConnectionFields();
+  assert.match(controls['connection-fields'].innerHTML ?? '', /<textarea[^>]*name="config.ca"/);
+  assert.deepEqual(Array.from(ui.connectionFiles(' Inside\r\n\nOutside, West \n')), ['Inside', 'Outside, West']);
+  assert.deepEqual(Array.from(ui.connectionFiles(' \n')), []);
+  assert.match(page, /<textarea[^>]*name="files"/);
+  assert.match(script, /files: connectionFiles\(form.files\)/);
+  assert.match(script, /files: connectionFiles\(input.value\)/);
+});
 
 test('the console carries the same sentence for a reply that is not Tabularius data as the web client', () => {
   const context = vm.createContext({});

@@ -320,7 +320,8 @@ export function conversionReport(store: Store, hosted: string[] = [], focus?: (w
   const dataSources = s.dataSources.map((d) => {
     const at = hostedAs(d.paths, hosted.filter((h) => lower(h) !== lower(store.name)));
     // What stops working without it: scripts and layouts that use its tables (in fields, steps and ExecuteSQL).
-    const tos = new Set(s.tableOccurrences.filter((t) => t.dataSourceId === d.id).map((t) => lower(t.name)));
+    const shadowIds = new Set(s.tables.filter((table) => table.external?.dataSourceId === d.id).map((table) => table.id));
+    const tos = new Set(s.tableOccurrences.filter((t) => t.dataSourceId === d.id || (!t.dataSourceId && t.baseTableId !== undefined && shadowIds.has(t.baseTableId))).map((t) => lower(t.name)));
     const users = new Set<string>();
     if (!at && tos.size) {
       for (const site of index.sites) {

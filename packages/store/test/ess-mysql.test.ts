@@ -106,6 +106,17 @@ test('native scramble matches independent SHA1 formula, including empty password
   }
 });
 
+test('updates request matched rows so an unchanged value is not a false conflict', async () => {
+  const f = await fake(async (peer) => {
+    const reply = (await peer.read()).data;
+    assert.equal(reply.readUInt32LE(0) & 2, 2, 'CLIENT_FOUND_ROWS must be set');
+    peer.send(ok, 2);
+    await peer.read();
+  });
+  try { const driver = await MysqlDriver.connect(options(f.port)); await driver.close(); }
+  finally { await f.close(); }
+});
+
 test('caching_sha2 fast authentication and AuthSwitchRequest', async () => {
   for (const switchPlugin of [false, true]) {
     const f = await fake(async (p) => {

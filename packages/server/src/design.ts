@@ -1,3 +1,4 @@
+import { prepareSqlDesign } from './ess.ts';
 // Design mode over HTTP: read a solution's full design and change it.
 //
 //   GET  /tabularius/design/v1/databases/{db}/file-access           File Access settings and eligible hosted files (Full Access).
@@ -157,7 +158,7 @@ export function designOf(store: Store, hosted: string[] = [], other?: (name: str
   return {
     database: store.name,
     ...(store.fileMode === 'native' ? { fileMode: 'native' as const } : {}),
-    tables: s.tables.map((t) => ({ ...t, records: recordCount(store, t.name) })),
+    tables: s.tables.map((t) => ({ ...t, records: recordCount(store, t.name), ...(t.external ? { sqlStatus: store.shadowStatus(t) } : {}) })),
     tableOccurrences: s.tableOccurrences.map((to) => ({
       ...to,
       ...(to.dataSourceId ? { file: s.dataSources.find((d) => d.id === to.dataSourceId)?.name } : { table: s.tables.find((t) => t.id === to.baseTableId)?.name }),
@@ -985,7 +986,8 @@ export class DesignApi {
         });
         const before = layoutsBefore(store, changes);
         const orders = ordersBefore(store, changes);
-        const { applied } = store.applyDesign(changes, { account: session.account, readOtherFile: mayDesign, privileges });
+        const prepared = await prepareSqlDesign(store, changes);
+        const { applied } = store.applyDesign(prepared, { account: session.account, readOtherFile: mayDesign, privileges });
         const undo = undoChanges(applied, before, orders);
         send(200, { applied, ...(undo ? { undo } : {}), design: designOf(store, this.host.names(), other) });
       } else throw new ApiError(3, 'Command is unavailable', 405);

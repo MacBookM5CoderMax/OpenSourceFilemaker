@@ -22,6 +22,8 @@ export interface ConnectionRequest {
 }
 
 export interface ScriptConnections {
+  /** Execute through a file-scoped SQL connection. No credentials or result rows cross this interface. */
+  sql?(name: string, statement: string, files: readonly string[]): Promise<void>;
   /** The host a request to this connection reaches, when there is such a connection that is on: test mode's allowlist is checked against it. */
   host(name: string): string | undefined;
   /**

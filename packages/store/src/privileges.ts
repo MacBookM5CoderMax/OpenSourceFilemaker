@@ -131,11 +131,12 @@ export const FULL_ACCESS = '[Full Access]';
 /**
  * Extended privileges Tabularius itself understands as "ways in" (fmapp: the web
  * client and Data API, fmwebdirect: the same, fmxml: the XML publishing surfaces,
- * fmrest: the REST-style Data API, fmmcp: AI/MCP tools, fmurlscript: running a script from a WebDirect-style link), offered to every file
+ * fmrest: the REST-style Data API, fmmcp: AI/MCP tools, fmurlscript: running a script from a WebDirect-style link,
+ * fmess: executing SQL against an approved outside database), offered to every file
  * whether or not its own catalog (Schema.extendedPrivileges) lists them. A
  * custom extended privilege can't take one of these names.
  */
-export const BUILT_IN_EXTENDED_PRIVILEGES = ['fmapp', 'fmwebdirect', 'fmrest', 'fmxml', 'fmmcp', 'fmurlscript'] as const;
+export const BUILT_IN_EXTENDED_PRIVILEGES = ['fmapp', 'fmwebdirect', 'fmrest', 'fmxml', 'fmmcp', 'fmurlscript', 'fmess'] as const;
 
 const ALL: TablePrivileges = { view: true, edit: true, create: true, delete: true };
 const VIEW: TablePrivileges = { view: true, edit: false, create: false, delete: false };

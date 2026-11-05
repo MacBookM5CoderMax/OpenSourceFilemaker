@@ -8,6 +8,6 @@ Controls in-memory sharing of query results when enabled by the server.
 | Accepted values | 0 disables sharing |
 | Restart needed | Yes for a running server. |
 | Explained in | [ADMIN.md](../../../../ADMIN.md) |
-| Code | [packages/server/src/host.ts:416](../../../../packages/server/src/host.ts#L416) |
+| Code | [packages/server/src/host.ts:417](../../../../packages/server/src/host.ts#L417) |
 
 [All environment variables](../../../environment-variables.md)

@@ -11,7 +11,7 @@ import { hostRefusal, socketLookup } from '../outbound-address.ts';
 const MAX_PART = 0xffffff;
 // One connection buffers at most this much from the server (times TABULARIUS_ESS_POOL connections): 64 MiB, not the protocol's 1 GiB.
 const MAX_MESSAGE = 64 * 1024 * 1024;
-const CAP = { LONG_PASSWORD: 1, CONNECT_DB: 8, PROTOCOL_41: 0x200, SSL: 0x800,
+const CAP = { LONG_PASSWORD: 1, FOUND_ROWS: 2, CONNECT_DB: 8, PROTOCOL_41: 0x200, SSL: 0x800,
   TRANSACTIONS: 0x2000, SECURE: 0x8000, MULTI_RESULTS: 0x20000,
   PLUGIN_AUTH: 0x80000, LENENC_AUTH: 0x200000, DEPRECATE_EOF: 0x1000000 };
 const TYPE = { TINY: 1, SHORT: 2, LONG: 3, FLOAT: 4, DOUBLE: 5, NULL: 6, TIMESTAMP: 7,
@@ -310,7 +310,7 @@ export class MysqlDriver implements SqlDriver {
       if (plugin === 'client_ed25519') throw Error('MariaDB client_ed25519 authentication is unsupported');
       const secure = mode !== 'disable';
       if (secure && !(flags & CAP.SSL)) throw Error('SQL server does not offer TLS');
-      let caps = CAP.PROTOCOL_41 | CAP.SECURE | CAP.PLUGIN_AUTH | CAP.TRANSACTIONS | CAP.MULTI_RESULTS | CAP.LONG_PASSWORD;
+      let caps = CAP.PROTOCOL_41 | CAP.SECURE | CAP.PLUGIN_AUTH | CAP.TRANSACTIONS | CAP.MULTI_RESULTS | CAP.LONG_PASSWORD | CAP.FOUND_ROWS;
       if (flags & CAP.CONNECT_DB) caps |= CAP.CONNECT_DB;
       if (flags & CAP.DEPRECATE_EOF) caps |= CAP.DEPRECATE_EOF;
       if (secure) caps |= CAP.SSL;

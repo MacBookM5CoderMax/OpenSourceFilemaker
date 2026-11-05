@@ -1179,6 +1179,29 @@ export class Store {
 
   /** The host supplies a file-scoped Connections entry for this ODBC data source. */
   sqlConnection: (name: string) => SqlConnection | undefined = () => undefined;
+  /** Metadata-only outbound log supplied by the host. */
+  sqlLog: (message: string) => void = () => {};
+  /** The host schedules network refreshes; public reads always use the current mirror. */
+  requestShadowRefresh: (table: Table) => void = () => {};
+  private readonly essFailures = new Map<number, string>();
+
+  shadowStatus(table: Table): { ageSeconds?: number; error?: string } {
+    const at = this.essFresh.get(table.id);
+    return { ...(at === undefined ? {} : { ageSeconds: Math.max(0, (this.essClock() - at) / 1000) }),
+      ...(this.essFailures.has(table.id) ? { error: this.essFailures.get(table.id) } : {}) };
+  }
+
+  shadowFailed(table: Table, message: string): void { this.essFailures.set(table.id, message); }
+
+  /** Called on the main thread only after the asynchronous worker returned a complete result. */
+  loadShadow(table: Table, connection: SqlConnection, result: SqlResult): void {
+    if (this.sql.isTransaction) throw new StoreError(ESS_ERROR, 'The SQL mirror cannot refresh while a local transaction is open');
+    const fresh = new Map<number, number>();
+    refreshMirror({ table, sql: this.sql, clock: this.essClock, fresh, connection, query: () => result,
+      nextId: () => this.nextRecordId(table.name), ...(this.fileMode === 'native' ? { nextUuid: () => this.uuid.next() } : {}) });
+    this.essFresh.set(table.id, fresh.get(table.id)!);
+    this.essFailures.delete(table.id);
+  }
   /** Injectable for refresh tests. */
   essClock: () => number = () => Date.now();
   private readonly essFresh = new Map<number, number>();
@@ -1191,6 +1214,7 @@ export class Store {
 
   private essQueue(table: Table, recordId: number, write: EssWrite): void {
     const { connection } = sourceFor(this.schema, this.sqlConnection, table);
+    if (connection.dialect !== 'sqlite') throw new StoreError(ESS_ERROR, `Changing records of this SQL table is not available over a network connection yet (connection "${connection.name}")`);
     this.essPending.push({ table, recordId, connection, write: { ...write, recordId } });
   }
 
@@ -1263,6 +1287,7 @@ export class Store {
       if (!ds?.paths[0]?.startsWith('odbc:')) throw new StoreError(ESS_ERROR, 'The SQL data source is missing or is not ODBC');
       const external = table?.external ?? { dataSourceId: ds.id, table: op.op === 'createShadowTable' ? op.table : '', keys: [], ...(op.op === 'createShadowTable' && op.schema ? { schema: op.schema } : {}) };
       const placeholder: Table = table ?? { id: -1, name: op.op === 'createShadowTable' ? op.name ?? op.table : '', fields: [], external };
+      if (op.columns) return op; // Resolved asynchronously by the server for network dialects.
       const columns = requestFor<SqlColumn[]>(this.schema, this.sqlConnection, placeholder, 'columns', [{ schema: external.schema, name: external.table }]);
       const keys = op.op === 'createShadowTable' ? op.keys ?? columns.filter((c) => c.key).map((c) => c.name) : external.keys;
       if (!keys.length) throw new StoreError(ESS_ERROR, `The SQL table "${external.table}" has no primary key; give keys with its unique column names`);
@@ -1277,9 +1302,16 @@ export class Store {
     if (!t?.external) return;
     if (this.essPending.some((entry) => entry.table.id === t.id)) return;
     const { connection } = sourceFor(this.schema, this.sqlConnection, t);
+    if (connection.dialect !== 'sqlite') {
+      const interval = wholeNumber('TABULARIUS_ESS_REFRESH_SECONDS', { min: 0 }) ?? 5;
+      const status = this.shadowStatus(t);
+      if (status.ageSeconds === undefined || status.ageSeconds >= interval) this.requestShadowRefresh(t);
+      if (status.ageSeconds === undefined) throw new StoreError(ESS_ERROR, `The SQL data has not been loaded yet; try again in a moment (connection "${connection.name}")`);
+      return;
+    }
     refreshMirror({ table: t, sql: this.sql, clock: this.essClock, fresh: this.essFresh, connection,
       query: (statement, maxRows) => requestFor<SqlResult>(this.schema, this.sqlConnection, t, 'query', [statement, [], { maxRows }]),
-      nextId: () => this.nextRecordId(t.name) });
+      nextId: () => this.nextRecordId(t.name), ...(this.fileMode === 'native' ? { nextUuid: () => this.uuid.next() } : {}) });
   }
 
   /**

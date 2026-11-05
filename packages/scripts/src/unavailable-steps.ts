@@ -10,7 +10,7 @@ export const ERROR_3_STEPS: ReadonlySet<string> = new Set([
   'Check Selection', 'Check Record', 'Check Found Set', 'Correct Word', 'Spelling Options', 'Select Dictionaries',
   'Fine-Tune Model', 'Configure Regression Model',
   'Send DDE Execute', 'Speak', 'Insert Image Caption', 'Insert Image Captions in Found Set',
-  'Execute SQL', 'Perform AppleScript', 'Get Folder Path', 'Send Event', 'Configure Machine Learning Model',
+  'Perform AppleScript', 'Get Folder Path', 'Send Event', 'Configure Machine Learning Model',
   'Print Setup', 'Open Settings', 'Open Sharing', 'Open File Options', 'Open Hosts', 'Open Upload to Host', 'Open Favorites',
 ]);
 
@@ -19,5 +19,5 @@ export const ERROR_3_STEPS: ReadonlySet<string> = new Set([
  * model), or unless a person is there to answer (Show Custom Dialog).
  */
 export const ERROR_3_UNLESS_CONFIGURED: ReadonlySet<string> = new Set([
-  'Send Mail', 'Insert from URL', 'Configure RAG Account', 'Perform RAG Action', 'Show Custom Dialog',
+  'Send Mail', 'Insert from URL', 'Configure RAG Account', 'Perform RAG Action', 'Show Custom Dialog', 'Execute SQL',
 ]);

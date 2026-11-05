@@ -206,13 +206,18 @@ export function conversionGuide(store: Store, hosted: string[] = [], report: Con
     });
   }
   const missing = r.dataSources.filter((d) => !d.hosted && (d.occurrences || d.scriptSteps));
-  const sql = missing.filter((d) => d.paths.length && !d.paths.some((p) => FILEMAKER_PATH.test(p.trim())));
-  const files = missing.filter((d) => !sql.includes(d));
+  const sqlSources = missing.filter((d) => d.paths.length && !d.paths.some((p) => FILEMAKER_PATH.test(p.trim())));
+  const sql = sqlSources.filter((d) => {
+    const source = store.schema.dataSources.find((s) => s.name === d.name);
+    const name = source?.connection ?? d.paths.find((p) => p.startsWith('odbc:'))?.slice(5);
+    try { return !name || !store.sqlConnection(name); } catch { return true; }
+  });
+  const files = missing.filter((d) => !sqlSources.includes(d));
   if (sql.length) {
     breaks.push({
       title: 'Tables in SQL databases (ESS/ODBC)', severity: 'blocker', count: sql.reduce((n, d) => n + d.occurrences, 0), where: sql.flatMap((d) => d.usedBy ?? []).slice(0, WHERE),
-      what: `${sql.map((d) => d.name).join(', ')}: Tabularius doesn't connect to outside SQL databases, so layouts, portals and scripts on these tables find nothing.`,
-      instead: 'Import the tables into this file (Import Records from a CSV export of the database), or keep the data in the SQL database and reach Tabularius from it through the Data API or OData.',
+      what: `${sql.map((d) => d.name).join(', ')}: these SQL data sources have no active approved connection allowed for this file.`,
+      instead: 'In the admin console, add a PostgreSQL connection named after the ODBC DSN, list this file in Files, enter its secrets, test and approve it, then create its shadow tables. MySQL, SQL Server and Oracle connections are coming.',
     });
   }
   if (files.length) {

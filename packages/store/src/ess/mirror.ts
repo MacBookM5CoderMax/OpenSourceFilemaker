@@ -61,6 +61,7 @@ export function refreshMirror(options: {
   connection: SqlConnection;
   query: (sql: string, maxRows: number) => SqlResult;
   nextId: () => number;
+  nextUuid?: () => string;
 }): void {
   const { table, sql, clock, fresh, connection, query, nextId } = options;
   const external = table.external!;
@@ -80,7 +81,7 @@ export function refreshMirror(options: {
     sql.exec(`CREATE TABLE IF NOT EXISTS ${keyTable} (record_id INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE)`);
     const prior = new Map((sql.prepare(`SELECT key, record_id FROM ${keyTable}`).all() as { key: string; record_id: number }[]).map((r) => [r.key, r.record_id]));
     const seen = new Set<string>();
-    const put = sql.prepare(`INSERT INTO ${q(table.name)} (_fm_record_id, ${names.map(q).join(', ')}) VALUES (?, ${names.map(() => '?').join(', ')})`);
+    const put = sql.prepare(`INSERT INTO ${q(table.name)} (_fm_record_id${options.nextUuid ? ', _fm_uuid' : ''}, ${names.map(q).join(', ')}) VALUES (?${options.nextUuid ? ', ?' : ''}, ${names.map(() => '?').join(', ')})`);
     const change = sql.prepare(`UPDATE ${q(table.name)} SET ${names.map((n) => `${q(n)} = ?`).join(', ')}, _fm_mod_id = _fm_mod_id + 1 WHERE _fm_record_id = ? AND (${names.map((n) => `${q(n)} IS NOT ?`).join(' OR ')})`);
     const addKey = sql.prepare(`INSERT INTO ${keyTable} (record_id, key) VALUES (?, ?)`);
     for (const row of result.rows) {
@@ -94,7 +95,7 @@ export function refreshMirror(options: {
       const id = prior.get(key);
       if (id === undefined) {
         const next = nextId();
-        put.run(next, ...values);
+        put.run(next, ...(options.nextUuid ? [options.nextUuid()] : []), ...values);
         addKey.run(next, key);
       } else change.run(...values, id, ...values);
     }

@@ -1,3 +1,4 @@
+import { ESS_ERROR } from '../../store/src/ess/driver.ts';
 import { documentNamePart, checkPathLength, sameFile } from '../../store/src/portable-path.ts';
 // Runs FileMaker scripts against hosted stores, the way FileMaker Server runs
 // them for the Data API: no user interface, one window per file, found sets
@@ -168,6 +169,9 @@ export class ScriptError extends Error {
     this.code = code;
   }
 }
+
+/** Only locally composed SQL-connection diagnostics; never SQL text or a server's raw message. */
+class SqlStepError extends ScriptError {}
 
 /** Something a client (a person's screen) would do for a step the server skips. */
 export interface ClientAction {
@@ -3896,6 +3900,7 @@ export class ScriptEngine {
         this.calcError = 0;
         let error = 0;
         let message: string | undefined;
+        let safeSqlError = false;
         let denial: AccessDenial | undefined;
         let next = pc + 1;
         const profile = this.opts.profile;
@@ -3966,7 +3971,7 @@ export class ScriptEngine {
           if (!(e instanceof Halt)) this.canceled(script.name);
           if (profile && !(e instanceof ScriptError || e instanceof StoreError || e instanceof CalcError || e instanceof PrivilegeError || e instanceof RangeError)) timed(-1);
           if (e instanceof Halt) throw e;
-          if (e instanceof ScriptError || e instanceof StoreError || e instanceof CalcError || e instanceof PrivilegeError) { error = e.code; message = e.message; denial = this.observeDenial(e, error); }
+          if (e instanceof ScriptError || e instanceof StoreError || e instanceof CalcError || e instanceof PrivilegeError) { safeSqlError = e instanceof SqlStepError; error = e.code; message = e.message; denial = this.observeDenial(e, error); }
           // A formula nested or recursing deeper than JavaScript's stack allows: the step fails, as too-deep recursion does in FileMaker.
           else if (e instanceof RangeError && /call stack/i.test(e.message)) { error = 1200; message = 'The calculation recursed too deeply'; }
           else {
@@ -3986,13 +3991,13 @@ export class ScriptEngine {
         const forced = this.forced;
         this.forced = undefined;
         if (forced) ({ code: error, message, denial } = forced);
-        if (message) message = this.diagnostics.error(message, step, this.hiddenSource(frame.store, script));
+        if (message) message = this.diagnostics.error(message, safeSqlError ? { stepId: 0, name: 'SQL connection', enabled: true } : step, this.hiddenSource(frame.store, script));
         timed(error);
         // Control steps keep the previous error; a Perform Script that ran leaves the subscript's last error.
         if ((!CONTROL.has(step.stepId) && step.stepId !== 1) || error) {
           this.lastError = error;
           this.lastDenial = denial;
-          this.lastErrorDetail = denial ? explainAccessDenial(denial).explanation : forced?.detail ?? '';
+          this.lastErrorDetail = denial ? explainAccessDenial(denial).explanation : forced?.detail ?? (error === ESS_ERROR ? message ?? '' : '');
           this.lastErrorLocation = error ? `${script.name}\t${step.name}\t${pc + 1}` : '';
         }
         this.readCache.clear();
@@ -4515,8 +4520,33 @@ export class ScriptEngine {
         if (name) this.session.ai.ragAccounts.add(name.toLowerCase());
         return undefined;
       }
-      case 117: // Execute SQL: an ODBC data source outside the solution
-        throw new ScriptError(ERROR.unavailable, 'Execute SQL connects to an ODBC data source, which Tabularius doesn\'t reach; ExecuteSQL ( ) reads this file\'s own tables');
+      case 117: { // Execute SQL: native ODBC source/text parameter decoding remains unverified.
+        const source = f.store.schema.dataSources.find((d) => d.id === p.dataSource?.id);
+        const name = source?.connection ?? source?.paths[0]?.replace(/^odbc:/, '');
+        if (!source?.paths[0]?.startsWith('odbc:') || !name || !f.store.sqlConnection(name) || !this.opts.connections?.sql) {
+          throw new SqlStepError(ERROR.unavailable, 'Execute SQL needs an ODBC data source bound to an active approved PostgreSQL connection; name it after the DSN and list this file in Files');
+        }
+        // The account must hold fmess itself; a script marked full access cannot grant this outbound capability.
+        const privileges = this.opts.privileges?.in(f.store);
+        if (privileges && !privileges.full && !privileges.has('fmess')) throw new ScriptError(ERROR.privileges, 'Execute SQL requires full access or the fmess extended privilege');
+        this.requireScriptNetwork(f);
+        const files = this.callStackFiles(f);
+        const out = this.opts.outbound;
+        const host = this.opts.connections.host(name);
+        const held = files.some((file) => captureOnly(file, out?.captureOnly));
+        if (out) {
+          const allowed = !held && !!host && hostAllowed(`https://${host}`, out.allowHosts);
+          this.noteOutbound(out, { kind: 'http', at: new Date().toISOString(), script: f.script.name,
+            via: `Execute SQL (connection ${name})`, method: 'SQL', url: `connection://${name}`, host: host ?? name, allowed, requestBytes: 0 });
+          if (!allowed) return;
+        } else if (held) throw new ScriptError(ERROR.unavailable, 'Execute SQL is not available for a capture-only file');
+        const statement = p.text ?? asText(this.eval(f, p.calculation ?? ''));
+        try { await this.opts.connections.sql(name, statement, files); }
+        catch (error) {
+          throw new SqlStepError(ESS_ERROR, error instanceof StoreError && error.code === ESS_ERROR ? error.message : 'The SQL connection could not execute the statement; check its approval and file allowlist');
+        }
+        return;
+      }
       case 152: // Save Records as Snapshot Link
         this.snapshotLink(f, p);
         return undefined;

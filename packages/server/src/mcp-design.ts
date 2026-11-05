@@ -1,3 +1,4 @@
+import { prepareSqlDesign } from './ess.ts';
 // MCP tools for design mode: AI assistants read and change a solution's
 // tables, fields, relationships, layouts and scripts, or start a new one.
 
@@ -112,12 +113,12 @@ Renaming a field or occurrence rewrites every formula, layout and script that re
  */
 export function registerDesignTools(server: McpServer, host: Host, guard: (s: Store) => Privileges | undefined = () => undefined, canCreate = true, visible: (s: Store) => boolean = () => true, readOtherFile?: (file: Store) => boolean, privilegesFor?: (file: Store) => Privileges | undefined): void {
   const applyAiDesign = (store: Store, changes: DesignOp[]) => applyAi(store, changes, readOtherFile, privilegesFor?.(store));
-  const withStore = (database: string, fn: (s: Store) => unknown) => {
+  const withStore = async (database: string, fn: (s: Store) => unknown) => {
     const store = host.get(database);
     if (!store) return fail(`No hosted database named "${database}". Hosted: ${aiHostedNames(host, visible)}`);
     try {
       guard(store);
-      return json(fn(store));
+      return json(await fn(store));
     } catch (e) {
       return fail(callerText(e));
     }
@@ -460,15 +461,16 @@ export function registerDesignTools(server: McpServer, host: Host, guard: (s: St
       preview: z.boolean().default(false).describe('Describe what the changes would do, without making them'),
     },
     annotations: { destructiveHint: true },
-  }, async ({ database, changes, preview }) => withStore(database, (s) => {
+  }, async ({ database, changes, preview }) => withStore(database, async (s) => {
+    const prepared = await prepareSqlDesign(s, changes as unknown as DesignOp[]);
     if (preview) {
       // Layouts as words and Check's findings; the designs themselves are for drawing pictures.
-      const { lines, layouts } = previewDesign(s, changes as unknown as DesignOp[], { readOtherFile });
+      const { lines, layouts } = previewDesign(s, prepared, { readOtherFile });
       return { lines, ...(layouts ? { layouts: layouts.map((l) => ({ name: l.name, issues: l.issues.map((i) => `${i.severity}: ${i.message}`) })) } : {}) };
     }
     const before = layoutsBefore(s, changes as unknown as DesignOp[]);
     const orders = ordersBefore(s, changes as unknown as DesignOp[]);
-    const { applied } = applyAiDesign(s, changes as unknown as DesignOp[]);
+    const { applied } = applyAiDesign(s, prepared);
     const undo = undoChanges(applied, before, orders);
     return { applied, ...(undo ? { undo } : {}) };
   }));

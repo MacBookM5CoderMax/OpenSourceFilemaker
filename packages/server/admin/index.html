@@ -624,7 +624,7 @@
   </section>
   <section id="connections-section" hidden>
     <h2>Connections <span class="count" id="connections-count"></span></h2>
-    <p class="meta">Outside services your solutions use by name, such as S3-compatible storage, a web API or a mail account. Their keys are typed in here and kept encrypted on this server; scripts, plug-ins and AI tools can use a connection but never see its keys. A connection the AI drafts does nothing until you check it, add its keys and approve it here.</p>
+    <p class="meta">Outside services your solutions use by name, such as S3-compatible storage, a web API, a mail account or a PostgreSQL database. Their keys are typed in here and kept encrypted on this server; scripts, plug-ins and AI tools can use a connection but never see its keys. A connection the AI drafts does nothing until you check it, add its keys and approve it here.</p>
     <p class="bad" id="connections-problem" hidden></p>
     <div id="connections"></div>
     <details>
@@ -634,6 +634,8 @@
         <label>Type <select name="type" id="connection-type"></select></label>
         <span class="fields" id="connection-service" hidden></span>
         <span class="fields" id="connection-fields"></span>
+        <label>Files <textarea name="files" rows="2" aria-describedby="connection-files-help"></textarea></label>
+        <span class="meta" id="connection-files-help">One hosted file per line. Blank permits no files for PostgreSQL, and all files for other types.</span>
         <button class="primary">Add</button>
       </form>
     </details>
@@ -3097,6 +3099,9 @@ async function loadConnections() {
   const settings = (c) => typeOf(c.type).config.filter((f) => c.config[f.name]).map((f) => `${esc(f.label)}: ${esc(c.config[f.name])}`).join(' · ');
   render($('connections'), o.connections.length ? o.connections.map((c) => `<h3>${esc(c.name)} <span class="meta">${esc(typeOf(c.type)?.label ?? c.type)}</span> ${state(c)}</h3>
     <p class="meta">${settings(c)}${c.files ? ` · only for ${esc(c.files.join(', '))}` : ''}${c.createdBy === 'ai' ? ' · drafted by the AI' : ''}${c.note ? `<br>${esc(c.note)}` : ''}</p>
+    <p><label>Files for ${esc(c.name)} <textarea data-conn-files="${esc(c.id)}" rows="2" aria-describedby="conn-files-help-${esc(c.id)}">${esc((c.files ?? []).join('\n'))}</textarea></label>
+      <button data-conn-files-save="${esc(c.id)}">Save files</button>
+      <span class="meta" id="conn-files-help-${esc(c.id)}">One hosted file per line. ${c.type === 'postgresql' ? 'Blank permits no files.' : 'Blank permits all files.'}</span></p>
     ${c.secrets.map((x) => `<p><label>${esc(x.label)} <span class="meta">${x.set ? 'set (hidden)' : x.required ? 'not set' : 'optional'}</span>
       <input type="password" autocomplete="off" data-conn-input="${esc(c.id)}/${esc(x.name)}" aria-label="New ${esc(x.label)} for ${esc(c.name)}"></label>
       <button data-conn-set="${esc(c.id)}/${esc(x.name)}" aria-label="Set ${esc(x.label)} for ${esc(c.name)}">Set</button>
@@ -3118,8 +3123,10 @@ function showConnectionFields() {
   $('connection-service').innerHTML = t?.services?.length ? `<label>Start from <select id="connection-service-pick"><option value="">Choose a service…</option>${t.services.map((x) => `<option value="${esc(x.id)}">${esc(x.label)}</option>`).join('')}</select></label> <span class="meta" id="connection-service-help" role="status"></span>` : '';
   $('connection-fields').innerHTML = t ? t.config.map((f) => f.choices
     ? `<label>${esc(f.label)} <select name="config.${esc(f.name)}"${f.help ? ` title="${esc(f.help)}"` : ''}>${f.choices.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>`
+    : f.multiline ? `<label>${esc(f.label)} <textarea name="config.${esc(f.name)}" rows="4"${f.required ? ' required' : ''}${f.help ? ` title="${esc(f.help)}"` : ''}></textarea></label>`
     : `<label>${esc(f.label)} <input name="config.${esc(f.name)}"${f.required ? ' required' : ''} placeholder="${esc(f.placeholder ?? '')}"${f.help ? ` title="${esc(f.help)}"` : ''}></label>`).join('') : '';
 }
+function connectionFiles(value) { return String(value ?? '').split(/\r?\n/).map((name) => name.trim()).filter(Boolean); }
 $('connection-type').addEventListener('change', showConnectionFields);
 // A well-known service fills in the settings that point the connection at it (never a secret) and says where the secrets come from.
 $('connection-service').addEventListener('change', (e) => {
@@ -3142,7 +3149,7 @@ $('add-connection').addEventListener('submit', async (e) => {
   const form = Object.fromEntries(new FormData(e.target));
   const config = Object.fromEntries(Object.entries(form).filter(([k, v]) => k.startsWith('config.') && v).map(([k, v]) => [k.slice(7), v]));
   try {
-    await call('POST', '/tabularius/admin/v1/connections', { name: form.name, type: form.type, config });
+    await call('POST', '/tabularius/admin/v1/connections', { name: form.name, type: form.type, config, files: connectionFiles(form.files) });
     e.target.reset();
     showConnectionFields();
     loadConnections();
@@ -3167,6 +3174,10 @@ $('connections').addEventListener('click', async (e) => {
       await call('PUT', `${url(id)}/secrets/${encodeURIComponent(field)}`, { value: input.value });
       input.value = '';
       loadConnections();
+    } else if (d.connFilesSave) {
+      const input = [...$('connections').querySelectorAll('[data-conn-files]')].find((i) => i.dataset.connFiles === d.connFilesSave);
+      await call('PATCH', url(d.connFilesSave), { files: connectionFiles(input.value) });
+      loadConnections();
     } else if (d.connTest) {
       await call('POST', `${url(d.connTest)}/test`);
       loadConnections();
@@ -3187,7 +3198,7 @@ $('connections').addEventListener('click', async (e) => {
 });
 loadConnections();
 // A secret being typed isn't thrown away by the timed refresh.
-poll(() => { if (![...$('connections').querySelectorAll('[data-conn-input]')].some((i) => i.value)) loadConnections(); }, 15000);
+poll(() => { if (![...$('connections').querySelectorAll('[data-conn-input], [data-conn-files]')].some((i) => i.matches('[data-conn-files]') ? i.value !== i.defaultValue : i.value)) loadConnections(); }, 15000);
 
 async function loadOutbox() {
   const o = await call('GET', '/tabularius/admin/v1/outbox').catch(() => undefined);

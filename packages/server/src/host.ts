@@ -1,3 +1,4 @@
+import { installSqlRefresh } from './ess.ts';
 // The set of hosted solutions. Point it at a folder: every .fmp12 file in it
 // is converted once (to <name>.openhbam.sqlite next to it) and hosted under
 // its file name, the way FileMaker Server hosts its Databases folder. The
@@ -1272,6 +1273,10 @@ export class Host {
     this.compactionClosing.delete(store.name.toLowerCase());
     // Multi-file solutions: layouts can use tables in other files hosted here.
     store.resolveFile = (name) => this.get(name); // Store's resolver wrapper enforces File Access on every call.
+    store.sqlConnection = (name) => store.held || captureOnly(store.name, this.captureOnlyExtra)
+      ? undefined : this.connections?.sql(name, [store.name]);
+    store.sqlLog = this.log;
+    installSqlRefresh(store, () => this.stores.get(store.name.toLowerCase()) === store && !this.closing, this.log);
     store.onReferenceRefused = (target) => {
       const key = JSON.stringify([store.path, target.path]);
       if (warnedFileReferences.has(key)) return;

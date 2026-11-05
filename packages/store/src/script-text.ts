@@ -514,6 +514,18 @@ function params(ctx: Ctx, name: string, parts: string[]): StepParams | undefined
       }
       break;
     }
+    case 'Execute SQL':
+      // Tabularius text form. Native ODBC source/text parameter decoding is unverified.
+      for (const part of parts) {
+        const source = labelled(part, 'Data Source');
+        const sql = labelled(part, 'SQL');
+        const calculation = labelled(part, 'Calculation');
+        if (source !== undefined) p.dataSource = ref(ctx, ctx.schema.dataSources, source, 'data source');
+        else if (sql !== undefined) p.text = unquote(sql);
+        else if (calculation !== undefined) p.calculation = calculation;
+        else p.calculation = part;
+      }
+      break;
     case 'Open File':
     case 'Close File':
       // A file reference (Manage External Data Sources), or the current file.

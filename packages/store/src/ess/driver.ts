@@ -5,7 +5,7 @@ export interface SqlColumn { name: string; type: string; nullable: boolean; key:
 export interface SqlResult { columns: { name: string; type: string }[]; rows: SqlValue[][]; affected?: number }
 export interface SqlDriver {
   readonly dialect: 'postgresql' | 'mysql' | 'sqlserver' | 'oracle' | 'sqlite';
-  query(sql: string, params: SqlValue[], opts?: { timeoutMs?: number; maxRows?: number }): Promise<SqlResult>;
+  query(sql: string, params: SqlValue[], opts?: { timeoutMs?: number; maxRows?: number; parameterTypes?: string[] }): Promise<SqlResult>;
   transaction<T>(fn: (tx: SqlDriver) => Promise<T>): Promise<T>;
   tables(): Promise<{ schema?: string; name: string }[]>;
   columns(table: { schema?: string; name: string }): Promise<SqlColumn[]>;
@@ -34,7 +34,6 @@ function nullableMatch(driver: SqlDriver, column: string, n: number): string {
   const field = driver.quoteName(column);
   const param = driver.placeholder(n);
   if (driver.dialect === 'mysql') return `${field} <=> ${param}`;
-  if (driver.dialect === 'postgresql') return `${field} IS NOT DISTINCT FROM ${param}`;
   if (driver.dialect === 'sqlite') return `${field} IS ${param}`;
   return `(${field} = ${param} OR (${field} IS NULL AND ${param} IS NULL))`;
 }
@@ -44,6 +43,12 @@ export async function writeEssRow(driver: SqlDriver, write: EssWrite): Promise<E
   const table = [write.schema, write.table].filter((name): name is string => !!name).map((name) => driver.quoteName(name)).join('.');
   const names = Object.keys(write.values);
   const params: SqlValue[] = names.map((name) => write.values[name]);
+  // Mirrors retain dates as ISO text and booleans as 0/1. Bind with the actual column types,
+  // including the original values in the optimistic predicate, rather than inferring integer/text.
+  const types = driver.dialect === 'postgresql' ? new Map((await driver.columns({ schema: write.schema, name: write.table })).map((c) => [c.name, c.type])) : undefined;
+  const query = (statement: string, values: SqlValue[], columns: string[]) => driver.query(statement, values.map((value, index) =>
+    /^(boolean|bool)$/i.test(types?.get(columns[index]) ?? '') && (value === 0 || value === 1) ? value === 1 : value),
+  types ? { parameterTypes: columns.map((name) => types.get(name) ?? '') } : undefined);
   const keys = write.keys.map((name) => driver.quoteName(name));
   if (write.kind === 'create') {
     const columns = names.length ? `(${names.map((name) => driver.quoteName(name)).join(', ')})` : '';
@@ -54,7 +59,7 @@ export async function writeEssRow(driver: SqlDriver, write: EssWrite): Promise<E
     const returning = driver.dialect === 'postgresql' || driver.dialect === 'sqlite' ? ` RETURNING ${output}` : '';
     const inserted = driver.dialect === 'sqlserver' ? ` OUTPUT ${keys.map((key) => `INSERTED.${key}`).join(', ')}` : '';
     const oracle = driver.dialect === 'oracle' ? ` RETURNING ${output} INTO ${keys.map((_, index) => driver.placeholder(params.length + index + 1)).join(', ')}` : '';
-    const result = await driver.query(`INSERT INTO ${table} ${insertColumns}${inserted} ${values}${returning}${oracle}`, driver.dialect === 'oracle' ? [...params, ...keys.map(() => null)] : params);
+    const result = await query(`INSERT INTO ${table} ${insertColumns}${inserted} ${values}${returning}${oracle}`, driver.dialect === 'oracle' ? [...params, ...keys.map(() => null)] : params, names);
     if (result.rows[0]) return { keys: result.rows[0] };
     const supplied = write.keys.map((name) => write.values[name]);
     if (supplied.every((value) => value !== undefined && value !== null)) return { keys: supplied };
@@ -79,7 +84,7 @@ export async function writeEssRow(driver: SqlDriver, write: EssWrite): Promise<E
   const sql = write.kind === 'edit'
     ? `UPDATE ${table} SET ${names.map((name, index) => `${driver.quoteName(name)} = ${driver.placeholder(index + 1)}`).join(', ')} WHERE ${where}`
     : `DELETE FROM ${table} WHERE ${where}`;
-  const result = await driver.query(sql, params);
+  const result = await query(sql, params, [...names, ...whereColumns]);
   const affected = result.affected ?? result.rows.length;
   if (write.kind === 'edit' && affected === 0) throw new EssConflict();
   return write.kind === 'delete' ? { deleted: affected > 0 } : { keys: write.keys.map((name) => write.values[name] ?? before[name]) };

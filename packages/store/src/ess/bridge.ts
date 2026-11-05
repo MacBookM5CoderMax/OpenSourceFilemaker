@@ -2,6 +2,7 @@ import { isMainThread, MessageChannel, receiveMessageOnPort, Worker, parentPort,
 import { createHash } from 'node:crypto';
 import { wholeNumber } from '../settings.ts';
 import { EssConflict, SqliteDriver, writeEssBatch, type EssWrite, type SqlDriver, type SqlValue } from './driver.ts';
+import { PostgresClient, PostgresError, type PostgresOptions } from './postgres.ts';
 
 export interface SqlConnection {
   name: string;
@@ -10,6 +11,12 @@ export interface SqlConnection {
   host?: string;
   port?: number;
   password?: string;
+  user?: string;
+  database?: string;
+  schema?: string;
+  sslmode?: PostgresOptions['sslmode'];
+  ca?: string;
+  allowPlaintextPassword?: boolean;
 }
 export type EssOperation = 'columns' | 'query' | 'tables' | 'writes';
 type Factory = (connection: SqlConnection) => SqlDriver | Promise<SqlDriver>;
@@ -17,6 +24,11 @@ const factories = new Map<SqlDriver['dialect'], Factory>();
 
 /** Register in the worker module when adding a protocol client. */
 export function registerDriver(dialect: SqlDriver['dialect'], factory: Factory): void { factories.set(dialect, factory); }
+registerDriver('postgresql', (connection) => PostgresClient.connect({
+  host: connection.host!, port: connection.port, user: connection.user!, database: connection.database!,
+  password: connection.password!, sslmode: connection.sslmode, ca: connection.ca,
+  allowPlaintextPassword: connection.allowPlaintextPassword,
+}));
 
 // The sqlite driver opens whatever path a connection names, so it is a stand-in for tests, never a production client:
 // the bridge's worker registers it only after allowSqliteStandIn(), which nothing outside the tests calls. A connection
@@ -53,8 +65,11 @@ interface Request {
 interface Reply { ok?: unknown; error?: EssBridgeError['reason']; detail?: string }
 
 function safeWriteDetail(error: unknown): string | undefined {
+  // The client discards the server's text and selects a safe message by SQLSTATE.
+  if (error instanceof PostgresError) return error.message;
   if (!(error instanceof Error)) return undefined;
   const message = error.message;
+  if (/^PostgreSQL asked for a (cleartext|MD5) password without verified TLS;/.test(message)) return 'The SQL server requested a password without verified TLS; use verify-full or explicitly allow plaintext password authentication';
   if (/^(?:NOT NULL|UNIQUE) constraint failed: [A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?(?:, [A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)*$/.test(message)) return message;
   if (message === 'FOREIGN KEY constraint failed') return message;
   return undefined;
@@ -96,12 +111,14 @@ if (!isMainThread && (workerData as { essBridge?: boolean } | null)?.essBridge =
       }
       else {
         const [sql, params, options] = args as [string, SqlValue[], { maxRows?: number; timeoutMs?: number }];
-        reply = { ok: await driver.query(sql, params, options) };
+        const result = await driver.query(sql, params, options);
+        if ('truncated' in result && result.truncated) throw new Error(`SQL row limit of ${options?.maxRows} exceeded`);
+        reply = { ok: result };
       }
     } catch (error) {
       reply = error instanceof EssConflict ? { error: 'conflict' } :
         error instanceof Error && error.message.startsWith('SQL row limit of ') ? { error: 'row-limit' } :
-          { error: 'failure', detail: request.op === 'writes' ? safeWriteDetail(error) : undefined };
+          { error: 'failure', detail: request.op === 'writes' || request.connection.dialect === 'postgresql' ? safeWriteDetail(error) : undefined };
     }
     request.port.postMessage(reply);
     Atomics.store(state, 0, 1);
@@ -126,6 +143,7 @@ const MAX_REST_MS = 15 * 60_000;
 const resting = new Map<string, { until: number; rest: number }>();
 
 export function essCall<T>(connection: SqlConnection, op: EssOperation, args: unknown[] = [], timeoutMs = (wholeNumber('TABULARIUS_ESS_TIMEOUT_SECONDS', { min: 1 }) ?? 30) * 1000): T {
+  if (connection.dialect !== 'sqlite') throw new EssBridgeError('unavailable');
   const name = connection.name.toLowerCase();
   const rest = resting.get(name);
   const now = Date.now();
@@ -152,3 +170,40 @@ export function essCall<T>(connection: SqlConnection, op: EssOperation, args: un
 }
 
 export function closeEssBridge(): void { void worker?.terminate(); worker = undefined; resting.clear(); }
+
+const asyncCalls = new Map<string, number>();
+let asyncTotal = 0;
+
+/** Network work uses a dedicated worker per call, so a timeout cannot interrupt another transaction.
+ * Credentials enter only the request that opens the connection; terminating the worker closes it.
+ */
+export function essCallAsync<T>(connection: SqlConnection, op: EssOperation, args: unknown[] = [], timeoutMs = (wholeNumber('TABULARIUS_ESS_TIMEOUT_SECONDS', { min: 1 }) ?? 30) * 1000): Promise<T> {
+  const name = connection.name.toLowerCase();
+  const limit = wholeNumber('TABULARIUS_ESS_POOL', { min: 1, max: 64 }) ?? 4;
+  if ((asyncCalls.get(name) ?? 0) >= limit || asyncTotal >= 64) return Promise.reject(new EssBridgeError('unavailable'));
+  return new Promise<T>((resolve, reject) => {
+    const task = new Worker(new URL('./bridge.ts', import.meta.url), { workerData: { essBridge: true } });
+    const { port1, port2 } = new MessageChannel();
+    asyncCalls.set(name, (asyncCalls.get(name) ?? 0) + 1);
+    asyncTotal++;
+    let settled = false;
+    const finish = (error?: EssBridgeError, value?: T) => {
+      if (settled) return;
+      settled = true;
+      const remaining = (asyncCalls.get(name) ?? 1) - 1;
+      if (remaining) asyncCalls.set(name, remaining); else asyncCalls.delete(name);
+      asyncTotal--;
+      clearTimeout(timer);
+      port1.close();
+      port2.close();
+      void task.terminate();
+      if (error) reject(error); else resolve(value!);
+    };
+    const timer = setTimeout(() => finish(new EssBridgeError('timeout')), timeoutMs);
+    task.once('error', () => finish(new EssBridgeError('unavailable')));
+    task.once('exit', () => finish(new EssBridgeError('unavailable')));
+    port1.once('message', (reply: Reply) => finish(reply.error ? new EssBridgeError(reply.error, reply.detail) : undefined, reply.ok as T));
+    try { task.postMessage({ connection, op, args, state: new SharedArrayBuffer(4), port: port2 }, [port2]); }
+    catch { finish(new EssBridgeError('unavailable')); }
+  });
+}

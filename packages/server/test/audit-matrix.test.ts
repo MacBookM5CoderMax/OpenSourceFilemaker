@@ -20,7 +20,11 @@ test('a new route, method, step, removed action or invalid classification fails 
 });
 
 test('source review catches method changes and reused paths even when table keys are unchanged', () => {
-  const sources = JSON.parse(readFileSync(sourceRegistryFile, 'utf8'));
+const sources = JSON.parse(readFileSync(sourceRegistryFile, 'utf8'));
   assert.throws(() => validateRouteSources({ ...sources, 'admin.ts': 'changed method behind the same path' }), /route implementation changed/);
   assert.throws(() => validateRouteSources({ ...sources, 'new-handler.ts': sources['admin.ts'] }), /route implementation changed/);
+});
+
+test('Execute SQL classifies its outside-database side effect explicitly', () => {
+  assert.equal(registry()['step 117 Execute SQL'], 'external-gap');
 });

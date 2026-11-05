@@ -157,7 +157,7 @@ A step marked **error 3** is unavailable; **does nothing** means it succeeds wit
 | [Enable Touch Keyboard](174-enable-touch-keyboard.md) | does nothing |
 | [Enter Browse Mode](55-enter-browse-mode.md) | works |
 | [Enter Preview Mode](41-enter-preview-mode.md) | works |
-| [Execute SQL](117-execute-sql.md) | error 3 |
+| [Execute SQL](117-execute-sql.md) | partly |
 | [Exit Application](44-exit-application.md) | works |
 | [Flush Cache to Disk](102-flush-cache-to-disk.md) | works |
 | [Insert Audio/Video](159-insert-audio-video.md) | partly |

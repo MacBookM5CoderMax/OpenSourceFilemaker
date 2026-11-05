@@ -794,6 +794,12 @@ doesn't start, or if the service can't be restarted. A macOS LaunchDaemon
 (`--system`) is restarted by stopping its server, which launchd starts again,
 so an upgrade needs no sudo password and can run from a script or over SSH.
 
+## Connections
+
+The console supports S3-compatible storage, REST APIs, SMTP email and PostgreSQL. Connection secrets stay sealed on the server. A draft requires approval before use.
+
+PostgreSQL binds a file's ODBC data source by DSN name or its explicit `connection` field. Its Files list must explicitly include the file; an empty list permits none. Verified TLS is the default. See [Connect a PostgreSQL database](docs/guides/running/external-sql-sources.md#connect-a-postgresql-database) for settings, TLS choices, mirror status and the `fmess` rule for Execute SQL. Network-backed shadow record writes are not yet available. <!-- known-difference-ok: the limitation is registered on the linked external SQL sources page -->
+
 ## Script schedules
 
 A schedule runs one script of a hosted file as one of the file's accounts, every so many minutes (1 to 527,040, which is 366 days), optionally lined up with a time of day, or each time the file opens. Set them under **Script schedules** in the admin console or with the Admin API. What they do not do, so that nothing about them is a surprise:

@@ -191,7 +191,7 @@ import { SyncConsoleError, type ApplyRequest, type SyncConsole } from './sync-co
 import type { Metrics } from './metrics.ts';
 import { UploadError, type Uploads } from './uploads.ts';
 import { WebhookError, type Webhooks } from './changes.ts';
-import { ConnectionError, type Connections } from './connections.ts';
+import { checkSqlDestination, ConnectionError, type Connections } from './connections.ts';
 import type { Profiler } from './profiler.ts';
 import type { McpTokens } from './mcp-tokens.ts';
 import { SettingsError } from './server-config.ts';
@@ -2213,7 +2213,9 @@ export class Admin {
       if (!m[1]) {
         if (req.method === 'GET') return send(200, all());
         if (req.method !== 'POST') return send(405, { error: 'method not allowed' });
-        const made = c.create(await input());
+        const body = await input();
+        await checkSqlDestination(body.type, body.config);
+        const made = c.create(body);
         this.connectionEvent(req, 'added', made.id);
         return send(201, c.get(made.id));
       }
@@ -2243,6 +2245,7 @@ export class Admin {
       if (req.method === 'PATCH') {
         const patch = await input();
         const old = c.get(id);
+        if (patch.config !== undefined) await checkSqlDestination(old.type, patch.config);
         const done = c.update(id, patch);
         const now = c.get(done.id);
         const fields = (['name', 'config', 'files', 'note', 'status'] as const).filter((k) => JSON.stringify(old[k]) !== JSON.stringify(now[k]));

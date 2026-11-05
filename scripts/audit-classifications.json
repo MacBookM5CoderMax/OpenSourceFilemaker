@@ -559,7 +559,7 @@
   "step 114 Open File Options": "local",
   "step 115 Allow Formatting Bar": "local",
   "step 116 Set Next Serial Value": "record-partial",
-  "step 117 Execute SQL": "execution-partial",
+  "step 117 Execute SQL": "external-gap",
   "step 118 Open Hosts": "local",
   "step 119 Move/Resize Window": "local",
   "step 120 Arrange All Windows": "local",

@@ -175,7 +175,7 @@ export interface StepParams {
   inputs?: DialogInput[];
   /** Show Custom Dialog: whether each button stores the inputs, when not the default (the second button doesn't). */
   commit?: boolean[];
-  /** Insert Text. */
+  /** Insert Text, or literal SQL in the repository's Execute SQL format. */
   text?: string;
   tableOccurrence?: Ref;
   /** Truncate Table: a base table of this file. */
@@ -1214,6 +1214,12 @@ export function stepLine(name: string, p: StepParams | undefined, comment?: stri
   const add = (s: string | undefined) => s !== undefined && s !== '' && parts.push(s);
   const fieldOrVar = () => (p.field ? fieldText(p.field) : p.variable);
   switch (name) {
+    case 'Execute SQL':
+      // The repository's own script-text format; native ODBC parameter decoding is unverified.
+      if (p.dataSource) add(`Data Source: ${q(p.dataSource.name)}`);
+      if (p.text !== undefined) add(`SQL: ${q(p.text)}`);
+      if (p.calculation !== undefined) add(`Calculation: ${p.calculation}`);
+      break;
     case 'Set Variable':
       add(p.variable + (p.repetition ? `[${p.repetition}]` : ''));
       add(p.value !== undefined ? `Value: ${p.value}` : undefined);

@@ -365,7 +365,7 @@ export class PostgresClient implements SqlDriver {
     socket.once('close', () => clearTimeout(timer));
     socket.once('connect', () => socket.end(Buffer.concat([i32(16), i32(80877102), this.key!])));
   }
-  async query(sql: string, params: SqlValue[] = [], opts: { timeoutMs?: number; maxRows?: number } = {}): Promise<PostgresResult> {
+  async query(sql: string, params: SqlValue[] = [], opts: { timeoutMs?: number; maxRows?: number; parameterTypes?: string[] } = {}): Promise<PostgresResult> {
     this.alive();
     if (this.context.getStore()?.active === false) throw new Error('PostgreSQL transaction has ended');
     if (this.busy || (this.transactionOwner && this.context.getStore() !== this.transactionOwner)) throw new Error('PostgreSQL connection is busy; wait for its current operation');
@@ -373,18 +373,24 @@ export class PostgresClient implements SqlDriver {
     const timeout = bounded(opts.timeoutMs ?? 30_000, 2_147_483_647, 'query timeout');
     if (params.length > 65535 || Buffer.byteLength(sql) > MAX_BYTES) throw new Error('PostgreSQL query exceeds the byte budget');
     const query = cstr(sql), values: Buffer[] = []; let size = query.length;
-    for (const param of params) {
-      const value = encode(param); size += (value?.length ?? 0) + 4;
+    const formats = params.map((param, index) => typeof param === 'boolean' && /^(?:bool|boolean)$/i.test(opts.parameterTypes?.[index] ?? '') ? 1 : 0);
+    for (const [index, param] of params.entries()) {
+      const value = formats[index] ? Buffer.from([param ? 1 : 0]) : encode(param); size += (value?.length ?? 0) + 4;
       if (size > MAX_BYTES) throw new Error('PostgreSQL parameters exceed the byte budget');
       values.push(i32(value?.length ?? -1)); if (value) values.push(value);
     }
     this.busy = true;
     const timer = setTimeout(() => { this.cancel(); this.fail(new Error('PostgreSQL query timeout; connection closed')); }, timeout);
     try {
-      // Message Formats: unnamed Parse, text Bind, Describe portal, Execute,
+      // Message Formats: unnamed Parse, Bind (binary for explicitly typed booleans), Describe portal, Execute,
       // Close portal, Sync. Closing before Sync also works inside a transaction.
-      this.send('P', cstr(''), query, i16(0));
-      this.send('B', cstr(''), cstr(''), i16(0), i16(params.length), ...values, i16(0));
+      const parameterOids: Record<string, number> = { bool: 16, boolean: 16, date: 1082, time: 1083,
+        'time without time zone': 1083, timestamp: 1114, 'timestamp without time zone': 1114,
+        timestamptz: 1184, 'timestamp with time zone': 1184 };
+      const given = opts.parameterTypes?.map((type) => Object.hasOwn(parameterOids, type.toLowerCase()) ? parameterOids[type.toLowerCase()] : 0) ?? [];
+      if (given.length && given.length !== params.length) throw new Error('PostgreSQL parameter type count does not match');
+      this.send('P', cstr(''), query, i16(given.length), ...given.map(i32));
+      this.send('B', cstr(''), cstr(''), ...(formats.some(Boolean) ? [i16(formats.length), ...formats.map(i16)] : [i16(0)]), i16(params.length), ...values, i16(0));
       this.send('D', Buffer.from('P'), cstr(''));
       this.send('E', cstr(''), i32(limit));
       this.send('C', Buffer.from('P'), cstr(''));

@@ -10,8 +10,8 @@ Inventory: 461 method/path actions and 216 script steps. Counts concern code act
 | record-partial | 189 | Committed writes reach Store.audit; reads depend on logReads; address/export/denial coverage is incomplete. |
 | admin-gap | 151 | No universal chained admin request event. Individual store mutations can emit events, but this is not complete request auditing. admin.ts / adminapi.ts. |
 | export-gap | 19 | Export/output action has no mandatory security event; optional record reads are not an export outcome. scripts/engine.ts. |
-| execution-partial | 41 | Delegated operations can log store events, but no universal execution event with actor, address, object and outcome. |
-| external-gap | 42 | External/file/network or configuration side effect lacks universal chained outcome auditing; enabled support varies by step. |
+| execution-partial | 40 | Delegated operations can log store events, but no universal execution event with actor, address, object and outcome. |
+| external-gap | 43 | External/file/network or configuration side effect lacks universal chained outcome auditing; enabled support varies by step. |
 | local | 103 | Local UI, calculation, find/navigation or flow control; effects of called scripts and committed writes classified separately. |
 | public | 12 | Public metadata/static transport route, not a privileged change. Authentication and delegated actions classified separately. |
 
@@ -584,7 +584,7 @@ Inventory: 461 method/path actions and 216 script steps. Counts concern code act
 | step 114 Open File Options | script-steps | local |
 | step 115 Allow Formatting Bar | script-steps | local |
 | step 116 Set Next Serial Value | script-steps | record-partial |
-| step 117 Execute SQL | script-steps | execution-partial |
+| step 117 Execute SQL | script-steps | external-gap |
 | step 118 Open Hosts | script-steps | local |
 | step 119 Move/Resize Window | script-steps | local |
 | step 120 Arrange All Windows | script-steps | local |

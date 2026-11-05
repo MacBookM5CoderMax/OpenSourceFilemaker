@@ -54,6 +54,7 @@ const inert = table('Does nothing');
 const partial = table('Partly supported');
 
 const OPTION_NOTES: Record<string, string> = {
+  'Execute SQL': 'Choose an ODBC Data Source and either literal SQL text or a Calculation producing SQL. The approved connection must allow this file; results are discarded.',
   'Go to Record/Request/Page': 'First, Last, Previous, Next or a calculated record number; Next and Previous can exit after the last record.',
   'Go to Related Record': 'Use `Match all records in current found set` to match every source record. `Show only related records` or `Show only related records: Off` controls whether the destination found set is replaced or kept.',
   'Go to Layout': 'Choose a named layout, the original layout, or a layout name calculated at runtime.',
@@ -109,6 +110,7 @@ const FULL_ACCESS = new Set(['Save a Copy as XML', 'Save a Copy as', 'Set Next S
 const EXPORT = new Set(['Export Records', 'Export Field Contents', 'Save Records as Snapshot Link']);
 const PRINT = new Set(['Print', 'Save Records as PDF']);
 const ERRORS: Record<string, number[]> = {
+  'Execute SQL': [3, 9, 8310],
   'Go to Record/Request/Page': [101], 'Go to Layout': [105], 'Perform Find': [400, 401],
   'Constrain Found Set': [401], 'Set Field': [101, 201], 'Set Field By Name': [102],
   'Go to Related Record': [101, 401], 'Go to Field': [102], 'Go to Object': [116],
@@ -146,6 +148,7 @@ function group(name: string): string {
 }
 
 const safeExamples: Record<string, [string, string]> = {
+  'Execute SQL': ['Execute SQL', 'Without a bound data source, the step returns error `3`, makes no network request and changes no records.'],
   'New Record/Request': ['New Record/Request\nSet Field [ Examples::Name ; "Mira" ]\nCommit Records/Requests [ With dialog: Off ]\nExit Script [ Text Result: Get ( FoundCount ) ]',
     'One local Examples record has `Name = Mira`; the script result is `1`.'],
   'Set Field': ['New Record/Request\nSet Field [ Examples::Name ; "Mira" ]\nCommit Records/Requests [ With dialog: Off ]\nExit Script [ Text Result: Examples::Name ]',
@@ -185,7 +188,8 @@ export function stepPages(): StepPage[] {
       : 'Use the Script Workspace or script text to supply the target and any positional options the step requires.');
     const labels = parsedOptionLabels(name);
     const options = `${optionSummary}${labels.length ? ` Accepted script-text labels: ${labels.map((label) => `\`${label}:\``).join(', ')}.` : ''}`;
-    const privileges = FULL_ACCESS.has(name) ? 'Full access to the file, or a script configured to run with full access.'
+    const privileges = name === 'Execute SQL' ? 'The account must have full access or the fmess extended privilege, and script network access must be enabled. Running a script with full access does not grant fmess to its account.'
+      : FULL_ACCESS.has(name) ? 'Full access to the file, or a script configured to run with full access.'
       : EXPORT.has(name) ? 'Export privilege for the target file.'
       : PRINT.has(name) ? 'Print privilege for the target file.'
       : 'Permission to run the script; access to any named record, field, layout or file is checked at use.';
