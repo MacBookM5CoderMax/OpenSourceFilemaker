@@ -42,6 +42,9 @@ export function timeComparisons(sql: string, tables: readonly Table[]): string {
   const edits: { start: number; end: number; text: string }[] = [];
   const operand = (i: number): number => (tokens[i]
     && (tokens[i].kind === 'string' || tokens[i].kind === 'parameter' || tokens[i].text === '?') ? 1 : 0);
+  // A time term is a time column or a MAX or MIN of one. It is keyed by its first and its last token.
+  const byFirst = new Map<number, number>();
+  const byLast = new Map<number, number>();
   for (let i = 0; i < tokens.length; i++) {
     const word = tokens[i];
     if (word.kind === 'word' && /^(?:MAX|MIN)$/i.test(word.text) && tokens[i + 1]?.text === '(') {
@@ -50,35 +53,48 @@ export function timeComparisons(sql: string, tables: readonly Table[]): string {
       if (count && tokens[i + 2 + count]?.text === ')' && !qualified
         && !/^OVER$/i.test(tokens[i + 3 + count]?.text ?? '')) {
         edits.push({ start: word.start, end: word.end, text: `fm_time_${word.text.toLowerCase()}` });
+        byFirst.set(i, i + 2 + count);
+        byLast.set(i + 2 + count, i);
         i += 2 + count;
       }
       continue;
     }
     const count = isTime(i);
     if (!count || tokens[i - 1]?.text === '.') continue;
-    const op = tokens[i + count];
     const before = tokens[i - 1];
     if (before && before.kind === 'word' && /^(?:AS|FROM|JOIN)$/i.test(before.text)) continue;
-    if (op && COMPARE.has(op.text) && operand(i + count + 1)) {
-      const column = tokens.slice(i, i + count);
-      const rhs = tokens[i + count + 1];
-      edits.push({ start: column[0].start, end: column.at(-1)!.end,
-        text: `fm_time_seconds(${sql.slice(column[0].start, column.at(-1)!.end)})` });
-      edits.push({ start: rhs.start, end: rhs.end, text: `fm_time_seconds(${rhs.text})` });
-      i += count + 1;
-    } else if (op && /^BETWEEN$/i.test(op.text) && operand(i + count + 1)
-      && /^AND$/i.test(tokens[i + count + 2]?.text ?? '') && operand(i + count + 3)) {
-      const column = tokens.slice(i, i + count);
-      const lo = tokens[i + count + 1], hi = tokens[i + count + 3];
-      edits.push({ start: column[0].start, end: column.at(-1)!.end,
-        text: `fm_time_seconds(${sql.slice(column[0].start, column.at(-1)!.end)})` });
-      edits.push({ start: lo.start, end: lo.end, text: `fm_time_seconds(${lo.text})` });
-      edits.push({ start: hi.start, end: hi.end, text: `fm_time_seconds(${hi.text})` });
-      i += count + 3;
+    byFirst.set(i, i + count - 1);
+    byLast.set(i + count - 1, i);
+    i += count - 1;
+  }
+  const wrap = (first: number, last: number) => {
+    edits.push({ start: tokens[first].start, end: tokens[first].start, text: 'fm_time_seconds(' });
+    edits.push({ start: tokens[last].end, end: tokens[last].end, text: ')' });
+  };
+  // A quoted time or placeholder may stand on the left only when what comes before it cannot continue an expression.
+  const leftOperand = (i: number): boolean => operand(i) === 1 && !/^(?:\||\+|-|\*|\/|%|\.)$/.test(tokens[i - 1]?.text ?? '');
+  const wrapped = new Set<number>();
+  const wrapOnce = (first: number, last: number) => { if (!wrapped.has(first)) { wrapped.add(first); wrap(first, last); } };
+  for (let k = 0; k < tokens.length; k++) {
+    const op = tokens[k];
+    const leftFirst = byLast.get(k - 1);
+    const rightLast = byFirst.get(k + 1);
+    if (COMPARE.has(op.text)) {
+      const left = leftFirst !== undefined;
+      const right = rightLast !== undefined;
+      // Both sides must be a time term or a quoted time or placeholder, and at least one a time term.
+      if (!(left || right) || !(left || leftOperand(k - 1)) || !(right || operand(k + 1))) continue;
+      if (left) wrapOnce(leftFirst, k - 1); else wrap(k - 1, k - 1);
+      if (right) wrapOnce(k + 1, rightLast); else wrap(k + 1, k + 1);
+    } else if (/^BETWEEN$/i.test(op.text) && leftFirst !== undefined && operand(k + 1)
+      && /^AND$/i.test(tokens[k + 2]?.text ?? '') && operand(k + 3)) {
+      wrapOnce(leftFirst, k - 1);
+      wrap(k + 1, k + 1);
+      wrap(k + 3, k + 3);
     }
   }
   let out = sql;
-  for (const edit of edits.sort((a, b) => b.start - a.start)) {
+  for (const edit of edits.sort((a, b) => b.start - a.start || b.end - a.end)) {
     out = out.slice(0, edit.start) + edit.text + out.slice(edit.end);
   }
   return out;

@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore, Store } from '../src/index.ts';
+import { timeComparisons } from '../src/sql-time-order.ts';
 
 let dir: string;
 let store: Store;
@@ -22,11 +23,13 @@ before(() => {
     { op: 'createTable', name: 'U', fields: [{ name: 'Clash', type: 'text' }] },
     { op: 'createTable', name: 'V', fields: [{ name: 'Clash', type: 'time' }] },
     { op: 'createTable', name: 'W', fields: [{ name: 'Wait', type: 'time' }] },
+    { op: 'createTable', name: 'Shift', fields: [{ name: 'Name', type: 'text' }, { name: 'Start', type: 'time' }, { name: 'Finish', type: 'time' }] },
   ] as never);
   for (const Tm of TIMES) store.create('T', { Tm, Label: Tm });
   store.create('T', { Tm: '', Label: 'none' });
   for (const Clash of ['9:00:00', '100:00:00', '10:00:00']) { store.create('U', { Clash }); store.create('V', { Clash }); }
   for (const Wait of ['100:00:00', '9:00:00', '10:00:00']) store.create('W', { Wait });
+  for (const [Name, Start, Finish] of [['A', '9:00:00', '100:00:00'], ['B', '100:00:00', '99:00:00'], ['C', '-1:00:00', '0:00:00'], ['D', '10:00:00', '10:00:00'], ['E', '-99:00:00', '-100:00:00']]) store.create('Shift', { Name, Start, Finish });
 });
 
 after(() => {
@@ -93,4 +96,41 @@ test('find-only functions are unavailable through user SQL', () => {
 test('a derived text alias matching a time field name is compared as time', () => {
   assert.deepEqual(column("SELECT Label FROM T WHERE Label > '5'"), ['9:00:00', '99:00:00', 'none']);
   assert.deepEqual(column("SELECT * FROM (SELECT Label AS Tm FROM T) WHERE Tm > '5'"), ['none']);
+});
+
+test('two time columns compare by seconds', () => {
+  assert.deepEqual(column('SELECT Name FROM Shift WHERE Start < Finish ORDER BY Name'), ['A', 'C']);
+  assert.deepEqual(column('SELECT Name FROM Shift WHERE Start <= Finish ORDER BY Name'), ['A', 'C', 'D']);
+  assert.deepEqual(column('SELECT Name FROM Shift WHERE Start > Finish ORDER BY Name'), ['B', 'E']);
+  assert.deepEqual(column('SELECT Name FROM Shift WHERE Start >= Finish ORDER BY Name'), ['B', 'D', 'E']);
+  assert.deepEqual(column('SELECT s.Name FROM Shift s WHERE s.Start < s.Finish ORDER BY s.Name'), ['A', 'C']);
+  assert.deepEqual(column('SELECT a.Name FROM Shift a JOIN Shift b ON a.Start > b.Finish WHERE b.Name = \'B\' ORDER BY a.Name'), ['B']);
+});
+
+test('a quoted time or placeholder on the left of the comparison compares by seconds', () => {
+  assert.deepEqual(column('SELECT Start FROM Shift WHERE ? < Start ORDER BY Start', ['50:00:00']), ['100:00:00']);
+  assert.deepEqual(column("SELECT Start FROM Shift WHERE TIME '0:00:00' >= Start ORDER BY Start"), ['-99:00:00', '-1:00:00']);
+  assert.deepEqual(column("SELECT Start FROM Shift WHERE ('9:30:00' <= Start) ORDER BY Start"), ['10:00:00', '100:00:00']);
+  // A name that is text in another table is still left alone, on either side.
+  assert.deepEqual(column("SELECT Clash FROM U WHERE '5:00:00' < Clash"), ['9:00:00']);
+});
+
+test('MAX and MIN of a time column compare by seconds in HAVING', () => {
+  assert.deepEqual(column('SELECT Name FROM Shift GROUP BY Name HAVING MAX(Start) > ? ORDER BY Name', ['50:00:00']), ['B']);
+  assert.deepEqual(column('SELECT Name FROM Shift GROUP BY Name HAVING ? < MAX(Start) ORDER BY Name', ['50:00:00']), ['B']);
+  assert.deepEqual(column('SELECT Name FROM Shift GROUP BY Name HAVING MIN(Start) < MAX(Finish) ORDER BY Name'), ['A', 'C']);
+});
+
+test('an expression on the left or an inequality is not rewritten', () => {
+  const tables = store.schema.tables;
+  for (const sql of [
+    "SELECT Name FROM Shift WHERE Name || '9:00:00' < Start",
+    'SELECT Name FROM Shift WHERE Start <> Finish',
+    "SELECT Name FROM Shift WHERE Start - '1:00:00' < Finish",
+    "SELECT Name FROM Shift WHERE Name < 'x' AND Finish = Start",
+  ]) assert.equal(timeComparisons(sql, tables), sql);
+  assert.equal(timeComparisons('SELECT Name FROM Shift WHERE ? <= Start', tables),
+    'SELECT Name FROM Shift WHERE fm_time_seconds(?) <= fm_time_seconds(Start)');
+  assert.equal(timeComparisons('SELECT Name FROM Shift GROUP BY Name HAVING MAX(Start) > ?', tables),
+    'SELECT Name FROM Shift GROUP BY Name HAVING fm_time_seconds(fm_time_max(Start)) > fm_time_seconds(?)');
 });
