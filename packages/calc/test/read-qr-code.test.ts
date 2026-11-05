@@ -1,11 +1,12 @@
 import { test } from 'node:test';
+import { deflateSync } from 'node:zlib';
 import assert from 'node:assert/strict';
 import { NameTable, evaluateText, type CalcContext, type Value } from '../src/index.ts';
 import { decodeImage, decodePng, decodeGif, decodeJpeg } from '../src/image-decode.ts';
 import { imageInfo } from '../src/image-info.ts';
 import { ResourceLimitError } from '../src/work-budget.ts';
 import { Env } from '../src/evaluate.ts';
-import { encodeQr, picture, png, pngWithIhdrs, jpeg, type Level, type Mode } from './qr-encode.ts';
+import { encodeQr, picture, png, pngWithIhdrs, pngWithStream, jpeg, type Level, type Mode } from './qr-encode.ts';
 
 function read(bytes:Uint8Array):string {
   const field:Value={type:'container',value:'scan.png',data:bytes};
@@ -128,6 +129,21 @@ test('a 36-megapixel PNG header exhausts the work budget before decode',()=>{
   const damaged=Buffer.from(bytes);
   damaged[damaged.indexOf('IDAT')+4]=0;
   assert.throws(()=>read(damaged),/Calculation exceeds the supported work budget/);
+});
+
+test('a small PNG that inflates to 128 MB is charged for its decompressed size before it is inflated',()=>{
+  // 4000 x 4000 at 16-bit RGBA passes the pixel charge (16 M pixels / 4 is under 5 M steps),
+  // but its rows hold 128 MB once inflated; the stream of zeros is about 0.5 MB.
+  const w=4000,h=4000,rawBytes=(w*8+1)*h;
+  const bytes=pngWithStream(w,h,16,6,deflateSync(Buffer.alloc(rawBytes),{level:1}));
+  assert.ok(bytes.length<rawBytes/200,'the file is a high-ratio stream');
+  const charges:number[]=[];
+  assert.throws(()=>decodePng(bytes,(n)=>{charges.push(n);throw new ResourceLimitError('too much work');}),/Calculation resource limit: too much work/);
+  assert.equal(charges.length,1);
+  assert.ok(charges[0]>=5_000_000,`the first charge (${charges[0]}) covers the inflated rows and the picture`);
+  const started=performance.now();
+  assert.throws(()=>read(bytes),/work budget/);
+  assert.ok(performance.now()-started<400,'ReadQRCode refuses before inflating the stream');
 });
 
 test('an unsupported image format still returns empty without a decode charge',()=>{

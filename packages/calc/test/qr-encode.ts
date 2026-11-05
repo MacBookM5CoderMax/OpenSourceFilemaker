@@ -225,3 +225,10 @@ export function jpeg(pic:{width:number;height:number;rgba:Uint8Array},sampling:'
   parts.push(255,217);
   return Uint8Array.from(parts);
 }
+
+/** A PNG whose IHDR states the size and whose IDAT is the stream given, for decompression-bomb tests. */
+export function pngWithStream(width:number,height:number,depth:number,colourType:number,stream:Uint8Array):Uint8Array{
+  const chunk=(kind:string,body:Uint8Array)=>{const head=Buffer.alloc(8),tail=Buffer.alloc(4);head.writeUInt32BE(body.length,0);head.write(kind,4,'ascii');tail.writeUInt32BE(crc([head.subarray(4),body]),0);return Buffer.concat([head,body,tail]);};
+  const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(width,0);ihdr.writeUInt32BE(height,4);ihdr[8]=depth;ihdr[9]=colourType;
+  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',ihdr),chunk('IDAT',stream),chunk('IEND',Buffer.alloc(0))]);
+}

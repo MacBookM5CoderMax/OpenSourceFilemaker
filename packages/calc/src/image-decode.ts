@@ -26,6 +26,16 @@ export function decodeImage(data: Uint8Array, fullResolution = false, check?: (u
   return undefined;
 }
 
+/** The seven Adam7 interlace passes: first column, first row, column step, row step. */
+const ADAM7: readonly (readonly [number, number, number, number])[] = [[0, 0, 8, 8], [4, 0, 8, 8], [0, 4, 4, 8], [2, 0, 4, 4], [0, 2, 2, 4], [1, 0, 2, 2], [0, 1, 1, 2]];
+
+/** Inflated bytes of one pass: its rows, each a filter byte and its packed samples. */
+function passBytes(w: number, h: number, x0: number, y0: number, dx: number, dy: number, bitsPP: number): number {
+  const pw = Math.ceil((w - x0) / dx);
+  const ph = Math.ceil((h - y0) / dy);
+  return pw > 0 && ph > 0 ? (Math.ceil((pw * bitsPP) / 8) + 1) * ph : 0;
+}
+
 export function decodePng(data: Uint8Array, check?: (units: number) => void): Picture | undefined {
   const buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
   if (buf.length < 33 || !buf.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return undefined;
@@ -59,10 +69,14 @@ export function decodePng(data: Uint8Array, check?: (units: number) => void): Pi
   const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[type as 0 | 2 | 3 | 4 | 6];
   if (!channels || ![1, 2, 4, 8, 16].includes(depth)) return undefined;
   const bitsPP = channels * depth;
-  // What the header's size can hold, with each row's filter byte and the seven interlace passes' extra rows; more is a bomb.
+  // The rows the header's size holds, each with its filter byte, over one pass or the seven interlace passes; more is a bomb.
+  const rawBytes = interlace ? ADAM7.reduce((sum, [x0, y0, dx, dy]) => sum + passBytes(w, h, x0, y0, dx, dy, bitsPP), 0) : passBytes(w, h, 0, 0, 1, 1, bitsPP);
+  // Charge the inflated rows and the RGBA picture before either is allocated: a small high-ratio stream
+  // (124 KB of zeros inflates to 128 MB) costs its decompressed size, not its file size.
+  check?.(Math.ceil((rawBytes + w * h * 4) / 16));
   let raw: Buffer;
   try {
-    raw = inflateSync(Buffer.concat(idat), { maxOutputLength: (Math.ceil((w * bitsPP) / 8) + 8) * (h + 8) });
+    raw = inflateSync(Buffer.concat(idat), { maxOutputLength: Math.max(1, rawBytes) });
   } catch {
     return undefined;
   }
@@ -119,7 +133,7 @@ export function decodePng(data: Uint8Array, check?: (units: number) => void): Pi
     }
   };
   if (interlace) {
-    for (const [x0, y0, dx, dy] of [[0, 0, 8, 8], [4, 0, 8, 8], [0, 4, 4, 8], [2, 0, 4, 4], [0, 2, 2, 4], [1, 0, 2, 2], [0, 1, 1, 2]]) pass(x0, y0, dx, dy);
+    for (const [x0, y0, dx, dy] of ADAM7) pass(x0, y0, dx, dy);
   } else pass(0, 0, 1, 1);
   return { width: w, height: h, rgba };
 }
