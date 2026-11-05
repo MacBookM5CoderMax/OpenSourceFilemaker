@@ -9,7 +9,7 @@
 import { connect as netConnect, type Socket } from 'node:net';
 import { connect as tlsConnect, type TLSSocket } from 'node:tls';
 import { hostname, userInfo } from 'node:os';
-import { createCipheriv, createDecipheriv, createHash, pbkdf2Sync, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, pbkdf2, randomBytes, timingSafeEqual } from 'node:crypto';
 import { hostRefusal, socketLookup } from '../outbound-address.ts';
 import { boolean } from '../settings.ts';
 import type { SqlColumn, SqlDriver, SqlResult, SqlValue } from './driver.ts';
@@ -118,7 +118,9 @@ export function readTtcInteger(data: Buffer, offset = 0, signed = false): { valu
 }
 
 /** Thrown by the reader when the message is not complete yet; the caller reads more and starts the message again. */
-class Underrun extends Error { constructor() { super('Oracle message incomplete'); } }
+/** Most columns and values one response may carry, so a hostile server cannot make a result unbounded. */
+const CELL_LIMIT = 1_000_000;
+export class Underrun extends Error { constructor() { super('Oracle message incomplete'); } }
 
 class Out {
   private parts: Buffer[] = [];
@@ -143,12 +145,25 @@ class Out {
   build(): Buffer { return Buffer.concat(this.parts); }
 }
 
-class In {
+/** The reader of one response; exported so a test can feed it a large message. */
+export class In {
   buf: Buffer;
   pos = 0;
-  constructor(buf: Buffer = Buffer.alloc(0)) { this.buf = buf; }
-  append(more: Buffer): void { this.buf = Buffer.concat([this.buf.subarray(this.pos), more]); this.pos = 0; }
-  private need(n: number): void { if (this.pos + n > this.buf.length) throw new Underrun(); }
+  /** Bytes of `buf` that hold data; the rest is spare room that grows by doubling, so a long message is copied a constant number of times. */
+  private len: number;
+  constructor(buf: Buffer = Buffer.alloc(0)) { this.buf = buf; this.len = buf.length; }
+  append(more: Buffer): void {
+    const live = this.len - this.pos;
+    if (this.len + more.length > this.buf.length) {
+      // Values already handed out are views of the old buffer, which stays valid; only the unread part moves.
+      const grown = Buffer.alloc(Math.max(live + more.length, this.buf.length * 2, 16_384));
+      this.buf.copy(grown, 0, this.pos, this.len);
+      this.buf = grown; this.pos = 0; this.len = live;
+    }
+    more.copy(this.buf, this.len);
+    this.len += more.length;
+  }
+  private need(n: number): void { if (this.pos + n > this.len) throw new Underrun(); }
   u8(): number { this.need(1); return this.buf[this.pos++]; }
   i8(): number { this.need(1); return this.buf.readInt8(this.pos++); }
   u16be(): number { this.need(2); const v = this.buf.readUInt16BE(this.pos); this.pos += 2; return v; }
@@ -353,8 +368,12 @@ function aesEncrypt(key: Buffer, data: Buffer): Buffer {
 }
 const upperHex = (b: Buffer) => b.toString('hex').toUpperCase();
 
-interface LogonKeys { sessionKey: string; speedyKey: string; password: string }
-function logonKeys(session: Map<string, string>, password: string): LogonKeys {
+interface LogonKeys { sessionKey: string; speedyKey: string; password: string; comboKey: Buffer }
+/** The server picks the iteration counts (real ones are 4096 and 3), so they are capped: a hostile listener must not make a connect cost seconds. */
+const PBKDF2_LIMIT = 100_000;
+const derive = (secret: Buffer, salt: Buffer, iterations: number, length: number) =>
+  new Promise<Buffer>((resolve, reject) => pbkdf2(secret, salt, iterations, length, 'sha512', (error, key) => error ? reject(error) : resolve(key)));
+async function logonKeys(session: Map<string, string>, password: string): Promise<LogonKeys> {
   const need = (name: string) => {
     const v = session.get(name);
     if (!v) throw new Error('Oracle server sent an incomplete logon challenge');
@@ -362,19 +381,19 @@ function logonKeys(session: Map<string, string>, password: string): LogonKeys {
   };
   const verifierData = Buffer.from(need('AUTH_VFR_DATA'), 'hex'), encodedServerKey = Buffer.from(need('AUTH_SESSKEY'), 'hex');
   const iterations = Number(need('AUTH_PBKDF2_VGEN_COUNT')), passwordBytes = Buffer.from(password, 'utf8');
-  if (!Number.isInteger(iterations) || iterations < 1 || iterations > 10_000_000) throw invalid('logon iteration count');
-  const passwordKey = pbkdf2Sync(passwordBytes, Buffer.concat([verifierData, Buffer.from('AUTH_PBKDF2_SPEEDY_KEY')]), iterations, 64, 'sha512');
+  if (!Number.isInteger(iterations) || iterations < 1 || iterations > PBKDF2_LIMIT) throw invalid('logon iteration count');
+  const passwordKey = await derive(passwordBytes, Buffer.concat([verifierData, Buffer.from('AUTH_PBKDF2_SPEEDY_KEY')]), iterations, 64);
   const passwordHash = createHash('sha512').update(passwordKey).update(verifierData).digest().subarray(0, 32);
   const partA = aesDecrypt(passwordHash, encodedServerKey);
   const partB = randomBytes(partA.length);
   const clientKey = aesEncrypt(passwordHash, partB);
   const sessionKey = upperHex(clientKey).slice(0, 64);
   const mixingSalt = Buffer.from(need('AUTH_PBKDF2_CSK_SALT'), 'hex'), mixingCount = Number(need('AUTH_PBKDF2_SDER_COUNT'));
-  if (!Number.isInteger(mixingCount) || mixingCount < 1 || mixingCount > 10_000_000) throw invalid('logon iteration count');
+  if (!Number.isInteger(mixingCount) || mixingCount < 1 || mixingCount > PBKDF2_LIMIT) throw invalid('logon iteration count');
   const combined = Buffer.from(upperHex(Buffer.concat([partB.subarray(0, 32), partA.subarray(0, 32)])), 'utf8');
-  const comboKey = pbkdf2Sync(combined, mixingSalt, mixingCount, 32, 'sha512');
+  const comboKey = await derive(combined, mixingSalt, mixingCount, 32);
   const speedyKey = upperHex(aesEncrypt(comboKey, Buffer.concat([randomBytes(16), passwordKey])).subarray(0, 80));
-  return { sessionKey, speedyKey, password: upperHex(aesEncrypt(comboKey, Buffer.concat([randomBytes(16), passwordBytes]))) };
+  return { sessionKey, speedyKey, comboKey, password: upperHex(aesEncrypt(comboKey, Buffer.concat([randomBytes(16), passwordBytes]))) };
 }
 
 // ---------------------------------------------------------------------------
@@ -522,6 +541,9 @@ export class OracleClient {
   private large = false;
   private sdu: number = TNS.SDU;
   private rx = new In();
+  private cells = 0;
+  /** Count columns and values against the limit for the response being read. */
+  private count(n: number): void { this.cells += n; if (this.cells > CELL_LIMIT) throw invalid('response over the column and value limit'); }
   private closed = false;
   private sequence = 1;
   private cursorsToClose: number[] = [];
@@ -608,16 +630,17 @@ export class OracleClient {
       for (const id of closing) w.ub(id);
     }
     build(w);
+    this.cells = 0;
     this.rx = new In();
     await this.sendData(w.build());
     for (;;) {
-      const mark = this.rx.pos;
+      const mark = this.rx.pos, cellMark = this.cells;
       try {
         const type = this.rx.u8();
         if (handle(this.rx, type)) { this.rx = new In(); return; }
       } catch (error) {
         if (!(error instanceof Underrun)) throw error;
-        this.rx.pos = mark;
+        this.rx.pos = mark; this.cells = cellMark;
         // nextData may start a fresh buffer (after a break), so the buffer is looked up again after the wait.
         const more = await this.nextData();
         this.rx.append(more);
@@ -774,7 +797,7 @@ export class OracleClient {
       identify(w);
     }, receive);
     if (verifier !== VERIFIER_12C) throw new Error('This Oracle account has an older password verifier (before 12c); change the password on the server so a 12c verifier is stored');
-    const keys = logonKeys(session, password);
+    const keys = await logonKeys(session, password);
     session.clear();
     this.secrets.push(keys.password, keys.speedyKey, keys.sessionKey);
     const zone = (() => {
@@ -790,6 +813,12 @@ export class OracleClient {
         .keyValue('AUTH_ALTER_SESSION', `ALTER SESSION SET TIME_ZONE ='${zone}'\x00`, 1)
         .keyValue('AUTH_PASSWORD', keys.password);
     }, receive);
+    // The server proves it knows the verifier by returning a marker encrypted under the shared key; without this check a listener
+    // that does not know the password could answer "logged on" and then receive the queries.
+    const proof = session.get('AUTH_SVR_RESPONSE') ?? '';
+    const reply = /^[0-9a-fA-F]{32,256}$/.test(proof) && proof.length % 32 === 0 ? aesDecrypt(keys.comboKey, Buffer.from(proof, 'hex')) : undefined;
+    const marker = Buffer.from('SERVER_TO_CLIENT');
+    if (!reply || reply.length < 32 || !timingSafeEqual(reply.subarray(16, 32), marker)) throw new Error('The Oracle server did not prove that it knows the password verifier; the connection was refused');
     this.databaseVersion = session.get('AUTH_VERSION_NO') ?? '';
     this.loggedOn = true;
   }
@@ -965,6 +994,7 @@ export class OracleClient {
     r.skipChunked();
     r.ub(4);
     const count = r.ub(4);
+    this.count(count);
     if (count > 0) r.u8();
     const columns: Column[] = [];
     for (let i = 0; i < count; i++) columns.push(this.columnInfo(r));
@@ -1047,13 +1077,14 @@ export class OracleClient {
             // The values of RETURNING ... INTO: a count for each variable, then that many values.
             const rows: SqlValue[][] = [];
             const typed = returning.map((b) => ({ name: '', type: b.type, csfrm: b.csfrm, maxSize: b.size, precision: 0, scale: 0, nullable: true }));
-            const values = typed.map((col) => { const n = r.ub(4); const list: SqlValue[] = []; for (let i = 0; i < n; i++) list.push(this.value(r, col, false)); return list; });
+            const values = typed.map((col) => { const n = r.ub(4); this.count(n); const list: SqlValue[] = []; for (let i = 0; i < n; i++) list.push(this.value(r, col, false)); return list; });
             const count = Math.max(0, ...values.map((v) => v.length));
             for (let i = 0; i < count; i++) rows.push(values.map((v) => v[i] ?? null));
             outcome.returned.push(...rows);
             return;
           }
           const row: SqlValue[] = [];
+          this.count(columns.length);
           for (let i = 0; i < columns.length; i++) {
             const duplicate = bits !== null && (bits[i >> 3] & (1 << (i & 7))) === 0;
             row.push(duplicate ? (last?.[i] ?? null) : this.value(r, columns[i], true));

@@ -990,9 +990,9 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/store/src/store.ts:1094](../../packages/store/src/store.ts#L1094) `Store/referenceSecurity` | `SQLite.get` (1094); `SQLite.prepare` (1094); `Store.sql` (1094) | Internal File Access authorization reads only its version and file-local security metadata; public management reads require Full Access. No record values are read. |
 | [packages/store/src/store.ts:1113](../../packages/store/src/store.ts#L1113) `Store/writeFileAccess` | `SQLite.prepare` (1113); `Store.sql` (1113) | Writes only File Access security metadata inside securityChange; public mutations require Full Access, while hosted rename observation changes display names without granting access. |
 | [packages/store/src/store.ts:1155](../../packages/store/src/store.ts#L1155) `Store/resetFileAccessId` | `SQLite.prepare` (1155, 1157); `Store.sql` (1155, 1157) | Full Access checked inside the security transaction before writing the new reference identity and retaining the stable token-scope identity; no record data is read. |
-| [packages/store/src/ess/driver.ts:128](../../packages/store/src/ess/driver.ts#L128) `SqliteDriver/query` | `SQLite.prepare` (128); `SQLite.iterate` (133) | CORE |
-| [packages/store/src/ess/driver.ts:147](../../packages/store/src/ess/driver.ts#L147) `SqliteDriver/tables` | `SQLite.all` (147); `SQLite.prepare` (147) | CORE |
-| [packages/store/src/ess/driver.ts:152](../../packages/store/src/ess/driver.ts#L152) `SqliteDriver/columns` | `SQLite.all` (152); `SQLite.prepare` (152) | CORE |
+| [packages/store/src/ess/driver.ts:129](../../packages/store/src/ess/driver.ts#L129) `SqliteDriver/query` | `SQLite.prepare` (129); `SQLite.iterate` (134) | CORE |
+| [packages/store/src/ess/driver.ts:148](../../packages/store/src/ess/driver.ts#L148) `SqliteDriver/tables` | `SQLite.all` (148); `SQLite.prepare` (148) | CORE |
+| [packages/store/src/ess/driver.ts:153](../../packages/store/src/ess/driver.ts#L153) `SqliteDriver/columns` | `SQLite.all` (153); `SQLite.prepare` (153) | CORE |
 | [packages/store/src/ess/mirror.ts:82](../../packages/store/src/ess/mirror.ts#L82) `refreshMirror` | `SQLite.all` (82); `SQLite.prepare` (82, 84, 85, 86, 102, 103) | CORE |
 | [packages/store/src/store.ts:1318](../../packages/store/src/store.ts#L1318) `Store/refreshShadow` | `Store.sql` (1318) | CORE |
 | [packages/store/src/store.ts:1263](../../packages/store/src/store.ts#L1263) `Store/flushEssWrites` | `Store.sql` (1263, 1264, 1272, 1274); `SQLite.prepare` (1264, 1272, 1274) | CORE |

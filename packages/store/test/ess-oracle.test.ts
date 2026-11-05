@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { localCertificate } from '../../server/src/local-tls.ts';
-import { decodeOracleNumber, encodeOracleNumber, OracleDriver, OracleError, OracleClient, readTtcInteger, scanSql, writeTtcInteger, type OracleOptions } from '../src/ess/oracle.ts';
+import { decodeOracleNumber, encodeOracleNumber, OracleDriver, OracleError, OracleClient, In, Underrun, readTtcInteger, scanSql, writeTtcInteger, type OracleOptions } from '../src/ess/oracle.ts';
 
 const ub = (n: number) => writeTtcInteger(n);
 const withLength = (b: Buffer) => Buffer.concat([Buffer.from([b.length]), b]);
@@ -129,18 +129,19 @@ function pairs(request: Buffer): Map<string, string> {
   }
   return out;
 }
-interface Logon { wrongPassword?: boolean }
+interface Logon { stop?: boolean; wrongPassword?: boolean; noProof?: boolean; badProof?: boolean; iterations?: number; mixingCount?: number }
 async function logon(w: Wire, password: string, options: Logon = {}): Promise<void> {
   const one = await w.request();
   assert.equal(one[0], 3); assert.equal(one[1], 118);
   assert.match(one.toString('latin1'), /AUTH_TERMINAL[\s\S]*AUTH_PROGRAM_NM[\s\S]*tabularius[\s\S]*AUTH_MACHINE[\s\S]*AUTH_PID[\s\S]*AUTH_SID/);
-  const salt = randomBytes(16), iterations = 64;
-  const passwordKey = pbkdf2Sync(Buffer.from(password), Buffer.concat([salt, Buffer.from('AUTH_PBKDF2_SPEEDY_KEY')]), iterations, 64, 'sha512');
+  const salt = randomBytes(16), iterations = options.iterations ?? 64;
+  // A capped count is never used by a client that refuses it, so the fake need not pay for it.
+  const passwordKey = pbkdf2Sync(Buffer.from(password), Buffer.concat([salt, Buffer.from('AUTH_PBKDF2_SPEEDY_KEY')]), Math.min(iterations, 64), 64, 'sha512');
   const passwordHash = createHash('sha512').update(passwordKey).update(salt).digest().subarray(0, 32);
   const partA = randomBytes(64), mixing = randomBytes(16);
   w.reply(parameters([
     ['AUTH_SESSKEY', hexUpper(cbc(passwordHash, 'enc', partA, false)), 0], ['AUTH_VFR_DATA', hexUpper(salt), 0x4815],
-    ['AUTH_PBKDF2_CSK_SALT', hexUpper(mixing)], ['AUTH_PBKDF2_VGEN_COUNT', String(iterations)], ['AUTH_PBKDF2_SDER_COUNT', '3'],
+    ['AUTH_PBKDF2_CSK_SALT', hexUpper(mixing)], ['AUTH_PBKDF2_VGEN_COUNT', String(iterations)], ['AUTH_PBKDF2_SDER_COUNT', String(options.mixingCount ?? 3)],
   ]), status());
   const two = await w.request();
   assert.equal(two[1], 115);
@@ -151,7 +152,9 @@ async function logon(w: Wire, password: string, options: Logon = {}): Promise<vo
   const secret = cbc(combined, 'dec', Buffer.from(sent.get('AUTH_PASSWORD')!, 'hex'), true).subarray(16).toString();
   assert.ok(!two.toString('latin1').includes(password), 'the password is never sent in the clear');
   if (options.wrongPassword || secret !== password) { w.reply(errorMessage(1017, 'invalid credential or not authorized; logon denied')); return; }
-  w.reply(parameters([['AUTH_VERSION_NO', '387592192'], ['AUTH_DBNAME', 'FREE']]), status());
+  // The server's proof that it knows the verifier: a marker encrypted under the combo key.
+  const proof = hexUpper(cbc(combined, 'enc', Buffer.concat([randomBytes(16), Buffer.from(options.badProof ? 'NOT_THE_MARKER!!' : 'SERVER_TO_CLIENT')]), false));
+  w.reply(parameters([['AUTH_VERSION_NO', '387592192'], ['AUTH_DBNAME', 'FREE'], ...(options.noProof ? [] : [['AUTH_SVR_RESPONSE', proof] as [string, string]])]), status());
 }
 /** CONNECT, protocol, data types and logon, then the NLS settings; returns once the client is ready for statements. */
 async function startup(w: Wire, password: string, version = 319, logonOptions: Logon = {}): Promise<boolean> {
@@ -164,7 +167,7 @@ async function startup(w: Wire, password: string, version = 319, logonOptions: L
   const types = await w.request(); assert.equal(types[0], 2);
   w.reply(Buffer.from([2, 0, 0]));
   await logon(w, password, logonOptions);
-  if (logonOptions.wrongPassword) return false;
+  if (logonOptions.wrongPassword || logonOptions.stop) return false;
   const session = await w.request(); assert.equal(session[1], 94);
   assert.match(session.toString(), /ALTER SESSION SET NLS_DATE_FORMAT/);
   w.reply(errorMessage(0));
@@ -213,6 +216,35 @@ test('logs on with the 12c verifier, never sending the password, and lists the s
   const driver = await opened(t, options);
   assert.equal(driver.dialect, 'oracle');
   await driver.close();
+});
+
+test('a server that does not prove it knows the verifier is refused, and so is a wrong proof', async (t) => {
+  for (const logonOptions of [{ noProof: true, stop: true }, { badProof: true, stop: true }]) {
+    const options = await fake(t, async (w) => { await startup(w, options.password, 319, logonOptions); });
+    await assert.rejects(OracleDriver.connect(options), /did not prove that it knows the password verifier/);
+  }
+});
+
+test('iteration counts the server chooses are capped, so a hostile listener cannot make a connect expensive', async (t) => {
+  for (const logonOptions of [{ iterations: 10_000_000 }, { mixingCount: 10_000_000 }]) {
+    const options = await fake(t, async (w) => { await startup(w, options.password, 319, logonOptions).catch(() => undefined); });
+    const started = Date.now();
+    await assert.rejects(OracleDriver.connect(options), /Oracle/);
+    assert.ok(Date.now() - started < 2000, 'refused without running the derivation');
+  }
+});
+
+test('a large message is read in time that grows in step with its size', () => {
+  const total = 16 * 1024 * 1024, packet = 8192, reader = new In();
+  const started = Date.now();
+  let read = 0;
+  for (let offset = 0; offset < total; offset += packet) {
+    reader.append(Buffer.alloc(packet, 7));
+    try { reader.take(total); } catch (e) { assert.ok(e instanceof Underrun); continue; }
+    read = total;
+  }
+  assert.equal(read, total, 'the whole message arrived');
+  assert.ok(Date.now() - started < 1500, `16 MiB took ${Date.now() - started} ms`);
 });
 
 test('a wrong password is refused with its ORA number and the message does not repeat the password', async (t) => {
