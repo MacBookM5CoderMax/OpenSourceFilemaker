@@ -54,7 +54,7 @@ export function retainDenial(value: object, denial: AccessDenial | undefined): v
 
 export interface DenialAudit {
   code: number;
-  surface: 'web' | 'data-api' | 'mcp';
+  surface: 'web' | 'data-api' | 'mcp' | 'xml';
   identifier: string;
   origin: 'direct' | 'script';
   phase?: 'prerequest' | 'presort' | 'script';

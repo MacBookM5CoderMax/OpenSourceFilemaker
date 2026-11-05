@@ -23,6 +23,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { logFault } from './fault-log.ts';
+import { DenialCollector, denialOperation } from './denial-audit.ts';
 import { atomicWrites, writer, StoreError, fieldDisplayTypes, fieldMetaData, type FindOptions, type FindRequest, type LayoutInfo, type Privileges, type SortSpec, type Store, type StoredRecord } from '../../store/src/index.ts';
 import { esc } from '../../store/src/snippet-xml.ts';
 import { ApiError, maxLimit, readBody, type DataApi } from './dataapi.ts';
@@ -380,6 +381,7 @@ export class CwpXmlEndpoint {
     let database = '';
     let layout = '';
     let delegated = false;
+    const collector = new DenialCollector('xml', 'request');
     try {
       if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'POST') throw new CwpError(3, 'Command is unavailable: use GET or POST');
       if (!grammar) throw new CwpError(954, `Unsupported XML grammar: ${name}. This server answers ${GRAMMARS.map((g) => g + '.xml').join(', ')}`);
@@ -392,7 +394,7 @@ export class CwpXmlEndpoint {
         return true;
       }
       delegated = true;
-      const body = await this.answer(req, params, grammar, crossOrigin);
+      const body = await denialOperation.run(collector, () => this.answer(req, params, grammar, crossOrigin));
       this.send(res, 200, body);
     } catch (e) {
       // A cross-origin request that never reached a write command (an unknown grammar, a bad form) is refused as before, not answered in XML.
@@ -400,7 +402,10 @@ export class CwpXmlEndpoint {
         res.writeHead(403, { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }).end(JSON.stringify({ error: 'Cross-origin request denied' }));
         return true;
       }
+      collector.error(e);
       this.fail(res, e, grammar ?? 'fmresultset', database, layout);
+    } finally {
+      collector.flush();
     }
     return true;
   }
