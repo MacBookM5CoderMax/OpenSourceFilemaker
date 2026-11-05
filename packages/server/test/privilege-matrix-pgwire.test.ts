@@ -104,7 +104,7 @@ test('pgwire rechecks password expiry when the policy or password date changes o
     m.store.setPasswordPolicy({});
     assert.equal(sqlstate(await client.query('SELECT Name FROM Items')), '00000', 'removing expiry policy restores access');
     m.store.setPasswordPolicy({ maxAgeDays: 1 });
-    m.store.setPassword(ACCOUNT, 'matrix-password', 'Matrix', { mustChange: false });
+    m.store.sql.prepare('UPDATE _fm_accounts SET password_changed = ? WHERE name = ?').run(new Date().toISOString(), ACCOUNT);
     assert.equal(sqlstate(await client.query('SELECT Name FROM Items')), '00000', 'fresh password date restores access');
   } finally { client.socket.destroy(); await m.close(); }
 });

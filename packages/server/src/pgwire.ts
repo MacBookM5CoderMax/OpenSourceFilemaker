@@ -319,6 +319,8 @@ class Connection {
   private privileges?: Privileges;
   private user = '';
   private userIdentityId?: string;
+  /** The account's credential (identity and password hash) when this connection signed in: a changed password ends the connection's use. */
+  private userCredential?: string;
   private settings: Record<string, string> = {};
   private transactionSettings?: Record<string, string>;
   private readonly localSettings = new Map<string, string>();
@@ -669,6 +671,7 @@ class Connection {
     this.store.auditSignIn(this.user, from, true, this.store.hasTotp(this.user) ? 'two-factor' : undefined);
     noteSurfaceSignIn(this.server.host, from, this.store.name, this.user, 'the PostgreSQL protocol');
     this.userIdentityId = this.store.accountIdentityId(this.user);
+    this.userCredential = this.store.credentialIdentity(this.user);
     const p = this.store.privileges(this.user);
     if (!p.has('fmxdbc')) return fail('42501', `the "${p.name}" privilege set needs the fmxdbc extended privilege (SQL access, like ODBC/JDBC). Grant it with: tabularius privileges <folder> ${this.store?.name} grant "${p.name}" fmxdbc`);
     if (!p.readsEverything) return fail('42501', `SQL reads every record, and the "${p.name}" privilege set can't view every record and field`);
@@ -815,6 +818,11 @@ class Connection {
     this.store!.requireActiveAccount(this.user);
     if (this.store!.mustChangePassword(this.user)) throw new PgError('28000', 'this account must change its password before continuing');
     if (!this.identityStillAllowed()) throw new PgError('28000', 'account identity has changed; sign in again');
+    if (this.store!.credentialIdentity(this.user) !== this.userCredential) {
+      this.statements.clear();
+      this.portals.clear();
+      throw new PgError('28000', 'the password of this account has changed; sign in again');
+    }
     const p = this.store!.privileges(this.user);
     if (!p.has('fmxdbc')) throw new PgError('42501', 'this account no longer has the fmxdbc extended privilege');
     if (!p.readsEverything) throw new PgError('42501', "SQL reads every record, and this account can't view every record and field");

@@ -19,6 +19,10 @@ The SQL connection is read-only unless the server was started with `--sql-writes
 
 Warnings are sent when a statement executes, including extended-protocol `Execute`, not during `Parse`, `Bind`, or `Describe`. The notice fields follow the [PostgreSQL protocol definition](https://www.postgresql.org/docs/current/protocol-error-fields.html).
 
+## An open connection and its account
+
+The password is checked once, when the connection signs in, and the account is checked again before every statement. A connection stops answering (`28000`; sign in again) when its account is turned off, when the account's identity changed, or when its password was set again (a reset, or a change from the console, the CLI or the account's own page), as a Data API session does. A connection also answers `42501` once its privilege set no longer allows SQL access or no longer reads every record and field. Other accounts' connections are not affected.
+
 ## Store errors
 
 ErrorResponse uses these mappings to the conditions in

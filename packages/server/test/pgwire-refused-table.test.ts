@@ -76,7 +76,7 @@ test('a refused table is told apart from a missing one by nothing: not by a synt
   const mid = await open2(m.stores[0].name, 'Mid', 'password-mid');
   try {
     m.stores[0].savePrivilegeSet({ name: 'Narrow', records: { view: true, edit: false, create: false, delete: false, fieldsDefault: 'none' }, layouts: 'viewOnly', scripts: 'viewOnly', valueLists: 'viewOnly', extendedPrivileges: ['fmxdbc'] });
-    m.stores[0].setPassword('Mid', 'password-mid', 'Narrow');
+    m.stores[0].setAccountPrivilegeSet('Mid', 'Narrow');
     const missing = (await mid.simple('SELECT * FROM NoSuchTable')).error;
     const refused = (await mid.simple('SELECT * FROM ExternalItems')).error;
     assert.equal(missing?.code, '42501');
