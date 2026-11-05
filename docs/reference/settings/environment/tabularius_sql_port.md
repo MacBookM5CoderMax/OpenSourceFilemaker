@@ -8,6 +8,6 @@ The port for the PostgreSQL-compatible SQL connection.
 | Accepted values | Port number from 0 to 65535, digits only |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1503](../../../../packages/cli/src/main.ts#L1503) |
+| Code | [packages/cli/src/main.ts:1514](../../../../packages/cli/src/main.ts#L1514) |
 
 [All environment variables](../../../environment-variables.md)

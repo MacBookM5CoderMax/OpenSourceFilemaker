@@ -8,6 +8,6 @@ A stop at about this many US dollars a month.
 | Accepted values | Positive US dollar amount, with optional leading $ |
 | Restart needed | Yes for a running server. |
 | Explained in | [docs/environment-variables.md](../../../environment-variables.md) |
-| Code | [packages/cli/src/main.ts:1570](../../../../packages/cli/src/main.ts#L1570) |
+| Code | [packages/cli/src/main.ts:1581](../../../../packages/cli/src/main.ts#L1581) |
 
 [All environment variables](../../../environment-variables.md)

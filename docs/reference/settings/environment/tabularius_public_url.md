@@ -8,6 +8,6 @@ Externally reachable base URL advertised by the server.
 | Accepted values | Absolute public URL |
 | Restart needed | Yes for a running server. |
 | Explained in | [ADMIN.md](../../../../ADMIN.md) |
-| Code | [packages/cli/src/main.ts:1410](../../../../packages/cli/src/main.ts#L1410) |
+| Code | [packages/cli/src/main.ts:1421](../../../../packages/cli/src/main.ts#L1421) |
 
 [All environment variables](../../../environment-variables.md)

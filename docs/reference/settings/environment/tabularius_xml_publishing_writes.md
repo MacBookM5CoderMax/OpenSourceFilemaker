@@ -8,6 +8,6 @@ Allows -new, -edit, -delete and -dup through XML publishing as POST forms. Requi
 | Accepted values | 1, true, yes or on; 0, false, no, off or empty for off; anything else stops `serve` |
 | Restart needed | Set in the server environment before starting it. |
 | Explained in | [docs/hosting-for-a-team.md](../../../hosting-for-a-team.md) |
-| Code | [packages/cli/src/main.ts:1506](../../../../packages/cli/src/main.ts#L1506) |
+| Code | [packages/cli/src/main.ts:1517](../../../../packages/cli/src/main.ts#L1517) |
 
 [All environment variables](../../../environment-variables.md)

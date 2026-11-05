@@ -622,6 +622,17 @@ function requireValues(args: string[], names: readonly string[], cmd = ''): void
   }
 }
 
+/** Every use of an option that may be given more than once: each one needs its value, so a last one at the end of the line is not dropped. */
+function repeatedFlag(args: string[], name: string, cmd: string): string[] {
+  const values: string[] = [];
+  for (;;) {
+    requireValues(args, [name], cmd);
+    const v = flag(args, name);
+    if (v === undefined) return values;
+    values.push(v);
+  }
+}
+
 /** What is left after a command has taken its options and words: a leftover option is a typo, and must not run the command without it. */
 function refuseStrayOptions(cmd: string, args: string[], known: string): void {
   const stray = args.find((a) => a.startsWith('-'));
@@ -1982,12 +1993,17 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'restore': {
+      // A restore replaces data: --at or --from left without its value must not fall back to the newest local backup.
+      requireValues(args, ['--at', '--from', '--s3-endpoint', '--s3-region'], 'restore');
       const at = flag(args, '--at');
       const from = flag(args, '--from');
       const endpoint = flag(args, '--s3-endpoint');
       const region = flag(args, '--s3-region');
       const accept = bool(args, '--accept-account-changes');
       const options = { refuseAccountChanges: !accept, differences: [] as AccountDifference[], acceptUnsigned: bool(args, '--accept-unsigned-backup'), newerThanBackup: [] as ChangedSince[] };
+      refuseStrayOptions('restore', args, '--at TIME, --from DIR or s3://BUCKET/PREFIX, --s3-endpoint URL, --s3-region NAME, --accept-account-changes and --accept-unsigned-backup');
+      const words = at !== undefined ? 1 : 2;
+      if (args.length > words) throw new Error(`restore: takes no "${args[words]}"; it takes ${at !== undefined ? '--at TIME [database]' : '<backup-set> [database]'}`);
       /** The accounts that are not the same in the backup as in the file it replaces, one per line. */
       const listChanges = (list: AccountDifference[]) => list.map((d) => `  ${d.file.replace(STORE_EXT, '')}: ${d.name} ${d.change}`).join('\n');
       const fail = (e: unknown) => {
@@ -2045,10 +2061,9 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'test-scripts': {
-      const only: string[] = [];
-      for (let v = flag(args, '--script'); v !== undefined; v = flag(args, '--script')) only.push(v);
-      const skip: string[] = [];
-      for (let v = flag(args, '--skip'); v !== undefined; v = flag(args, '--skip')) skip.push(v);
+      const only = repeatedFlag(args, '--script', 'test-scripts');
+      // --skip keeps scripts from running: a mistyped one must not run them all.
+      const skip = repeatedFlag(args, '--skip', 'test-scripts');
       const timeout = wholeFlag(args, '--timeout', { min: 1, max: 86400 }) ?? 10;
       const loopLimit = wholeFlag(args, '--loop-limit') ?? 0;
       const loopRecordLimit = wholeFlag(args, '--loop-records') ?? 0;
@@ -2057,16 +2072,19 @@ function main(argv: string[]): number {
       const explain = bool(args, '--explain');
       const show = bool(args, '--show');
       const lint = bool(args, '--lint');
-      const functions: string[] = [];
-      for (let v = flag(args, '--function'); v !== undefined; v = flag(args, '--function')) functions.push(v);
+      const functions = repeatedFlag(args, '--function', 'test-scripts');
       // $$variables a login script would set: --global '$$UserName=tester' (repeatable).
       const globals: Record<string, string> = {};
-      for (let v = flag(args, '--global'); v !== undefined; v = flag(args, '--global')) {
+      for (const v of repeatedFlag(args, '--global', 'test-scripts')) {
         const m = /^\s*(\$\$[^=\s[\]]+)\s*=(.*)$/s.exec(v);
         if (!m) throw new Error(`test-scripts --global: write it as '$$Name=value', not "${v}"`);
         globals[m[1]] = m[2];
       }
+      requireValues(args, ['--mail-redirect', '--allow-host', '--mail-copies', '--capture-only'], 'test-scripts');
       const outbound = outboundFlags(args, 'test-scripts');
+      // A mistyped option (--test-outbond, --skpi) must not run every script with the real outside settings.
+      refuseStrayOptions('test-scripts', args, '--script, --skip, --timeout, --loop-limit, --loop-records, --global, --function, --json, --verbose, --explain, --show, --lint and the --test-outbound options');
+      if (args.length > 1) throw new Error(`test-scripts: takes one database at most, not "${args[1]}"`);
       const host = new Host(path);
       trustCommandLine(host);
       if (outbound) host.testOutbound(outbound);

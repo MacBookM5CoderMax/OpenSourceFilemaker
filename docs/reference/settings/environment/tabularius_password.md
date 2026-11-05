@@ -8,6 +8,6 @@ Password supplied to a CLI command that otherwise asks interactively.
 | Accepted values | Password text |
 | Restart needed | No server restart; a new command reads it on invocation. |
 | Explained in | [docs/hosting-and-connecting.md](../../../hosting-and-connecting.md) |
-| Code | [packages/cli/src/main.ts:1929](../../../../packages/cli/src/main.ts#L1929) |
+| Code | [packages/cli/src/main.ts:1940](../../../../packages/cli/src/main.ts#L1940) |
 
 [All environment variables](../../../environment-variables.md)
