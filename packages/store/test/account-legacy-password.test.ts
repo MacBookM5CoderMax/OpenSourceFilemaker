@@ -56,3 +56,25 @@ test('setting a password cannot create an account with an invalid new name', (t)
   }
   assert.deepEqual(store.sql.prepare('SELECT COUNT(*) AS n FROM _fm_accounts').get(), before);
 });
+
+test('two legacy names that compare equal under NOCASE (same length, different after a NUL) are never written together, and a refused call writes nothing', (t) => {
+  const store = open(t);
+  const snapshot = () => JSON.stringify(store.sql.prepare('SELECT CAST(name AS BLOB) AS name, password_hash, password_changed, password_disabled, must_change FROM _fm_accounts ORDER BY rowid').all().map((r) => ({ ...r, name: Buffer.from(r.name as Uint8Array).toString('hex') })));
+  store.sql.prepare("INSERT INTO _fm_accounts (name, source) VALUES (?, 'openhbam')").run('ab\0x');
+  let both = 1;
+  try { store.sql.prepare("INSERT INTO _fm_accounts (name, source) VALUES (?, 'openhbam')").run('ab\0y'); both = 2; } catch { /* the table refused the second name: the collision cannot be built, nothing more to prove */ }
+  const before = snapshot();
+  const count = Number((store.sql.prepare("SELECT COUNT(*) AS n FROM _fm_accounts WHERE hex(name) LIKE '6162%'").get() as { n: number }).n);
+  if (count === 2) {
+    assert.throws(() => store.setPassword('ab\0x', 'a new password'), (e: unknown) => e instanceof StoreError && e.code === 960);
+    assert.equal(snapshot(), before, 'a refused call changed a row');
+    assert.equal(store.sql.prepare("SELECT COUNT(*) AS n FROM _fm_accounts WHERE hex(name) LIKE '6162%' AND password_hash IS NOT NULL").get()!.n, 0, 'a password landed on one of the two accounts');
+    assert.throws(() => store.setPassword('ab\0y', 'another password'), (e: unknown) => e instanceof StoreError && e.code === 960);
+    assert.equal(snapshot(), before);
+  } else {
+    // Only one row can exist: setting its password writes that row and nothing else.
+    store.setPassword('ab\0x', 'a new password');
+    assert.equal(store.verify('ab\0x', 'a new password'), true);
+  }
+  void both;
+});

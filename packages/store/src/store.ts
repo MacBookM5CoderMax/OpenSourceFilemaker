@@ -4353,6 +4353,11 @@ export class Store {
         const names = this.sql.prepare('SELECT CAST(name AS BLOB) AS name FROM _fm_accounts').all() as { name: Uint8Array }[];
         const existing = names.map(({ name }) => Buffer.from(name).toString('utf8')).find((name) => name === account);
         if (existing === undefined) throw new StoreError(960, unusable);
+        // Every statement below finds the account with `name = ? COLLATE NOCASE`, and NOCASE compares text only up to an embedded
+        // NUL and then by length: two legacy names of the same length that differ only after the NUL compare equal, so a
+        // write by name would land on both. Refuse before anything is written unless this name matches exactly one row.
+        const alike = Number((this.sql.prepare('SELECT COUNT(*) AS n FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(existing) as { n: number }).n);
+        if (alike !== 1) throw new StoreError(960, 'More than one account name compares equal to this one; remove or rename the duplicates before changing a password');
         account = existing;
       } else {
         account = this.canonicalAccount(account) ?? account;
