@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createStore, Store } from '../../store/src/index.ts';
+import { createStore, markShadowOpResolved, Store, type DesignOp } from '../../store/src/index.ts';
 import { installSqlRefresh } from '../src/ess.ts';
 import type { SqlResult } from '../../store/src/ess/driver.ts';
 import { conversionGuide } from '../src/conversion-guide.ts';
@@ -15,7 +15,7 @@ test('the conversion guide counts local occurrences of unbound shadow tables', (
   const store = new Store(path, 'Unlisted');
   try {
     store.applyDesign([{ op: 'createDataSource', name: 'Sales', paths: ['odbc:sales'] }]);
-    store.applyDesign([{ op: 'createShadowTable', dataSource: 'Sales', table: 'Items', keys: ['id'], columns: [{ name: 'id', type: 'number' }] }]);
+    store.applyDesign([markShadowOpResolved({ op: 'createShadowTable', dataSource: 'Sales', table: 'Items', keys: ['id'], columns: [{ name: 'id', type: 'number' }] } as DesignOp)]); // as the server's prepareSqlDesign hands it over
     const guide = conversionGuide(store);
     const blocker = guide.breaks.find((entry) => entry.title === 'Tables in SQL databases (ESS/ODBC)');
     assert.equal(blocker?.severity, 'blocker');
@@ -35,7 +35,7 @@ test('network mirrors keep one refresh in flight, serve stale rows, back off, an
   const connection = { name: 'sales', dialect: 'postgresql' as const, host: '127.0.0.1', port: 5432 };
   store.sqlConnection = () => connection;
   store.applyDesign([{ op: 'createDataSource', name: 'Sales', paths: ['odbc:sales'] }]);
-  store.applyDesign([{ op: 'createShadowTable', dataSource: 'Sales', table: 'Items', keys: ['id'], columns: [{ name: 'id', type: 'number' }] }]);
+  store.applyDesign([markShadowOpResolved({ op: 'createShadowTable', dataSource: 'Sales', table: 'Items', keys: ['id'], columns: [{ name: 'id', type: 'number' }] } as DesignOp)]); // as the server's prepareSqlDesign hands it over
   const table = store.schema.tables.find((entry) => entry.name === 'Items')!;
   let calls = 0;
   let finish!: (result: SqlResult) => void;

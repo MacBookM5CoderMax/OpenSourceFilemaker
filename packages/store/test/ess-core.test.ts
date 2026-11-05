@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createStore, parseScriptText, relatedRows, Store, StoreError } from '../src/index.ts';
+import { createStore, parseScriptText, relatedRows, Store, StoreError, type DesignOp } from '../src/index.ts';
 import { scriptStepName, type Script } from '@tabularius/fmp12';
 import { runScript } from '../../scripts/src/index.ts';
 import { SqliteDriver, ESS_ERROR } from '../src/ess/driver.ts';
@@ -311,4 +311,24 @@ test('a shadow field is a SQL column: it cannot be renamed, so reads keep workin
     assert.equal(row.name, 'Ada');
     assert.ok('caption' in row && !('label' in row));
   } finally { store.close(); await outside.close(); }
+});
+
+test('a shadow-table op that carries its own columns is not trusted: on a network dialect it is refused, with no driver call skipped', async () => {
+  const path = join(dir, 'untrusted-columns.sqlite');
+  createStore(path);
+  const store = new Store(path, 'untrusted');
+  try {
+    store.sqlConnection = (name) => name.toLowerCase() === 'sales' ? { name: 'sales', dialect: 'postgresql', host: 'db.example.test', port: 5432, database: 'sales', user: 'u', password: 'p' } : undefined;
+    store.applyDesign([{ op: 'createDataSource', name: 'Sales', paths: ['odbc:Sales'] }]);
+    // Invented columns and no keys: main refuses this (no primary key); it must still be refused here.
+    for (const op of [
+      { op: 'createShadowTable', dataSource: 'Sales', table: 'items', keys: [], columns: [{ name: 'id', type: 'number' }] },
+      { op: 'createShadowTable', dataSource: 'Sales', table: 'items', columns: [{ name: 'id', type: 'number' }] },
+      { op: 'createShadowTable', dataSource: 'Sales', table: 'items', keys: ['ghost'], columns: [{ name: 'id', type: 'number' }] },
+    ] as unknown as DesignOp[]) {
+      assert.throws(() => store.applyDesign([op]), (e: unknown) => e instanceof StoreError && e.code === ESS_ERROR, JSON.stringify(op));
+      assert.throws(() => store.checkDesign([op]), (e: unknown) => e instanceof StoreError && e.code === ESS_ERROR);
+    }
+    assert.equal(store.schema.tables.some((t) => t.name === 'items'), false, 'no shadow table was created');
+  } finally { store.close(); }
 });

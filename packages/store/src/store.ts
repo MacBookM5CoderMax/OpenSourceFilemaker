@@ -974,6 +974,11 @@ export interface QueryOrigins {
 /** Journal markers already reported as unusable in this process, so reopening a file does not repeat the warning. */
 const warnedMarkers = new Set<string>();
 
+/** Shadow-table ops whose columns and keys the server read from the database itself (see packages/server/src/ess.ts). */
+const resolvedShadowOps = new WeakSet<object>();
+/** For the server's prepareSqlDesign only: marks an op it built from a real database answer. */
+export function markShadowOpResolved<T extends object>(op: T): T { resolvedShadowOps.add(op); return op; }
+
 export class Store {
   private readonly valueListSorts = new PreparedCache(new Map<string, { token: string; order: ReturnType<typeof valueListOrder> }>(), (value) => new Map(value));
   private readonly valueListRanks = new PreparedCache(new Map<string, ReturnType<typeof valueListOrder>>(), (value) => new Map(value));
@@ -1287,7 +1292,8 @@ export class Store {
       if (!ds?.paths[0]?.startsWith('odbc:')) throw new StoreError(ESS_ERROR, 'The SQL data source is missing or is not ODBC');
       const external = table?.external ?? { dataSourceId: ds.id, table: op.op === 'createShadowTable' ? op.table : '', keys: [], ...(op.op === 'createShadowTable' && op.schema ? { schema: op.schema } : {}) };
       const placeholder: Table = table ?? { id: -1, name: op.op === 'createShadowTable' ? op.name ?? op.table : '', fields: [], external };
-      if (op.columns) return op; // Resolved asynchronously by the server for network dialects.
+      // Only an op the server resolved itself (markShadowOpResolved, called by prepareSqlDesign after it read the columns and checked the keys) may skip the driver. Columns or keys that arrive any other way are never trusted: the driver is asked, and on a network dialect the synchronous call refuses.
+      if (op.columns && resolvedShadowOps.has(op)) return op;
       const columns = requestFor<SqlColumn[]>(this.schema, this.sqlConnection, placeholder, 'columns', [{ schema: external.schema, name: external.table }]);
       const keys = op.op === 'createShadowTable' ? op.keys ?? columns.filter((c) => c.key).map((c) => c.name) : external.keys;
       if (!keys.length) throw new StoreError(ESS_ERROR, `The SQL table "${external.table}" has no primary key; give keys with its unique column names`);

@@ -1,5 +1,5 @@
 import type { Table } from '../../fmp12/src/schema.ts';
-import { StoreError, type DesignOp, type Store } from '../../store/src/index.ts';
+import { StoreError, markShadowOpResolved, type DesignOp, type Store } from '../../store/src/index.ts';
 import { essCallAsync, EssBridgeError, type EssOperation, type SqlConnection } from '../../store/src/ess/bridge.ts';
 import { ESS_ERROR, type SqlColumn, type SqlResult } from '../../store/src/ess/driver.ts';
 import { essFieldType, essName, sourceFor } from '../../store/src/ess/mirror.ts';
@@ -38,8 +38,8 @@ export async function prepareSqlDesign(store: Store, ops: DesignOp[]): Promise<D
     const keys = op.op === 'createShadowTable' ? op.keys ?? columns.filter((c) => c.key).map((c) => c.name) : external.keys;
     if (!keys.length) throw new StoreError(ESS_ERROR, `The SQL table "${external.table}" has no primary key; give keys with its unique column names`);
     for (const key of keys) if (!columns.some((c) => c.name === key)) throw new StoreError(ESS_ERROR, `The SQL key column "${key}" is missing from "${external.table}"`);
-    prepared.push({ ...op, ...(op.op === 'createShadowTable' ? { keys, schema: external.schema } : {}),
-      columns: columns.map((c) => ({ name: c.name, type: essFieldType(c.type) })) });
+    prepared.push(markShadowOpResolved({ ...op, ...(op.op === 'createShadowTable' ? { keys, schema: external.schema } : {}),
+      columns: columns.map((c) => ({ name: c.name, type: essFieldType(c.type) })) } as DesignOp));
   }
   return prepared;
 }
