@@ -74,7 +74,10 @@ test('the endpoint filters by category', { skip }, async () => {
 });
 
 test('the endpoint exports CSV with a description column', { skip }, async () => {
-  host.get('Charts')!.setExternalAccount('\t=1+1', '[Read-Only Access]');
+  // A name like this can no longer be created, but older data can hold one: seed it as legacy data, straight into the table.
+  const charts = host.get('Charts')!;
+  charts.sql.prepare("INSERT INTO _fm_accounts (name, password_hash, source) VALUES (?, NULL, 'external')").run('\t=1+1');
+  charts.setAccountPrivilegeSet('\t=1+1', '[Read-Only Access]');
   const r = await fetch(`${base}/tabularius/admin/v1/security-events?database=Charts&format=csv`);
   assert.equal(r.status, 200);
   assert.match(r.headers.get('content-type') ?? '', /text\/csv/);
