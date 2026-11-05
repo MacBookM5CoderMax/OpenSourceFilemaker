@@ -363,13 +363,17 @@ for (const [name, url] of [
   ['UNC', 'file:////server/share/My%20Folder/x'],
   ['mixed hex separators', 'file:///C%3a%2FUsers%2fAnn%20Lee%2FDocuments%2fMy%20Files%2Fa.fmp12'],
   ['other encoded bytes', 'file:///Users/Ann%09Lee/Documents/My%2eFiles/a.fmp12'],
+  ['comma and parentheses', 'file:///data/Smith,%20John%20(2024)/x.fmp12'],
+  ['parentheses with spaces', 'file:///D:/My%20Clients%20(2024)/x.fmp12'],
+  ['exclamation mark', 'file:///D:/Acme!/My%20Files/x.fmp12'],
+  ['semicolon and brackets', 'file:///D:/Q1;%20Plan%20[draft]/x.fmp12'],
 ]) {
   test(`encoded file URLs hide the whole path: ${name}`, () => {
     const s = new Scrubber({ folder: '/srv/db' });
     for (const [before, after] of [['opened ', ' next word'], ['opened (', '), next word'], ['opened "', '"; next word'], ['opened ', '. Next sentence!']]) {
       const out = s.patterns(`${before}${url}${after}`);
       assert.match(out, /‹redacted›/);
-      assert.doesNotMatch(out, /Ann|Lee|Users|Documents|My|Files|Library|server|share|Folder|a\.fmp12/);
+      assert.doesNotMatch(out, /Ann|Lee|Users|Documents|My|Files|Library|server|share|Folder|a\.fmp12|x\.fmp12|Smith|John|2024|Clients|Acme|Plan|draft|data/);
       assert.equal(out, `${before}‹redacted›${after}`);
       assert.equal(s.patterns(out), out);
     }

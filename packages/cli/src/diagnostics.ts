@@ -132,9 +132,11 @@ export class Scrubber {
   }
 
   private hide(input: string): string {
-    // Consume encoded file URLs before other rules split their paths; encoded bytes include spaces, slashes and colons.
-    let s = input.replace(/\bfile:\/\/(?:%[0-9a-f]{2}|[^\s%"'<>()[\]{},;!?])+/gi, (url) =>
-      /%[0-9a-f]{2}/i.test(url) ? REDACTED + (url.match(/\.+$/)?.[0] ?? '') : url);
+    // Consume encoded file URLs before other rules split their paths. The whole token up to white space or a quote counts as the
+    // URL: pathToFileURL leaves , ( ) ! ; [ ] literal, so a folder name can hold them. A trailing run of sentence punctuation is
+    // kept after the redaction so the surrounding prose survives. A URL with no %XX byte is left to the other rules.
+    let s = input.replace(/\bfile:\/\/[^\s"'<>]+/gi, (url) =>
+      /%[0-9a-f]{2}/i.test(url) ? REDACTED + (url.match(/[)\]}.,;:!?]+$/)?.[0] ?? '') : url);
     for (const secret of this.secrets) s = s.split(secret).join(REDACTED);
     // The folder and the home folder before anything else, so a long part of either is not taken for a token and left behind.
     for (const [path, label] of [[this.folder, '<folder>'], [this.home, '~']] as const) {
