@@ -2592,10 +2592,14 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'passwd': {
+      requireValues(args, ['--privilege-set'], 'passwd');
       const privilegeSet = flag(args, '--privilege-set');
       const mustChangeIdx = args.indexOf('--must-change');
       const mustChange = mustChangeIdx >= 0;
       if (mustChange) args.splice(mustChangeIdx, 1);
+      // A mistyped --must-change would set the password without making the person change it at next sign-in.
+      refuseStrayOptions('passwd', args, '--privilege-set S and --must-change');
+      if (args.length > 2) throw new Error(`passwd: takes a database and an account, not "${args[2]}"`);
       const [database, account] = args;
       if (!database || !account) throw new Error('passwd: give a database and an account name');
       const store = openDatabase(path, database);
@@ -2862,6 +2866,8 @@ function main(argv: string[]): number {
       const [database, action, rest] = args;
       if (!database || !action) throw new Error('calendar-feed: give a database and an action (create, list, revoke)');
       const json = bool(args, '--json');
+      if (action === 'create') requireValues(args, ['--account', '--layout', '--start', '--end', '--title', '--description', '--location', '--zone', '--query', '--limit', '--label', '--public-url'], 'calendar-feed create');
+      else refuseStrayOptions(`calendar-feed ${action}`, args, '--json');
       const store = openDatabase(path, database);
       try {
         if (action === 'create') {
@@ -2875,12 +2881,15 @@ function main(argv: string[]): number {
           if (limit !== undefined && !/^\d+$/.test(limit)) throw new Error(`calendar-feed create: --limit takes a whole number, not "${limit}"`);
           const publicUrl = flag(args, '--public-url');
           if (publicUrl) validatePublicUrl(publicUrl);
+          const [end, title, description, location, zone, query, feedLabel] = ['--end', '--title', '--description', '--location', '--zone', '--query', '--label'].map((name) => flag(args, name));
+          // A mistyped --query would make a feed that shows every record the account can read.
+          refuseStrayOptions('calendar-feed create', args, '--account A, --layout L, --start FIELD, --end F, --title F, --description F, --location F, --zone Z, --query JSON, --limit N, --label L, --expires-days N, --public-url URL and --json');
+          if (args.length > 2) throw new Error(`calendar-feed create: takes a database and "create", not "${args[2]}"`);
           const known = store.accounts().find((a) => a.name.toLowerCase() === account.toLowerCase());
           if (!known) throw new Error(`calendar-feed create: no account named "${account}" (accounts: ${store.accounts().map((a) => a.name).join(', ') || 'none'})`);
           if (known.inactive) throw new Error(`calendar-feed create: account "${known.name}" is turned off; a link made for it would start working when it is turned on`);
           const made = createFeed(store, known.name, store.privileges(known.name), {
-            layout, start, end: flag(args, '--end'), title: flag(args, '--title'), description: flag(args, '--description'), location: flag(args, '--location'),
-            zone: flag(args, '--zone'), query: flag(args, '--query'), label: flag(args, '--label'),
+            layout, start, end, title, description, location, zone, query, label: feedLabel,
             ...(limit !== undefined ? { limit: Number(limit) } : {}), ...(days !== undefined ? { expiresDays: Number(days) } : {}),
           });
           const url = publicUrl ? publicUrl.replace(/\/$/, '') + made.address : undefined;
