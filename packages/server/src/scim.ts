@@ -38,6 +38,8 @@ import { DEFAULT_TOKEN_DAYS, MAX_TOKEN_DAYS, tokenExpiry } from './token-expiry.
 import { ApiError, readJson, type DataApi } from './dataapi.ts';
 import type { Host } from './host.ts';
 import { FAULT_MESSAGE, logFault } from './fault-log.ts';
+import { clientAddress } from './client-address.ts';
+import { noteSurfaceSignIn } from './surface-access.ts';
 
 const USER = 'urn:ietf:params:scim:schemas:core:2.0:User';
 const GROUP = 'urn:ietf:params:scim:schemas:core:2.0:Group';
@@ -49,6 +51,7 @@ const RESOURCE_TYPE = 'urn:ietf:params:scim:schemas:core:2.0:ResourceType';
 const SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:Schema';
 /** Who the security log says made a change. */
 export const SCIM_ACTOR = 'SCIM';
+const SCIM_SURFACE = 'SCIM provisioning';
 const TOKEN_PREFIX = 'ohsc_';
 const MAX_COUNT = 200;
 
@@ -704,13 +707,17 @@ export class ScimEndpoint {
       // The same answer for an unknown file as for a bad token, so the endpoint doesn't say which files are hosted.
       const token = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? '')?.[1];
       const dir = store ? new ScimDirectory(store) : undefined;
-      if (!store || !dir || !token || !dir.tokenValid(token)) {
-        throw new ScimError(401, 'Sign in with this file\'s provisioning token (Authorization: Bearer ...)');
-      }
+      // The Access log says what the response does not: a refused token (and which file it was for) is a failed sign-in, as on the other ways in.
+      const refuse = (why: string): ScimError => {
+        noteSurfaceSignIn(this.host, clientAddress(req), store?.name ?? wanted, '', SCIM_SURFACE, why);
+        return new ScimError(401, 'Sign in with this file\'s provisioning token (Authorization: Bearer ...)');
+      };
+      if (!store || !dir) throw refuse('this server hosts no such file');
+      if (!token) throw refuse('no provisioning token was sent');
+      if (!dir.tokenValid(token)) throw refuse('the provisioning token is wrong, expired or revoked');
       const body = ['POST', 'PUT', 'PATCH'].includes(req.method ?? '') ? await objectBody(req) : {};
-      if (this.host.get(store.name) !== store || !dir.tokenValid(token)) {
-        throw new ScimError(401, 'Sign in with this file\'s provisioning token (Authorization: Bearer ...)');
-      }
+      if (this.host.get(store.name) !== store || !dir.tokenValid(token)) throw refuse('the provisioning token was revoked while the request was read');
+      noteSurfaceSignIn(this.host, clientAddress(req), store.name, SCIM_ACTOR, SCIM_SURFACE);
       const location = `${origin(req)}/tabularius/scim/v2/databases/${encodeURIComponent(store.name)}`;
       const resource = m[2] ?? '';
       const id = m[3] === undefined ? undefined : decodeURIComponent(m[3]);

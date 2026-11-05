@@ -435,18 +435,18 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/record-search.ts:104](../../packages/server/src/record-search.ts#L104) `searchRecords/snippet` | `SQLite.get` (104); `SQLite.prepare` (104); `Store.sql` (104) | SEARCH |
 | [packages/server/src/record-search.ts:109](../../packages/server/src/record-search.ts#L109) `searchRecords/source` | `SQLite.get` (109); `SQLite.prepare` (109); `Store.sql` (109) | SEARCH |
 | [packages/server/src/rule-suggestions.ts:57](../../packages/server/src/rule-suggestions.ts#L57) `suggestRules` | `Store.query` (57, 69, 86, 136, 138, 152, 153, 169) | DESIGN |
-| [packages/server/src/scim.ts:293](../../packages/server/src/scim.ts#L293) `ScimDirectory/atomically` | `Store.sql` (293) | AUTH |
-| [packages/server/src/scim.ts:407](../../packages/server/src/scim.ts#L407) `ScimDirectory/create/scim_user_create` | `SQLite.prepare` (407); `Store.sql` (407) | AUTH |
-| [packages/server/src/scim.ts:332](../../packages/server/src/scim.ts#L332) `ScimDirectory/rebind` | `SQLite.prepare` (332); `Store.sql` (332) | AUTH |
-| [packages/server/src/scim.ts:457](../../packages/server/src/scim.ts#L457) `ScimDirectory/remove/scim_user_remove` | `SQLite.prepare` (457); `Store.sql` (457) | AUTH |
-| [packages/server/src/scim.ts:354](../../packages/server/src/scim.ts#L354) `ScimDirectory/revokePersonTokens` | `SQLite.all` (354); `SQLite.prepare` (354); `Store.sql` (354) | AUTH |
-| [packages/server/src/scim.ts:227](../../packages/server/src/scim.ts#L227) `ScimDirectory/rows` | `SQLite.all` (227); `SQLite.prepare` (227, 232); `Store.sql` (227, 232) | AUTH |
-| [packages/server/src/scim.ts:145](../../packages/server/src/scim.ts#L145) `ScimDirectory/save` | `SQLite.prepare` (145); `Store.sql` (145) | AUTH |
-| [packages/server/src/scim.ts:256](../../packages/server/src/scim.ts#L256) `ScimDirectory/setMemberships` | `SQLite.prepare` (256); `Store.sql` (256) | AUTH |
-| [packages/server/src/scim.ts:137](../../packages/server/src/scim.ts#L137) `ScimDirectory/settings` | `SQLite.get` (137); `SQLite.prepare` (137); `Store.sql` (137) | AUTH |
-| [packages/server/src/scim.ts:124](../../packages/server/src/scim.ts#L124) `ScimDirectory/table` | `Store.sql` (124, 126); `SQLite.all` (126); `SQLite.prepare` (126) | AUTH |
-| [packages/server/src/scim.ts:129](../../packages/server/src/scim.ts#L129) `ScimDirectory/table/scim_identity_column` | `SQLite.all` (129); `SQLite.prepare` (129); `Store.sql` (129, 130) | AUTH |
-| [packages/server/src/scim.ts:430](../../packages/server/src/scim.ts#L430) `ScimDirectory/update/scim_user_update` | `SQLite.prepare` (430); `Store.sql` (430) | AUTH |
+| [packages/server/src/scim.ts:296](../../packages/server/src/scim.ts#L296) `ScimDirectory/atomically` | `Store.sql` (296) | AUTH |
+| [packages/server/src/scim.ts:410](../../packages/server/src/scim.ts#L410) `ScimDirectory/create/scim_user_create` | `SQLite.prepare` (410); `Store.sql` (410) | AUTH |
+| [packages/server/src/scim.ts:335](../../packages/server/src/scim.ts#L335) `ScimDirectory/rebind` | `SQLite.prepare` (335); `Store.sql` (335) | AUTH |
+| [packages/server/src/scim.ts:460](../../packages/server/src/scim.ts#L460) `ScimDirectory/remove/scim_user_remove` | `SQLite.prepare` (460); `Store.sql` (460) | AUTH |
+| [packages/server/src/scim.ts:357](../../packages/server/src/scim.ts#L357) `ScimDirectory/revokePersonTokens` | `SQLite.all` (357); `SQLite.prepare` (357); `Store.sql` (357) | AUTH |
+| [packages/server/src/scim.ts:230](../../packages/server/src/scim.ts#L230) `ScimDirectory/rows` | `SQLite.all` (230); `SQLite.prepare` (230, 235); `Store.sql` (230, 235) | AUTH |
+| [packages/server/src/scim.ts:148](../../packages/server/src/scim.ts#L148) `ScimDirectory/save` | `SQLite.prepare` (148); `Store.sql` (148) | AUTH |
+| [packages/server/src/scim.ts:259](../../packages/server/src/scim.ts#L259) `ScimDirectory/setMemberships` | `SQLite.prepare` (259); `Store.sql` (259) | AUTH |
+| [packages/server/src/scim.ts:140](../../packages/server/src/scim.ts#L140) `ScimDirectory/settings` | `SQLite.get` (140); `SQLite.prepare` (140); `Store.sql` (140) | AUTH |
+| [packages/server/src/scim.ts:127](../../packages/server/src/scim.ts#L127) `ScimDirectory/table` | `Store.sql` (127, 129); `SQLite.all` (129); `SQLite.prepare` (129) | AUTH |
+| [packages/server/src/scim.ts:132](../../packages/server/src/scim.ts#L132) `ScimDirectory/table/scim_identity_column` | `SQLite.all` (132); `SQLite.prepare` (132); `Store.sql` (132, 133) | AUTH |
+| [packages/server/src/scim.ts:433](../../packages/server/src/scim.ts#L433) `ScimDirectory/update/scim_user_update` | `SQLite.prepare` (433); `Store.sql` (433) | AUTH |
 | [packages/server/src/script-failure.ts:212](../../packages/server/src/script-failure.ts#L212) `explainScriptFailure` | `Store.row` (212) | RECORD |
 | [packages/server/src/security.ts:81](../../packages/server/src/security.ts#L81) `importApproximations` | `SQLite.all` (81); `SQLite.prepare` (81); `Store.sql` (81) | DESIGN |
 | [packages/server/src/security.ts:218](../../packages/server/src/security.ts#L218) `SecurityApi/handle` | `Store.previewRecordRule` (218) | DESIGN |
