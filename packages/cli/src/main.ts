@@ -1734,6 +1734,8 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'sync-plan': {
+      // --capture-only names files that must never sync: left without its value, or mistyped, nothing is held back.
+      requireValues(args, ['--config', '--user', '--capture-only'], 'sync-plan');
       const [database] = args;
       const configPath = flag(args, '--config');
       if (!database) throw new Error('sync-plan: give a database');
@@ -1745,7 +1747,10 @@ function main(argv: string[]): number {
       if (!user) throw new Error('sync-plan: give --user, or "user" in the configuration (an account in the FileMaker file with the fmrest privilege)');
       const insecure = bool(args, '--insecure');
       const json = bool(args, '--json');
-      checkSyncAllowed([database], config, { write: false, captureOnly: (flag(args, '--capture-only') ?? '').split(',').map((x) => x.trim()).filter(Boolean) });
+      const held = (flag(args, '--capture-only') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+      refuseStrayOptions('sync-plan', args, '--config FILE, --user NAME, --insecure, --capture-only F[,F] and --json');
+      if (args.length > 1) throw new Error(`sync-plan: takes one database, not "${args[1]}"`);
+      checkSyncAllowed([database], config, { write: false, captureOnly: held });
       // Opened read-only: a dry run doesn't even bring an older file's own tables up to date.
       const store = openForPlanning(file);
       (process.env.TABULARIUS_FMS_PASSWORD !== undefined ? Promise.resolve(process.env.TABULARIUS_FMS_PASSWORD) : readSecret(`FileMaker password for ${user} in ${config.database}`))
@@ -1767,6 +1772,8 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'sync-apply': {
+      // --resolve and --capture-only decide what a run may touch: left without a value they must not fall back to the defaults.
+      requireValues(args, ['--config', '--user', '--resolve', '--capture-only'], 'sync-apply');
       const [database] = args;
       const configPath = flag(args, '--config');
       if (!database) throw new Error('sync-apply: give a database');
@@ -1788,6 +1795,9 @@ function main(argv: string[]): number {
       const keepRelated = bool(args, '--keep-related');
       const release = bool(args, '--release');
       const json = bool(args, '--json');
+      // A mistyped --capture-only, --write, --allow-deletes or --keep-related would run the sync without it.
+      refuseStrayOptions('sync-apply', args, '--config FILE, --user NAME, --write, --pull, --containers, --resolve POLICY, --allow-deletes, --keep-related, --insecure, --capture-only F[,F], --release and --json');
+      if (args.length > 1) throw new Error(`sync-apply: takes one database, not "${args[1]}"`);
       checkSyncAllowed([database], config, { write, captureOnly: held });
       const server = new URL(/^https?:\/\//i.test(config.server) ? config.server : `https://${config.server}`).host;
       // A dry run opens the file read-only and signs in with a client that has no way to write; a pull alone writes only here.
