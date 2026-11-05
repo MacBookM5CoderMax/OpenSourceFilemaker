@@ -32,11 +32,12 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { StoreError, isFullAccess, type Store } from '../../store/src/index.ts';
+import { StoreError, accountNameProblem, isFullAccess, type Store } from '../../store/src/index.ts';
 import { expiryClock } from '../../store/src/clock.ts';
 import { DEFAULT_TOKEN_DAYS, MAX_TOKEN_DAYS, tokenExpiry } from './token-expiry.ts';
 import { ApiError, readJson, type DataApi } from './dataapi.ts';
 import type { Host } from './host.ts';
+import { FAULT_MESSAGE, logFault } from './fault-log.ts';
 
 const USER = 'urn:ietf:params:scim:schemas:core:2.0:User';
 const GROUP = 'urn:ietf:params:scim:schemas:core:2.0:Group';
@@ -381,6 +382,8 @@ export class ScimDirectory {
     if (at <= 0 || at === name.length - 1 || /\s/.test(name)) {
       throw new ScimError(400, 'userName must be the person\'s email address (name@domain)', 'invalidValue');
     }
+    const unusable = accountNameProblem(name);
+    if (unusable) throw new ScimError(400, unusable, 'invalidValue');
     this.table();
     const id = randomUUID();
     this.atomically('scim_user_create', () => {
@@ -719,7 +722,10 @@ export class ScimEndpoint {
       else throw new ScimError(404, `No resource "${resource}"`);
     } catch (e) {
       const status = e instanceof ScimError ? e.status : e instanceof ApiError ? e.status : e instanceof StoreError || e instanceof URIError ? 400 : 500;
-      send(status, { schemas: [ERROR], status: String(status), ...(e instanceof ScimError && e.scimType ? { scimType: e.scimType } : {}), detail: (e as Error).message },
+      // Unexpected server faults can expose paths, tables and code. Log the cause, and return only the standard fault text.
+      const fault = status === 500 && !(e instanceof ScimError || e instanceof ApiError);
+      if (fault) logFault(e);
+      send(status, { schemas: [ERROR], status: String(status), ...(e instanceof ScimError && e.scimType ? { scimType: e.scimType } : {}), detail: fault ? FAULT_MESSAGE : (e as Error).message },
         status === 401 ? { 'www-authenticate': 'Bearer realm="tabularius SCIM"' } : {});
     }
     return true;

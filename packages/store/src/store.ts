@@ -51,6 +51,7 @@ import { applyOps, DesignError, type DeletedDesign, type DesignOp, type Effect }
 import { childIds, childrenWithKeys, emptyKey, foreignKeysOf, orphans, parentHas, sameKey, type ResolvedForeignKey } from './foreign-keys.ts';
 import { occurrence, occurrenceByName, firstRelatedEach, relatedIdList, relatedKeys, relatedRows, type Occurrence, type RelatedResult } from './related.ts';
 import { DESIGN_TABLE, DESIGN_SCRIPTS, DESIGN_TABLES, RecordLocks, writer, type Change, type ChangeKind, type Transaction } from './activity.ts';
+import { accountNameProblem } from './security-names.ts';
 import { accountCollisionKey, accountKey, AccountImportError, ensureAccountImportTables, importDigest, isRecoveryAdministrator, parseAccountCsv, planAccountImport, type ImportAccount, type AccountImportPreview, type AccountImportResult } from './account-provisioning.ts';
 import { checkTotp, generateTotpSecret, totpUri } from './totp.ts';
 import { verifyRegistration, verifyAssertion, type RegisteredCredential } from './webauthn.ts';
@@ -4053,6 +4054,9 @@ export class Store {
    */
   setExternalAccount(name: string, privilegeSet: string): void {
     return this.securityChange(() => {
+      // Validate before SQLite can replace a lone surrogate and match a different account.
+      const unusable = accountNameProblem(name);
+      if (unusable) throw new StoreError(960, unusable);
       if (!this.privilegeSet(privilegeSet)) throw new StoreError(960, `No privilege set "${privilegeSet}"`);
       const existing = this.sql.prepare('SELECT source, password_hash FROM _fm_accounts WHERE name = ? COLLATE NOCASE').get(name) as { source: string; password_hash: string | null } | undefined;
       if (existing && (existing.password_hash !== null || (existing.source !== 'external' && !this.isExternal(name)))) {
@@ -4070,6 +4074,8 @@ export class Store {
    * own passwords and lockouts. Account import already refuses the same pair.
    */
   private refuseLookalikeAccount(name: string): void {
+    const unusable = accountNameProblem(name);
+    if (unusable) throw new StoreError(960, unusable);
     const key = accountCollisionKey(name);
     // Only the accounts that exist: the file's own list still names one that was deleted, and that one can no longer sign in.
     const names = (this.sql.prepare('SELECT name FROM _fm_accounts').all() as { name: string }[]).map((r) => r.name);
@@ -4099,6 +4105,9 @@ export class Store {
    */
   setAgentAccount(name: string, privilegeSet: string, opts: { createdBy?: string; needsApproval?: boolean } = {}): void {
     return this.securityChange(() => {
+      // Validate before SQLite can replace a lone surrogate and match a different account.
+      const unusable = accountNameProblem(name);
+      if (unusable) throw new StoreError(960, unusable);
       const set = this.privilegeSet(privilegeSet);
       if (!set) throw new StoreError(960, `No privilege set "${privilegeSet}"`);
       if (isFullAccess(set)) throw new StoreError(960, 'An AI agent cannot be given [Full Access]; bind it to a narrower set');
@@ -4299,6 +4308,9 @@ export class Store {
 
   private setPasswordOnly(account: string, password: string, privilegeSet?: string, opts: { mustChange?: boolean; keepPasskeys?: boolean } = {}): void {
     return this.securityChange(() => {
+      // Validate before SQLite can replace a lone surrogate and match a different account.
+      const unusable = accountNameProblem(account);
+      if (unusable) throw new StoreError(960, unusable);
       account = this.canonicalAccount(account) ?? account;
       this.checkPasswordLength(password);
       // Checked before anything is written, so a mistyped set name neither adds an
@@ -5367,6 +5379,7 @@ export class Store {
       if (!set) throw new AccountImportError('unknown-privilege-set');
       if (this.isExternal(account) || this.isAgent(account)) throw new AccountImportError('non-local-account');
       if (this.canonicalAccount(account)) throw new AccountImportError('account-already-exists');
+      if (accountNameProblem(account)) throw new AccountImportError('invalid-account-name');
       this.sql.prepare(`INSERT INTO _fm_accounts (name, source, password_hash, privilege_set, inactive, must_change)
         VALUES (?, 'openhbam', NULL, ?, ?, 1)`).run(account, set.name, active ? 0 : 1);
       this.privilegeCache.invalidate((cache) => cache.clear());
