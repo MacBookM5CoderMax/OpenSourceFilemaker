@@ -40,7 +40,7 @@ const admin = (method: string, path: string, body?: unknown) =>
 test('a connection is made, its secrets set in the console, tested against the service and approved', async () => {
   const types = await admin('GET', '/connections');
   assert.equal(types.status, 200);
-  assert.deepEqual(types.body.types.map((t: { id: string }) => t.id), ['s3', 'rest', 'smtp', 'postgresql']);
+  assert.deepEqual(types.body.types.map((t: { id: string }) => t.id), ['s3', 'rest', 'smtp', 'postgresql', 'mysql', 'sqlserver']);
 
   const made = await admin('POST', '/connections', { name: 'invoices', type: 's3', config: { bucket: 'invoices', endpoint: s3.endpoint, prefix: '/acme//2026/' } });
   assert.equal(made.status, 201, JSON.stringify(made.body));

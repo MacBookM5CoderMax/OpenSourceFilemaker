@@ -762,35 +762,136 @@ const postgresType: ConnectionType = {
   },
 };
 
+/** SQL binding, destination checks and test auditing share this list. SQLite is never selectable. */
+export const SQL_CONNECTION_TYPES: readonly string[] = ['postgresql', 'mysql', 'sqlserver'];
+
+function sqlConnection(c: Connection, secrets: Record<string, string>): SqlConnection {
+  if (c.type === 'postgresql') return postgresConnection(c, secrets);
+  const config = CONNECTION_TYPES.find((type) => type.id === c.type)!.normalize(c.config);
+  return { name: c.name, dialect: c.type as SqlConnection['dialect'], host: config.host, port: Number(config.port),
+    database: config.database, ca: config.ca, user: secrets.username, password: secrets.password,
+    ...(c.type === 'mysql' ? { tls: config.tls as SqlConnection['tls'] }
+      : { encrypt: config.encrypt as SqlConnection['encrypt'], trustServerCertificate: config.trustServerCertificate === 'true',
+        allowUnencrypted: config.allowUnencrypted === 'true' }) };
+}
+
+function sqlSettings(config: Record<string, string>, label: string, defaultPort: string, mode: string): Record<string, string> {
+  const port = config.port?.trim() || defaultPort;
+  if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) throw new ConnectionError(`The ${label} port is a number from 1 to 65535`);
+  // Reuse the PostgreSQL destination, loopback-only disable and public-CA rules unchanged.
+  const common = postgresType.normalize({ host: config.host, port, database: config.database, ca: config.ca, sslmode: mode });
+  return { host: common.host, port: common.port, database: common.database, ...(common.ca ? { ca: common.ca } : {}) };
+}
+
+async function testSqlConnection(c: Connection, secrets: Record<string, string>): Promise<string> {
+  const connection = sqlConnection(c, secrets);
+  await sqlRequest(connection, 'query', ['SELECT 1', []]);
+  const tables = await sqlRequest<{ schema?: string; name: string }[]>(connection, 'tables', []);
+  const warning = c.type === 'sqlserver' && c.config.trustServerCertificate === 'true'
+    ? ' Warning: trustServerCertificate is true; the server certificate is not verified.'
+    : c.type === 'mysql' && ['require', 'disable'].includes(c.config.tls)
+      ? ' Warning: TLS does not verify the server; full password authentication requires verified TLS.'
+      : c.type === 'sqlserver' && c.config.encrypt !== 'mandatory'
+        ? ' Warning: encryption is not required for the whole session.' : '';
+  // Table names are untrusted; Connections.test masks secrets before saving this answer.
+  return `Connected; tables (at most 50): ${tables.slice(0, 50).map((table) => table.name).join(', ') || '(none)'}.${warning}`;
+}
+
+const mysqlType: ConnectionType = {
+  id: 'mysql', label: 'MySQL or MariaDB', description: 'An outside SQL database for shadow tables and Execute SQL. List each hosted file allowed to use it. Full password authentication requires verified TLS; server RSA keys are never fetched over an unverified connection.',
+  config: [
+    { name: 'host', label: 'Host', required: true },
+    { name: 'port', label: 'Port', placeholder: '3306' },
+    { name: 'database', label: 'Database', required: true },
+    { name: 'tls', label: 'TLS mode', choices: ['verify-full', 'verify-ca', 'require', 'disable'] },
+    { name: 'ca', label: 'CA certificate (PEM)', multiline: true, help: 'Public certificates only; never a private key.' },
+  ],
+  secrets: postgresType.secrets,
+  target: (config) => JSON.stringify([config.host, config.port, config.database, config.tls, config.ca]),
+  normalize(config) {
+    const tls = config.tls || 'verify-full';
+    return { ...sqlSettings(config, 'MySQL', '3306', tls), tls };
+  },
+  host: (c) => c.config.host,
+  reach: (c) => [`mysql://${isIP(c.config.host) === 6 ? `[${c.config.host}]` : c.config.host}:${c.config.port}`],
+  send: postgresType.send,
+  test: testSqlConnection,
+};
+
+const sqlserverType: ConnectionType = {
+  id: 'sqlserver', label: 'SQL Server', description: 'SQL username and password login for shadow tables and Execute SQL. Windows integrated and Microsoft Entra ID logins are not supported. Give an instance port; SQL Browser discovery is not supported. List each hosted file allowed to use it.',
+  config: [
+    { name: 'host', label: 'Host', required: true },
+    { name: 'port', label: 'Port', placeholder: '1433' },
+    { name: 'database', label: 'Database', required: true },
+    { name: 'encrypt', label: 'Encryption', choices: ['mandatory', 'optional', 'disable'], help: 'Optional may encrypt only the login. Disable is allowed only on loopback. Certificate trust, unencrypted login and optional or disabled encryption are administrator-only; ask an administrator to set them in the console.' },
+    { name: 'trustServerCertificate', label: 'Trust server certificate', choices: ['false', 'true'], help: 'Warning: true disables certificate and hostname verification and can expose the password to an unverified server.' },
+    { name: 'allowUnencrypted', label: 'Allow unencrypted login', choices: ['false', 'true'], help: 'Administrator-only: true permits an unencrypted login on loopback when encryption is optional.' },
+    { name: 'ca', label: 'CA certificate (PEM)', multiline: true, help: 'Public certificates only; never a private key.' },
+  ],
+  secrets: postgresType.secrets,
+  forAi: { trustServerCertificate: 'false' },
+  target: (config) => JSON.stringify([config.host, config.port, config.database, config.encrypt, config.trustServerCertificate, config.allowUnencrypted, config.ca]),
+  normalize(config) {
+    if (config.host?.includes('\\')) throw new ConnectionError('Give the SQL Server instance port instead of host\\instance; SQL Browser discovery is not supported');
+    const encrypt = config.encrypt || 'mandatory';
+    if (encrypt === 'strict') throw new ConnectionError('SQL Server strict encryption requires TDS 8 and is not supported yet.');
+    if (!['mandatory', 'optional', 'disable'].includes(encrypt)) throw new ConnectionError('Choose mandatory, optional or disable SQL Server encryption.');
+    const trustServerCertificate = config.trustServerCertificate || 'false';
+    if (!['false', 'true'].includes(trustServerCertificate)) throw new ConnectionError('Trust server certificate is true or false');
+    const allowUnencrypted = config.allowUnencrypted || 'false';
+    if (!['false', 'true'].includes(allowUnencrypted)) throw new ConnectionError('Allow unencrypted login is true or false');
+    return { ...sqlSettings(config, 'SQL Server', '1433', encrypt === 'disable' || allowUnencrypted === 'true' ? 'disable' : 'verify-full'), encrypt, trustServerCertificate, allowUnencrypted };
+  },
+  host: (c) => c.config.host,
+  reach: (c) => [`sqlserver://${isIP(c.config.host) === 6 ? `[${c.config.host}]` : c.config.host}:${c.config.port}${c.config.trustServerCertificate === 'true' ? ' (Warning: trustServerCertificate=true; server certificate is not verified)' : ''}`],
+  send: postgresType.send,
+  test: testSqlConnection,
+};
+
+/** Refuse administrator-only fields before normalization or AI defaults can silently discard them. */
+export function checkAiConnectionSettings(type: unknown, config: unknown): void {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return;
+  for (const [field, value] of Object.entries(config)) {
+    const restricted = type === 'postgresql'
+      ? field === 'allowPlaintextPassword' || (field === 'sslmode' && (value === 'require' || value === 'disable'))
+      : type === 'sqlserver' && (field === 'trustServerCertificate' || field === 'allowUnencrypted'
+        || (field === 'encrypt' && (value === 'optional' || value === 'disable')));
+    if (restricted) throw new ConnectionError(`${field} is administrator-only; ask an administrator to set it in the console.`);
+  }
+}
+
 /** Check DNS before saving as well as in the client's guarded socket lookup. */
-export async function checkSqlDestination(type: unknown, config: unknown): Promise<void> {
-  if (type !== 'postgresql') return;
+export async function checkSqlDestination(type: unknown, config: unknown, by: 'console' | 'ai' = 'console'): Promise<void> {
+  if (by === 'ai') checkAiConnectionSettings(type, config);
+  if (typeof type !== 'string' || !SQL_CONNECTION_TYPES.includes(type)) return;
+  const sqlType = CONNECTION_TYPES.find((entry) => entry.id === type)!;
   if (!config || typeof config !== 'object' || Array.isArray(config)) throw new ConnectionError('config is an object of the connection\'s settings');
   if (Object.values(config).some((value) => typeof value !== 'string')) throw new ConnectionError('SQL connection settings must be text');
   for (const [name, value] of Object.entries(config)) {
-    if (!postgresType.config.some((field) => field.name === name)) throw new ConnectionError('Use only PostgreSQL settings here; credentials belong in their secret boxes');
+    if (!sqlType.config.some((field) => field.name === name)) throw new ConnectionError(`Use only ${sqlType.label} settings here; credentials belong in their secret boxes`);
     const credential = looksLikeCredential(value);
-    if (credential) throw new ConnectionError(`A PostgreSQL setting looks like ${credential}; credentials belong in their secret boxes`);
+    if (credential) throw new ConnectionError(`A ${sqlType.label} setting looks like ${credential}; credentials belong in their secret boxes`);
   }
-  const normalized = postgresType.normalize(config as Record<string, string>);
+  const normalized = sqlType.normalize(config as Record<string, string>);
   if (isIP(normalized.host)) return;
   let addresses: { address: string }[];
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     addresses = await Promise.race([NAME_LOOKUP.lookup(normalized.host, { all: true }), new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => reject(new ConnectionError('The PostgreSQL host lookup timed out')), (wholeNumber('TABULARIUS_ESS_TIMEOUT_SECONDS', { min: 1 }) ?? 30) * 1000);
+      timer = setTimeout(() => reject(new ConnectionError(`The ${sqlType.label} host lookup timed out`)), (wholeNumber('TABULARIUS_ESS_TIMEOUT_SECONDS', { min: 1 }) ?? 30) * 1000);
     })]);
   }
-  catch { throw new ConnectionError('The PostgreSQL host could not be resolved; check its name before saving'); }
+  catch { throw new ConnectionError(`The ${sqlType.label} host could not be resolved; check its name before saving`); }
   finally { clearTimeout(timer); }
-  if (!addresses.length) throw new ConnectionError('The PostgreSQL host has no usable address');
+  if (!addresses.length) throw new ConnectionError(`The ${sqlType.label} host has no usable address`);
   for (const address of addresses) {
     const refused = addressRefusal({ private: true }, normalized.host, address.address);
     if (refused) throw new ConnectionError(refused);
   }
 }
 
-export const CONNECTION_TYPES: ConnectionType[] = [s3Type, restType, smtpType, postgresType];
+export const CONNECTION_TYPES: ConnectionType[] = [s3Type, restType, smtpType, postgresType, mysqlType, sqlserverType];
 
 /** Whether anything, a link or a pipe included, is at the name (a link's target is not looked at). */
 function lstatOrNothing(path: string): boolean {
@@ -1079,8 +1180,8 @@ export class Connections {
   }
 
   /** The connection types, for the console's form. */
-  types(): { id: string; label: string; description: string; config: FieldDef[]; secrets: FieldDef[]; services: ConnectionService[] }[] {
-    return CONNECTION_TYPES.map(({ id, label, description, config, secrets, services }) => ({ id, label, description, config, secrets, services: services ?? [] }));
+  types(): { id: string; label: string; description: string; config: FieldDef[]; secrets: FieldDef[]; services: ConnectionService[]; requiresFiles: boolean }[] {
+    return CONNECTION_TYPES.map(({ id, label, description, config, secrets, services }) => ({ id, label, description, config, secrets, services: services ?? [], requiresFiles: SQL_CONNECTION_TYPES.includes(id) }));
   }
 
   /** Connections for display: which secrets are set, never what they are. */
@@ -1121,6 +1222,7 @@ export class Connections {
   }
 
   create(input: { name?: unknown; type?: unknown; config?: unknown; files?: unknown; note?: unknown }, by: 'console' | 'ai' = 'console'): Connection {
+    if (by === 'ai') checkAiConnectionSettings(input.type, input.config);
     this.reload();
     const name = String(input.name ?? '').trim();
     if (!NAME.test(name)) throw new ConnectionError('Name it with letters, digits, dashes or underscores, starting with a letter (like invoices-bucket)');
@@ -1161,9 +1263,10 @@ export class Connections {
     return raw.length ? (raw as string[]).map((x) => x.trim()).filter(Boolean) : undefined;
   }
 
-  update(idOrName: string, patch: { name?: unknown; config?: unknown; files?: unknown; note?: unknown; enabled?: unknown }): Connection {
+  update(idOrName: string, patch: { name?: unknown; config?: unknown; files?: unknown; note?: unknown; enabled?: unknown }, by: 'console' | 'ai' = 'console'): Connection {
     const c = this.find(idOrName);
     const t = this.type(c.type);
+    if (by === 'ai') checkAiConnectionSettings(c.type, patch.config);
     // Everything is checked on a copy; the connection itself changes only when all of it is fine.
     const next: Connection = { ...c };
     if (patch.name !== undefined) {
@@ -1247,7 +1350,7 @@ export class Connections {
   /** Asks the service something harmless. Allowed for a draft too, so the person can check what they pasted before approving. */
   async test(idOrName: string): Promise<ConnectionTest> {
     const c = structuredClone(this.find(idOrName));
-    if (c.type === 'postgresql') this.log(`SQL connection ${c.name}: test, host ${c.config.host}:${c.config.port}`);
+    if (SQL_CONNECTION_TYPES.includes(c.type)) this.log(`SQL connection ${c.name}: test, host ${c.config.host}:${c.config.port}`);
     const t = this.type(c.type);
     const started = Date.now();
     let result: ConnectionTest;
@@ -1304,9 +1407,9 @@ export class Connections {
   sql(name: string, files: readonly string[]): SqlConnection | undefined {
     let c: Connection;
     try { c = this.find(name); } catch { return undefined; }
-    if (c.type !== 'postgresql' || c.status !== 'active' || !c.approved || !files.length
+    if (!SQL_CONNECTION_TYPES.includes(c.type) || c.status !== 'active' || !c.approved || !files.length
       || !files.every((file) => c.files?.some((allowed) => allowed.toLowerCase() === file.toLowerCase()))) return undefined;
     const { secrets } = this.use(c.id, files);
-    return postgresConnection(c, secrets);
+    return sqlConnection(c, secrets);
   }
 }

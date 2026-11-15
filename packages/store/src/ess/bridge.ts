@@ -4,6 +4,9 @@ import { wholeNumber } from '../settings.ts';
 import { EssConflict, SqliteDriver, writeEssBatch, type EssWrite, type SqlDriver, type SqlValue } from './driver.ts';
 import { PostgresClient, PostgresError, type PostgresOptions } from './postgres.ts';
 
+import { MysqlDriver, type MysqlOptions } from './mysql.ts';
+import { TdsClient, type TdsOptions } from './tds.ts';
+
 export interface SqlConnection {
   name: string;
   dialect: SqlDriver['dialect'];
@@ -17,6 +20,10 @@ export interface SqlConnection {
   sslmode?: PostgresOptions['sslmode'];
   ca?: string;
   allowPlaintextPassword?: boolean;
+  tls?: MysqlOptions['tls'];
+  encrypt?: TdsOptions['encryption'];
+  trustServerCertificate?: boolean;
+  allowUnencrypted?: boolean;
 }
 export type EssOperation = 'columns' | 'query' | 'tables' | 'writes';
 type Factory = (connection: SqlConnection) => SqlDriver | Promise<SqlDriver>;
@@ -28,6 +35,17 @@ registerDriver('postgresql', (connection) => PostgresClient.connect({
   host: connection.host!, port: connection.port, user: connection.user!, database: connection.database!,
   password: connection.password!, sslmode: connection.sslmode, ca: connection.ca,
   allowPlaintextPassword: connection.allowPlaintextPassword,
+}));
+
+registerDriver('mysql', (connection) => MysqlDriver.connect({
+  host: connection.host!, port: connection.port, user: connection.user!, database: connection.database!,
+  password: connection.password!, tls: connection.tls, ca: connection.ca, connectionName: connection.name,
+  allowUnencrypted: connection.tls === 'disable',
+}));
+registerDriver('sqlserver', (connection) => TdsClient.connect({
+  host: connection.host!, port: connection.port, user: connection.user!, database: connection.database!,
+  password: connection.password!, encryption: connection.encrypt ?? 'mandatory', ca: connection.ca,
+  trustServerCertificate: connection.trustServerCertificate, allowUnencrypted: connection.encrypt === 'disable' || connection.allowUnencrypted === true,
 }));
 
 // The sqlite driver opens whatever path a connection names, so it is a stand-in for tests, never a production client:

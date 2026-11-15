@@ -25,6 +25,7 @@ import { parseRequestJson } from './request-json.ts';
 import type { Host } from './host.ts';
 import { narrowPrivileges, type TokenScope } from './token-scope.ts';
 import { logFault } from './fault-log.ts';
+import { checkAiConnectionSettings, ConnectionError } from './connections.ts';
 
 export type AgentStep =
   | { kind: 'find'; layout: string; query?: FindRequest[]; why?: string }
@@ -116,6 +117,14 @@ export function checkPlan(store: Store, raw: unknown, p: Privileges | undefined)
         break;
       }
       default:
+        // Connection steps remain unsupported, but explain administrator-only settings in AI proposals.
+        if (s?.kind === 'draft_connection' || s?.kind === 'update_connection') {
+          try { checkAiConnectionSettings(s.type, s.config); }
+          catch (e) {
+            if (e instanceof ConnectionError) throw new AgentError(e.message);
+            throw e;
+          }
+        }
         throw new AgentError(`${at}: a step is find, set, create, delete or script`);
     }
   }

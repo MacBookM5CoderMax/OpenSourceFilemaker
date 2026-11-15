@@ -107,7 +107,7 @@ The examples below show each call's `arguments` and the text of the result's fir
 | [`try_automation`](#try-automation) | read-only | Automations in plain English, step one: "when an invoice is marked paid, set the paid date and add a note to the customer" is on "update", fields ["Status"], condition Status = "Paid", and a script that sets PaidDate and creates the note. |
 | [`save_automation`](#save-automation) | destructive | Automations, step two: save (and turn on) an automation tried with try_automation, writing its script if scriptText is given. |
 | [`delete_automation`](#delete-automation) | destructive | Delete an automation (by name or id). |
-| [`list_connections`](#list-connections) | read-only | The outside services this server can connect to, by name (S3-compatible storage: Amazon S3, Cloudflare R2, Backblaze B2, MinIO, Wasabi; REST web APIs; email accounts for Send Mail; and PostgreSQL databases): each one's settings, whether it is a draft (waiting for a person), on or off, which files may use it, and which of its secrets are set (never their values). |
+| [`list_connections`](#list-connections) | read-only | The outside services this server can connect to, by name (S3-compatible storage: Amazon S3, Cloudflare R2, Backblaze B2, MinIO, Wasabi; REST web APIs; email accounts for Send Mail; and PostgreSQL, MySQL or MariaDB, and SQL Server databases): each one's settings, whether it is a draft (waiting for a person), on or off, which files may use it, and which of its secrets are set (never their values). |
 | [`draft_connection`](#draft-connection) |  | Set up a connection to an outside service from what the person asked ("set up an S3 connection to our invoices bucket"): this makes a DRAFT with the settings they gave (type, bucket, region, endpoint for R2/B2/MinIO, a folder in the bucket) and nothing else. |
 | [`conversion_report`](#conversion-report) | read-only | What in a converted FileMaker file won't work yet in Tabularius: script steps the engine can't run, FileMaker functions not available yet, plug-in functions, formulas that don't parse, other files the solution uses that aren't hosted, and accounts without a password. |
 | [`conversion_guide`](#conversion-guide) | read-only | The plain-English guide to a converted file, written when it was converted (or converted again): what won't work until changed (plug-ins, steps and functions not available yet, tables in SQL databases, other files not hosted), what works differently (Send Mail sends nothing, Insert from URL stays offline, web viewers that load internet pages show a placeholder, screen-only steps skipped on the server, privilege sets imported at the whole-file level), the built-in replacement for each, and what to do before people use it. |
@@ -3475,7 +3475,7 @@ Result:
 
 ### `list_connections`
 
-The outside services this server can connect to, by name (S3-compatible storage: Amazon S3, Cloudflare R2, Backblaze B2, MinIO, Wasabi; REST web APIs; email accounts for Send Mail; and PostgreSQL databases): each one's settings, whether it is a draft (waiting for a person), on or off, which files may use it, and which of its secrets are set (never their values). Also the types, with the settings each takes and the well-known services (Google Drive, Dropbox, OneDrive) with the settings that point a REST connection at them. Scripts use a connection with Insert from URL and "connection://name/folder/file"; the keys stay on the server.
+The outside services this server can connect to, by name (S3-compatible storage: Amazon S3, Cloudflare R2, Backblaze B2, MinIO, Wasabi; REST web APIs; email accounts for Send Mail; and PostgreSQL, MySQL or MariaDB, and SQL Server databases): each one's settings, whether it is a draft (waiting for a person), on or off, which files may use it, and which of its secrets are set (never their values). Also the types, with the settings each takes and the well-known services (Google Drive, Dropbox, OneDrive) with the settings that point a REST connection at them. Scripts use a connection with Insert from URL and "connection://name/folder/file"; the keys stay on the server.
 
 **Hints:** read-only
 
@@ -3578,7 +3578,7 @@ Set up a connection to an outside service from what the person asked ("set up an
 | --- | --- | --- | --- |
 | `database` | string | yes | Hosted database name (the .fmp12 file name without extension) |
 | `name` | string | yes | What scripts call it: letters, digits, dashes, underscores, starting with a letter, e.g. "invoices-bucket" |
-| `type` | "s3" \\| "rest" \\| "smtp" \\| "postgresql" | yes | The kind of service (see list_connections) |
+| `type` | "s3" \\| "rest" \\| "smtp" \\| "postgresql" \\| "mysql" \\| "sqlserver" | yes | The kind of service (see list_connections) |
 | `config` | object of string | yes | The type's settings (see list_connections), e.g. {"bucket": "acme-invoices", "region": "us-east-1", "prefix": "tabularius"}. Never a key or password. |
 | `note` | string | no | What it is for, shown to the person who approves it |
 

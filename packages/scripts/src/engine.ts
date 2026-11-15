@@ -4524,7 +4524,7 @@ export class ScriptEngine {
         const source = f.store.schema.dataSources.find((d) => d.id === p.dataSource?.id);
         const name = source?.connection ?? source?.paths[0]?.replace(/^odbc:/, '');
         if (!source?.paths[0]?.startsWith('odbc:') || !name || !f.store.sqlConnection(name) || !this.opts.connections?.sql) {
-          throw new SqlStepError(ERROR.unavailable, 'Execute SQL needs an ODBC data source bound to an active approved PostgreSQL connection; name it after the DSN and list this file in Files');
+          throw new SqlStepError(ERROR.unavailable, 'Execute SQL needs an ODBC data source bound to an active approved SQL connection; name it after the DSN and list this file in Files');
         }
         // The account must hold fmess itself; a script marked full access cannot grant this outbound capability.
         const privileges = this.opts.privileges?.in(f.store);

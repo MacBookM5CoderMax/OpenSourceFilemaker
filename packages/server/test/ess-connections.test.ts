@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import vm from 'node:vm';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkSqlDestination, Connections } from '../src/connections.ts';
@@ -85,7 +86,12 @@ test('console binding, asynchronous design and reads, permissions, and Execute S
       { authorization: 'Basic ' + Buffer.from('Admin:local').toString('base64'), accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' });
     assert.equal(listed.body.result.isError, undefined, JSON.stringify(listed.body));
     assert.deepEqual(JSON.parse(listed.body.result.content[0].text).connections.find((c: { name: string }) => c.name === 'sales').files, []);
-    const draft = await request('/mcp', 'POST', { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'draft_connection', arguments: { database: 'Outside', name: 'ai-sql', type: 'postgresql', config } } },
+    const refusedDraft = await request('/mcp', 'POST', { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'draft_connection', arguments: { database: 'Outside', name: 'ai-sql', type: 'postgresql', config } } },
+      { authorization: 'Basic ' + Buffer.from('Admin:local').toString('base64'), accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' });
+    assert.equal(refusedDraft.body.result.isError, true);
+    assert.match(refusedDraft.body.result.content[0].text, /sslmode.*ask an administrator to set it in the console/);
+    assert.throws(() => host.connections!.get('ai-sql'), /no connection/);
+    const draft = await request('/mcp', 'POST', { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'draft_connection', arguments: { database: 'Outside', name: 'ai-sql', type: 'postgresql', config: { host: config.host, port: config.port, database: config.database } } } },
       { authorization: 'Basic ' + Buffer.from('Admin:local').toString('base64'), accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' });
     assert.equal(draft.body.result.isError, undefined, JSON.stringify(draft.body));
     assert.equal(JSON.parse(draft.body.result.content[0].text).drafted, true);
@@ -255,4 +261,226 @@ test('the asynchronous worker serves a PostgreSQL connection to the local protoc
       assert.notEqual(after[3], before[3]);
     } finally { await client.close(); }
   } finally { server.close(); await host.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+for (const type of ['mysql', 'sqlserver']) {
+  test(`${type} connections validate destinations and use secure defaults`, async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tabularius-ess-settings-'));
+    try {
+      const connections = new Connections(dir);
+      const config = { host: '127.0.0.1', database: 'synthetic' };
+      const made = connections.create({ name: 'sales', type, config, files: ['Inside'] });
+      assert.equal(connections.types().find((entry) => entry.id === type)?.requiresFiles, true);
+      assert.equal(made.config.port, type === 'mysql' ? '3306' : '1433');
+      assert.equal(made.config[type === 'mysql' ? 'tls' : 'encrypt'], type === 'mysql' ? 'verify-full' : 'mandatory');
+      if (type === 'sqlserver') {
+        assert.equal(made.config.trustServerCertificate, 'false');
+        assert.throws(() => connections.create({ name: 'instance', type, config: { ...config, host: String.raw`host\instance` } }), /instance.*port/);
+        assert.throws(() => connections.create({ name: 'strict', type, config: { ...config, encrypt: 'strict' } }), /strict encryption requires TDS 8/);
+      }
+      assert.throws(() => connections.create({ name: 'remote', type, config: { ...config, host: 'db.example.com', [type === 'mysql' ? 'tls' : 'encrypt']: 'disable' } }), /localhost|loopback/);
+      assert.throws(() => connections.create({ name: 'key', type, config: { ...config, ca: ['-----BEGIN', 'PRIVATE KEY-----'].join(' ') } }), /private key/);
+      assert.throws(() => connections.create({ name: 'metadata', type, config: { ...config, host: '169.254.169.254' } }), /link-local/);
+      await checkSqlDestination(type, config);
+      const lookup = NAME_LOOKUP.lookup;
+      NAME_LOOKUP.lookup = async () => [{ address: '169.254.169.254', family: 4 }];
+      try { await assert.rejects(checkSqlDestination(type, { ...config, host: 'db.example.com' }), /link-local/); }
+      finally { NAME_LOOKUP.lookup = lookup; }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+}
+
+// Scripted wire peers exercise the actual clients and worker bridge, not a replacement resolver.
+// These responses do not establish compatibility with a real MySQL or SQL Server database.
+import * as mysqlPeer from '../../store/test/helpers/fake-mysql.ts';
+import * as tdsPeer from '../../store/test/helpers/fake-tds.ts';
+import type { TestContext } from 'node:test';
+
+function sqlReply(sql: string, password: string): { names: string[]; rows: string[][] } | undefined {
+  if (/information_schema\.tables/i.test(sql)) return { names: ['schema', 'name'], rows: [
+    ['synthetic', 'Items'], ['synthetic', password], ...Array.from({ length: 50 }, (_, n) => ['synthetic', `Table${n}`]),
+  ] };
+  if (/information_schema\.columns/i.test(sql)) return { names: ['name', 'type', 'nullable', 'key'], rows: [
+    ['id', 'int', 'NO', sql.includes('@p') ? '1' : 'PRI'], ['title', 'varchar', 'YES', ''],
+  ] };
+  if (/LAST_INSERT_ID|OUTPUT INSERTED/.test(sql)) return { names: ['id'], rows: [['7']] };
+  if (sql === 'SELECT 1') return { names: ['one'], rows: [['1']] };
+  if (/^SELECT .* FROM/.test(sql)) return { names: ['id', 'title'], rows: [['1', 'Generated']] };
+  if (/^(INSERT|START|BEGIN|COMMIT|ROLLBACK|SAVE)/.test(sql)) return undefined;
+  throw new Error(`Unexpected synthetic query: ${sql}`);
+}
+
+async function mysqlDatabase(t: TestContext, password: string, statements: string[]): Promise<number> {
+  const fake = await mysqlPeer.fake(async (peer) => {
+    await mysqlPeer.auth(peer, mysqlPeer.native(password, mysqlPeer.nonce));
+    let prepared = '';
+    for (;;) {
+      const data = await peer.message();
+      const command = data[0];
+      if (command === 0x19) continue;
+      if (command === 0x16) {
+        prepared = data.subarray(1).toString();
+        const count = prepared.split('?').length - 1;
+        const head = Buffer.alloc(12); head.writeUInt32LE(1, 1); head.writeUInt16LE(count, 7);
+        peer.send(head, 1);
+        for (let n = 0; n < count; n++) peer.send(mysqlPeer.col(`p${n}`, 253), n + 2);
+        if (count) peer.send(mysqlPeer.eof, count + 2);
+        continue;
+      }
+      assert.ok(command === 3 || command === 0x17);
+      const sql = command === 3 ? data.subarray(1).toString() : prepared;
+      statements.push(sql);
+      const reply = sqlReply(sql, password);
+      if (reply) mysqlPeer.result(peer, reply.names.map((name) => [name, 253]),
+        reply.rows.map((row) => Buffer.concat(row.map((value) => mysqlPeer.l(Buffer.from(value))))), command === 0x17);
+      else peer.send(Buffer.from([0, 1, 0, 2, 0, 0, 0]), 1);
+    }
+  });
+  t.after(() => fake.close());
+  return fake.port;
+}
+
+async function tdsDatabase(t: TestContext, password: string, statements: string[]): Promise<number> {
+  const { packet, prelogin, loginAck, done, messages, metadata, u16, text } = tdsPeer;
+  return tdsPeer.fake(t, (socket) => messages(socket, (type, body) => {
+    if (type === 0x12) { socket.write(packet(4, prelogin(2))); return; }
+    if (type === 0x10) {
+      const at = body.readUInt16LE(44), length = body.readUInt16LE(46) * 2;
+      const encoded = Buffer.from(text(password).map((b) => ((b << 4) | (b >>> 4)) ^ 0xa5));
+      assert.deepEqual(body.subarray(at, at + length), encoded);
+      socket.write(packet(4, Buffer.concat([loginAck(), done()]))); return;
+    }
+    assert.ok(type === 1 || type === 3);
+    // SQLBatch has ALL_HEADERS; sp_executesql starts with an unnamed NVARCHAR statement.
+    const sql = type === 1 ? body.subarray(22).toString('utf16le') : body.subarray(40, 40 + body.readUInt16LE(38)).toString('utf16le');
+    statements.push(sql);
+    const reply = sqlReply(sql, password);
+    const columns = reply?.names.map((name) => name === 'key' ? { id: 0x38, name }
+      : { id: 0xe7, name, info: Buffer.concat([u16(8000), Buffer.from([9, 4, 0, 0, 0])]) });
+    socket.write(packet(4, reply ? Buffer.concat([metadata(columns!), ...reply.rows.flatMap((row) => [Buffer.from([0xd1]),
+      ...row.flatMap((value, index) => reply.names[index] === 'key' ? [tdsPeer.u32(Number(value))] : [u16(value.length * 2), text(value)])]), done()]) : done(0x10, 1n)));
+  }));
+}
+
+for (const type of ['mysql', 'sqlserver'] as const) {
+  test(`${type} console approval, scoped shadow metadata and refresh, and fmess Execute SQL`, async (t) => {
+    const password = ['synthetic', type, 'credential'].join('-');
+    const statements: string[] = [], logs: string[] = [];
+    const port = await (type === 'mysql' ? mysqlDatabase : tdsDatabase)(t, password, statements);
+    const dir = mkdtempSync(join(tmpdir(), 'tabularius-ess-types-'));
+    for (const name of ['Inside', 'Unlisted', 'Console']) createStore(join(dir, `${name}.openhbam.sqlite`), { mode: 'native' });
+    const app = await serve({ dir, port: 0, watch: false, log: (line) => logs.push(line) });
+    try {
+      const inside = app.host.get('Inside')!, unlisted = app.host.get('Unlisted')!;
+      for (const store of [inside, unlisted]) store.applyDesign([
+        { op: 'createTable', name: 'Local', fields: [{ name: 'value', type: 'text' }] },
+        { op: 'createDataSource', name: 'Sales', paths: ['odbc:sales'] },
+      ]);
+      const admin = async (path: string, method: string, body?: unknown, authorized = true) => {
+        const response = await fetch(app.url + '/tabularius/admin/v1/connections' + path, { method,
+          headers: { 'content-type': 'application/json', ...(authorized ? { 'x-tabularius-admin': '1' } : {}) },
+          body: body === undefined ? undefined : JSON.stringify(body) });
+        return { status: response.status, body: await response.json() };
+      };
+      const config = { host: '127.0.0.1', port: String(port), database: 'synthetic',
+        ...(type === 'mysql' ? { tls: 'disable' } : { encrypt: 'disable', trustServerCertificate: 'true' }) };
+      assert.notEqual((await admin('', 'POST', { name: 'denied', type, config }, false)).status, 201);
+      const made = await admin('', 'POST', { name: 'sales', type, config, files: ['Inside'] });
+      assert.equal(made.status, 201, JSON.stringify(made));
+      const id = made.body.id;
+      assert.equal(inside.sqlConnection('sales'), undefined);
+      for (const [field, value] of [['username', type === 'mysql' ? 'u' : 'Reader'], ['password', password]]) {
+        assert.equal((await admin(`/${id}/secrets/${field}`, 'PUT', { value })).status, 200);
+      }
+      assert.equal((await admin(`/${id}/approve`, 'POST')).body.status, 'active');
+      const tested = await admin(`/${id}/test`, 'POST');
+      assert.equal(tested.body.ok, true, tested.body.message);
+      assert.match(tested.body.message, /Items/);
+      assert.equal(tested.body.message.split('tables (at most 50): ')[1].split('. Warning:')[0].split(', ').length, 50);
+      assert.ok(!tested.body.message.includes('Table49'), 'only 50 tables may be shown');
+      assert.ok(!JSON.stringify(tested).includes(password), 'untrusted table names cannot echo secrets');
+      if (type === 'sqlserver') {
+        assert.match(tested.body.message, /Warning: trustServerCertificate/);
+        assert.equal(app.host.connections!.get(id).config.trustServerCertificate, 'true');
+        assert.match(app.host.connections!.reaches(id).join(), /Warning: trustServerCertificate=true/);
+        assert.match(app.host.connections!.types().find((entry) => entry.id === type)!.config.find((field) => field.name === 'trustServerCertificate')!.help!, /Warning/);
+      }
+      assert.equal(inside.sqlConnection('SaLeS')?.dialect, type);
+      assert.equal(unlisted.sqlConnection('sales'), undefined);
+      await assert.rejects(prepareSqlDesign(unlisted, [{ op: 'createShadowTable', dataSource: 'Sales', table: 'Items' }]), /list the file/);
+      const source = inside.schema.dataSources.find((entry) => entry.name === 'Sales')!;
+      source.connection = 'SaLeS'; source.paths = ['odbc:alias'];
+      inside.applyDesign(await prepareSqlDesign(inside, [{ op: 'createShadowTable', dataSource: 'Sales', table: 'Items' }]));
+      const table = inside.schema.tables.find((entry) => entry.name === 'Items')!;
+      assert.deepEqual(table.external?.keys, ['id']);
+      const loaded = new Promise<void>((resolve, reject) => {
+        inside.shadowFailed = (_table, message) => reject(Error(message));
+        const load = inside.loadShadow.bind(inside);
+        inside.loadShadow = (...args) => { load(...args); resolve(); };
+      });
+      assert.throws(() => inside.findIds('Items'), /not been loaded yet/);
+      await loaded;
+      assert.equal(inside.findIds('Items').length, 1);
+      inside.savePrivilegeSet({ name: 'SQL runner', records: { view: true, edit: false, create: false, delete: false }, layouts: 'viewOnly', valueLists: 'viewOnly', scripts: 'viewOnly', extendedPrivileges: ['fmess'] });
+      const set = inside.privilegeSets().find((entry) => entry.name === 'SQL runner')!;
+      const allowed: Privileges = new Privileges('Runner', set, inside, () => allowed);
+      const denied: Privileges = new Privileges('Reader', { ...set, extendedPrivileges: [] }, inside, () => denied);
+      const script = { id: 900, name: 'SQL', steps: [{ stepId: 117, name: 'Execute SQL', enabled: true,
+        params: { dataSource: { id: source.id, name: source.name }, text: 'SELECT 1' } }] };
+      const run = (privileges: Privileges) => runScript(inside, script, { ...app.host.scriptOptions('Inside'), network: true, networkFiles: () => true, privileges, layout: 'Local' });
+      const count = statements.length;
+      assert.equal((await run(denied)).error, 9);
+      assert.equal(statements.length, count);
+      assert.equal((await run(allowed)).error, 0);
+      assert.equal(statements.at(-1), 'SELECT 1');
+      const connection = inside.sqlConnection('sales')!;
+      const inserted = await bridge.essCallAsync<{ keys: unknown[] }[]>(connection, 'writes', [[{ kind: 'create', table: 'Items', keys: ['id'], values: { title: 'Generated' } }]]);
+      assert.deepEqual(inserted[0].keys, ['7']);
+      assert.ok(statements.some((sql) => type === 'mysql' ? sql === 'SELECT LAST_INSERT_ID()' : /OUTPUT INSERTED\.\[id\]/.test(sql)));
+      await admin(`/${id}`, 'PATCH', { files: [] });
+      assert.equal(inside.sqlConnection('sales'), undefined);
+      const consoleStore = app.host.get('Console')!;
+      consoleStore.setPassword('Admin', 'local', consoleStore.privilegeSets().find((entry) => entry.id === 1)!.name);
+      const listed = await fetch(app.url + '/mcp', { method: 'POST', headers: {
+        authorization: 'Basic ' + Buffer.from('Admin:local').toString('base64'), 'content-type': 'application/json',
+        accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18',
+      }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'list_connections', arguments: { database: 'Console' } } }) });
+      const listing = await listed.json();
+      assert.equal(listing.result.isError, undefined, JSON.stringify(listing));
+      assert.deepEqual(JSON.parse(listing.result.content[0].text).connections.find((entry: { name: string }) => entry.name === 'sales').files, []);
+
+      await admin(`/${id}`, 'PATCH', { files: ['Inside'], enabled: false });
+      assert.equal(inside.sqlConnection('sales'), undefined);
+      assert.ok(!logs.join('\n').includes(password));
+      assert.ok(logs.some((line) => /SQL connection sales/.test(line)));
+    } finally {
+      await new Promise<void>((resolve) => app.server.close(() => resolve()));
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+test('console renders SQL file scope and a visible certificate warning', async () => {
+  const page = readFileSync(new URL('../admin/index.html', import.meta.url), 'utf8');
+  const code = page.slice(page.indexOf('async function loadConnections()'), page.indexOf('function showConnectionFields()'));
+  const dir = mkdtempSync(join(tmpdir(), 'tabularius-ess-console-'));
+  try {
+    const types = new Connections(dir).types();
+    for (const type of ['postgresql', 'mysql', 'sqlserver', 'rest']) {
+      for (const trust of ['false', 'true']) {
+        let rendered = '';
+        const elements = new Map<string, Record<string, unknown>>();
+        const element = (id: string) => {
+          if (!elements.has(id)) elements.set(id, { options: [1] });
+          return elements.get(id)!;
+        };
+        await vm.runInNewContext(code + '\nloadConnections()', {
+          call: async () => ({ types, connections: [{ id: 'synthetic', name: 'Sales', type, status: 'active', config: { trustServerCertificate: trust }, secrets: [] }] }),
+          $: element, esc: String, render: (_element: unknown, html: string) => { rendered = html; },
+        });
+        assert.ok(rendered.includes(type === 'rest' ? 'Blank permits all files.' : 'Blank permits no files.'));
+        assert.equal(rendered.includes('<p class="warn">Warning: trustServerCertificate is true.'), type === 'sqlserver' && trust === 'true');
+      }
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

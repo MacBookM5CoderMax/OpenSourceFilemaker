@@ -220,10 +220,10 @@ The following reasons apply to the exact enumerated expressions in each named fu
 | [packages/server/src/admin.ts:1198](../../packages/server/src/admin.ts#L1198) `Admin/handle` | `Store.externalContainerReport` (1198); `Store.orphanContainerReport` (1203, 1207) | ADMIN |
 | [packages/server/src/admin.ts:3018](../../packages/server/src/admin.ts#L3018) `Admin/status` | `Store.externalContainerCount` (3018) | ADMIN |
 | [packages/server/src/admin.ts:2661](../../packages/server/src/admin.ts#L2661) `Admin/viewAs` | `Store.find` (2661) | ADMIN |
-| [packages/server/src/agent.ts:320](../../packages/server/src/agent.ts#L320) `dryRunPlan` | `Store.findIds` (320) | DESIGN |
-| [packages/server/src/agent.ts:343](../../packages/server/src/agent.ts#L343) `runApprovedStep` | `Store.findIds` (343) | DESIGN |
-| [packages/server/src/agent.ts:164](../../packages/server/src/agent.ts#L164) `runStep` | `Store.findIds` (164); `Store.auditLog` (233); `Store.canViewRecord` (245) | DESIGN |
-| [packages/server/src/agent.ts:156](../../packages/server/src/agent.ts#L156) `runStep/visible` | `Store.findIds` (156) | DESIGN |
+| [packages/server/src/agent.ts:329](../../packages/server/src/agent.ts#L329) `dryRunPlan` | `Store.findIds` (329) | DESIGN |
+| [packages/server/src/agent.ts:352](../../packages/server/src/agent.ts#L352) `runApprovedStep` | `Store.findIds` (352) | DESIGN |
+| [packages/server/src/agent.ts:173](../../packages/server/src/agent.ts#L173) `runStep` | `Store.findIds` (173); `Store.auditLog` (242); `Store.canViewRecord` (254) | DESIGN |
+| [packages/server/src/agent.ts:165](../../packages/server/src/agent.ts#L165) `runStep/visible` | `Store.findIds` (165) | DESIGN |
 | [packages/server/src/ai-output.ts:147](../../packages/server/src/ai-output.ts#L147) `storedSecretValues` | `Calculations.globalValue` (147); `Store.select` (152) | REDACTION |
 | [packages/server/src/ai-policy-sql.ts:49](../../packages/server/src/ai-policy-sql.ts#L49) `sqlFieldRefs` | `SQLite.all` (49, 51); `SQLite.prepare` (49, 51) | POLICY |
 | [packages/server/src/ai-policy.ts:355](../../packages/server/src/ai-policy.ts#L355) `sql` | `Store.inspectQuery` (355) | POLICY |

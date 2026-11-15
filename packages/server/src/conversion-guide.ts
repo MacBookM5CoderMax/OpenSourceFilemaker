@@ -217,7 +217,7 @@ export function conversionGuide(store: Store, hosted: string[] = [], report: Con
     breaks.push({
       title: 'Tables in SQL databases (ESS/ODBC)', severity: 'blocker', count: sql.reduce((n, d) => n + d.occurrences, 0), where: sql.flatMap((d) => d.usedBy ?? []).slice(0, WHERE),
       what: `${sql.map((d) => d.name).join(', ')}: these SQL data sources have no active approved connection allowed for this file.`,
-      instead: 'In the admin console, add a PostgreSQL connection named after the ODBC DSN, list this file in Files, enter its secrets, test and approve it, then create its shadow tables. MySQL, SQL Server and Oracle connections are coming.',
+      instead: 'In the admin console, add a PostgreSQL, MySQL or MariaDB, or SQL Server connection named after the ODBC DSN, list this file in Files, enter its secrets, test and approve it, then create its shadow tables. Oracle connections are coming.',
     });
   }
   if (files.length) {

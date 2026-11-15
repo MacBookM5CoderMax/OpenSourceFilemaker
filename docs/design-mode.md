@@ -525,7 +525,7 @@ of changes applies as one unit: if any fails, none are made.
 | `createScript`, `updateScript`, `deleteScript` | `text`: the script as FileMaker's workspace shows it, one step per line (see below); or `steps: [{name or stepId, params, enabled}]`. `includeInMenu: false` leaves it out of the Scripts menu. |
 | `setOrder` | `list`: `layouts` or `scripts`; `order`: a tree of `{item}`, `{folder, children}` and `{separator: true}`, as Manage Layouts and Manage Scripts show it. Items left out go at the end. A `{item}` or `{folder}` can set `includeInMenu`; otherwise moving an entry keeps its setting. In the web client, drag entries in the list (onto a folder's name to put them inside). |
 
-The standalone MySQL/MariaDB ESS client is not yet connected to `odbc:DSN` data sources. It has been run against real MySQL 8.4 and MariaDB 11 servers by `npm run test:ess-real`. <!-- known-difference: External SQL Sources ;; The standalone MySQL/MariaDB ESS client is not yet connected to ODBC data sources ;; An ODBC data source cannot use this client yet ;; Register the client with the ESS bridge -->
+PostgreSQL, MySQL or MariaDB, and SQL Server Connections can bind `odbc:DSN` data sources for shadow-table metadata, background mirror refresh and Execute SQL. See [External SQL sources](guides/running/external-sql-sources.md) for file scoping, encryption settings and current limitations. The clients have been run against real servers; the Connections, mirror and layout path remains unverified against real servers. <!-- known-difference-ok: real-server evidence and limitations are registered on the linked external SQL sources page -->
 
 ### Reviewing staged changes
 

@@ -61,7 +61,7 @@ import { Dashboards, DashboardError, cleanDashboard, computeDashboard, mayChange
 import { docsSection, documentSolution } from './docs.ts';
 import { whoCan } from './who-can.ts';
 import { SCRATCH_MAX_BYTES, dropScratch, scratchCopy } from './debug.ts';
-import { checkSqlDestination, CONNECTION_TYPES, ConnectionError } from './connections.ts';
+import { checkSqlDestination, CONNECTION_TYPES, SQL_CONNECTION_TYPES, ConnectionError } from './connections.ts';
 import { checkCalculation, checkFormula, formulaGuard, dataSourceHosted, explainItem, unhostedFileOf, layoutProfile, searchSolution, solutionOverview, whereUsed } from './insight.ts';
 import { FAULT_MESSAGE, callerText, isFault, logFault } from './fault-log.ts';
 
@@ -1965,7 +1965,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
   const MAX_AI_DRAFTS = 10;
 
   server.registerTool('list_connections', {
-    description: 'The outside services this server can connect to, by name (S3-compatible storage: Amazon S3, Cloudflare R2, Backblaze B2, MinIO, Wasabi; REST web APIs; email accounts for Send Mail; and PostgreSQL databases): ' +
+    description: 'The outside services this server can connect to, by name (S3-compatible storage: Amazon S3, Cloudflare R2, Backblaze B2, MinIO, Wasabi; REST web APIs; email accounts for Send Mail; and PostgreSQL, MySQL or MariaDB, and SQL Server databases): ' +
       'each one\'s settings, whether it is a draft (waiting for a person), on or off, which files may use it, and which of its secrets are set ' +
       '(never their values). Also the types, with the settings each takes and the well-known services (Google Drive, Dropbox, OneDrive) with the settings that point a REST connection at them. Scripts use a connection with Insert from URL and ' +
       '"connection://name/folder/file"; the keys stay on the server.',
@@ -1976,7 +1976,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
     return {
       types: c.types().map((t) => ({ id: t.id, label: t.label, description: t.description, settings: t.config, secrets: t.secrets.map((x) => ({ name: x.name, label: x.label, required: x.required === true })), ...(t.services.length ? { services: t.services.map((x) => ({ id: x.id, label: x.label, help: x.help, settings: x.config })) } : {}) })),
       connections: c.list().map((x) => ({
-        name: x.name, type: x.type, status: x.status, settings: x.config, files: x.files ?? (x.type === 'postgresql' ? [] : 'every file'), note: x.note, draftedByAi: x.createdBy === 'ai',
+        name: x.name, type: x.type, status: x.status, settings: x.config, files: x.files ?? (SQL_CONNECTION_TYPES.includes(x.type) ? [] : 'every file'), note: x.note, draftedByAi: x.createdBy === 'ai',
         secrets: x.secrets.map((y) => ({ name: y.name, set: y.set })), ready: x.ready, lastTest: x.lastTest ? { ok: x.lastTest.ok, message: x.lastTest.message, at: x.lastTest.at } : undefined,
       })),
     };
@@ -2005,7 +2005,7 @@ export function createMcpServer(host: Host, who: McpIdentity = { admin: true }, 
       throw new Error(`There are already ${MAX_AI_DRAFTS} drafts waiting for a person: ask them to approve or remove some in the console's Connections page first`);
     }
     try {
-      await checkSqlDestination(type, config);
+      await checkSqlDestination(type, config, 'ai');
       const made = c.create({ name, type, config, files: [s.name], note }, 'ai');
       return {
         drafted: true, name: made.name, type: made.type, status: made.status, settings: made.config, forFile: s.name,

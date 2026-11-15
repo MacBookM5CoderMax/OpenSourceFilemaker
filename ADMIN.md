@@ -796,9 +796,9 @@ so an upgrade needs no sudo password and can run from a script or over SSH.
 
 ## Connections
 
-The console supports S3-compatible storage, REST APIs, SMTP email and PostgreSQL. Connection secrets stay sealed on the server. A draft requires approval before use.
+The console supports S3-compatible storage, REST APIs, SMTP email, PostgreSQL, MySQL or MariaDB, and SQL Server. Connection secrets stay sealed on the server. A draft requires approval before use.
 
-PostgreSQL binds a file's ODBC data source by DSN name or its explicit `connection` field. Its Files list must explicitly include the file; an empty list permits none. Verified TLS is the default. See [Connect a PostgreSQL database](docs/guides/running/external-sql-sources.md#connect-a-postgresql-database) for settings, TLS choices, mirror status and the `fmess` rule for Execute SQL. Network-backed shadow record writes are not yet available. <!-- known-difference-ok: the limitation is registered on the linked external SQL sources page -->
+Each SQL connection binds a file's ODBC data source by DSN name or its explicit `connection` field. Its Files list must explicitly include the file; an empty list permits none. Verified TLS is the default. See [External SQL sources](docs/guides/running/external-sql-sources.md) for settings, TLS choices, mirror status and the `fmess` rule for Execute SQL. Network-backed shadow record writes are not yet available. <!-- known-difference-ok: the limitation is registered on the linked external SQL sources page -->
 
 ## Script schedules
 

@@ -114,6 +114,8 @@ export type MysqlTlsMode = 'disable' | 'require' | 'verify-ca' | 'verify-full';
 export interface MysqlOptions {
   host: string; port?: number; user: string; password: string; database: string;
   connectionName?: string; tls?: MysqlTlsMode; ca?: string | Buffer; allowInsecure?: boolean; connectTimeoutMs?: number;
+  /** Permit an unencrypted handshake without permitting unverified password or RSA key retrieval. */
+  allowUnencrypted?: boolean;
   /** The server's RSA public key (PEM), pinned: caching_sha2 full authentication then encrypts the password with it and never asks the server for a key. */
   serverPublicKey?: string | Buffer;
 }
@@ -280,7 +282,7 @@ export class MysqlDriver implements SqlDriver {
   }
   private async open(): Promise<void> {
     const mode = this.options.tls ?? 'verify-full';
-    if (mode === 'disable' && !this.options.allowInsecure) throw Error('SQL TLS disable requires allowInsecure');
+    if (mode === 'disable' && !this.options.allowInsecure && !this.options.allowUnencrypted) throw Error('SQL TLS disable requires allowInsecure');
     const port = this.options.port ?? 3306;
     // The server is one an administrator chose, on the network or not; the metadata range is never reached, and a name is checked on the lookup the connection uses.
     const refused = hostRefusal({ private: true }, this.options.host);

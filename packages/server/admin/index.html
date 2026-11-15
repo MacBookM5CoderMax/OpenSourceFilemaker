@@ -624,7 +624,7 @@
   </section>
   <section id="connections-section" hidden>
     <h2>Connections <span class="count" id="connections-count"></span></h2>
-    <p class="meta">Outside services your solutions use by name, such as S3-compatible storage, a web API, a mail account or a PostgreSQL database. Their keys are typed in here and kept encrypted on this server; scripts, plug-ins and AI tools can use a connection but never see its keys. A connection the AI drafts does nothing until you check it, add its keys and approve it here.</p>
+    <p class="meta">Outside services your solutions use by name, such as S3-compatible storage, a web API, a mail account or a SQL database. Their keys are typed in here and kept encrypted on this server; scripts, plug-ins and AI tools can use a connection but never see its keys. A connection the AI drafts does nothing until you check it, add its keys and approve it here.</p>
     <p class="bad" id="connections-problem" hidden></p>
     <div id="connections"></div>
     <details>
@@ -635,7 +635,7 @@
         <span class="fields" id="connection-service" hidden></span>
         <span class="fields" id="connection-fields"></span>
         <label>Files <textarea name="files" rows="2" aria-describedby="connection-files-help"></textarea></label>
-        <span class="meta" id="connection-files-help">One hosted file per line. Blank permits no files for PostgreSQL, and all files for other types.</span>
+        <span class="meta" id="connection-files-help">One hosted file per line. Blank permits no files for SQL connections, and all files for other types.</span>
         <button class="primary">Add</button>
       </form>
     </details>
@@ -3099,9 +3099,10 @@ async function loadConnections() {
   const settings = (c) => typeOf(c.type).config.filter((f) => c.config[f.name]).map((f) => `${esc(f.label)}: ${esc(c.config[f.name])}`).join(' · ');
   render($('connections'), o.connections.length ? o.connections.map((c) => `<h3>${esc(c.name)} <span class="meta">${esc(typeOf(c.type)?.label ?? c.type)}</span> ${state(c)}</h3>
     <p class="meta">${settings(c)}${c.files ? ` · only for ${esc(c.files.join(', '))}` : ''}${c.createdBy === 'ai' ? ' · drafted by the AI' : ''}${c.note ? `<br>${esc(c.note)}` : ''}</p>
+    ${c.type === 'sqlserver' && c.config.trustServerCertificate === 'true' ? '<p class="warn">Warning: trustServerCertificate is true. The server certificate and hostname are not verified; the password can be exposed to an unverified server.</p>' : ''}
     <p><label>Files for ${esc(c.name)} <textarea data-conn-files="${esc(c.id)}" rows="2" aria-describedby="conn-files-help-${esc(c.id)}">${esc((c.files ?? []).join('\n'))}</textarea></label>
       <button data-conn-files-save="${esc(c.id)}">Save files</button>
-      <span class="meta" id="conn-files-help-${esc(c.id)}">One hosted file per line. ${c.type === 'postgresql' ? 'Blank permits no files.' : 'Blank permits all files.'}</span></p>
+      <span class="meta" id="conn-files-help-${esc(c.id)}">One hosted file per line. ${typeOf(c.type)?.requiresFiles ? 'Blank permits no files.' : 'Blank permits all files.'}</span></p>
     ${c.secrets.map((x) => `<p><label>${esc(x.label)} <span class="meta">${x.set ? 'set (hidden)' : x.required ? 'not set' : 'optional'}</span>
       <input type="password" autocomplete="off" data-conn-input="${esc(c.id)}/${esc(x.name)}" aria-label="New ${esc(x.label)} for ${esc(c.name)}"></label>
       <button data-conn-set="${esc(c.id)}/${esc(x.name)}" aria-label="Set ${esc(x.label)} for ${esc(c.name)}">Set</button>
