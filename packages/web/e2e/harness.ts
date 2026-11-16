@@ -7,41 +7,19 @@
 // executable. Without one the tests are skipped, never failed, so `npm test`
 // stays usable on a machine without a browser. Playwright's own browser
 // download is never used ("playwright install" isn't needed).
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, copyFileSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, copyFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { findChromium } from '../../../scripts/chromium.ts';
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright-core';
 import { serve } from '../../server/src/index.ts';
 import { STORE_EXT } from '../../server/src/host.ts';
 import { createStore, type Store } from '../../store/src/index.ts';
 
-export const FIXTURES = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12');
+export { findChromium };
 
-/** A Chromium to drive: TABULARIUS_CHROMIUM, then the preinstalled ones, then the usual install paths. */
-export function findChromium(): string | undefined {
-  if (process.env.TABULARIUS_CHROMIUM && existsSync(process.env.TABULARIUS_CHROMIUM)) return process.env.TABULARIUS_CHROMIUM;
-  const root = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers';
-  try {
-    // Playwright's own layout: chromium-N/chrome-linux/chrome, chromium_headless_shell-N/chrome-mac-arm64/headless_shell, ...
-    for (const dir of readdirSync(root).filter((d) => d.startsWith('chromium'))) {
-      let subs: string[];
-      try { subs = readdirSync(join(root, dir)); } catch { continue; } // a file or a link, not a folder
-      for (const sub of subs) {
-        for (const bin of ['chrome', 'headless_shell', 'chrome-headless-shell', 'Chromium.app/Contents/MacOS/Chromium']) {
-          const p = join(root, dir, sub, bin);
-          if (existsSync(p) && statSync(p).isFile()) return p;
-        }
-      }
-    }
-  } catch { /* no such folder */ }
-  for (const p of [
-    '/opt/google/chrome/chrome', // the real binary: /usr/bin/google-chrome is a shell script that needs readlink, dirname, mkdir and cat on the PATH
-    '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Chromium.app/Contents/MacOS/Chromium',
-  ]) if (existsSync(p)) return p;
-  return undefined;
-}
+export const FIXTURES = join(import.meta.dirname, '..', '..', '..', 'fixtures', 'fmp12');
 
 const executablePath = findChromium();
 
@@ -102,7 +80,7 @@ export async function launch(): Promise<Browser> {
       if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
   }
-  throw new Error('Chromium did not connect after two fresh launch attempts', { cause: error });
+  throw new Error(`Chromium at ${executablePath ?? '(no executable found)'} failed after two launch attempts; set TABULARIUS_CHROMIUM to another browser`, { cause: error });
 }
 
 /**

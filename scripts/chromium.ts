@@ -6,6 +6,7 @@ import '../packages/store/src/legacy-env.ts';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { homedir } from 'node:os';
 
 const CMD_TIMEOUT_MS = 20_000; // a DevTools command that never answers (dead browser) must not hang the run
 
@@ -14,25 +15,33 @@ export type Listener = (method: string, params: any, sessionId?: string) => void
 /** Find a Chromium to drive: an explicit override, then the preinstalled ones, then the PATH. */
 export function findChromium(): string | undefined {
   if (process.env.TABULARIUS_CHROMIUM && existsSync(process.env.TABULARIUS_CHROMIUM)) return process.env.TABULARIUS_CHROMIUM;
-  const root = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers';
-  try {
-    // Playwright's own layout: chromium-N/chrome-linux/chrome, chromium_headless_shell-N/chrome-mac-arm64/headless_shell, ...
-    for (const dir of readdirSync(root).filter((d) => d.startsWith('chromium'))) {
-      let subs: string[];
-      try { subs = readdirSync(join(root, dir)); } catch { continue; } // a file or a link, not a folder
-      for (const sub of subs) {
-        for (const bin of ['chrome', 'headless_shell', 'chrome-headless-shell', 'Chromium.app/Contents/MacOS/Chromium']) {
-          const p = join(root, dir, sub, bin);
-          if (existsSync(p) && statSync(p).isFile()) return p;
-        }
-      }
-    }
-  } catch { /* no such dir */ }
-  for (const p of [
+  const roots = process.env.PLAYWRIGHT_BROWSERS_PATH
+    ? [process.env.PLAYWRIGHT_BROWSERS_PATH]
+    // macOS cache location follows Playwright's layout; real-Mac launch behaviour is unverified.
+    : ['/opt/pw-browsers', ...(process.platform === 'darwin' ? [join(homedir(), 'Library', 'Caches', 'ms-playwright')] : [])];
+  return findChromiumIn(roots, [
     '/opt/google/chrome/chrome', // the real binary: /usr/bin/google-chrome is a shell script that needs readlink, dirname, mkdir and cat on the PATH
     '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Chromium.app/Contents/MacOS/Chromium',
-  ]) if (existsSync(p)) return p;
+  ]);
+}
+
+/** Search explicit roots first, preferring standalone headless/browser-for-testing binaries. */
+export function findChromiumIn(roots: string[], fixed: string[]): string | undefined {
+  const priorities = ['chrome-headless-shell', 'headless_shell', 'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing', 'chrome', 'Chromium.app/Contents/MacOS/Chromium'];
+  for (const bin of priorities) for (const root of roots) {
+    try {
+      for (const dir of readdirSync(root).filter((d) => d.startsWith('chromium'))) {
+        let subs: string[];
+        try { subs = readdirSync(join(root, dir)); } catch { continue; }
+        for (const sub of subs) {
+          const p = join(root, dir, sub, bin);
+          try { if (existsSync(p) && statSync(p).isFile()) return p; } catch { /* inaccessible browser path */ }
+        }
+      }
+    } catch { /* no such root */ }
+  }
+  for (const p of fixed) if (existsSync(p)) return p;
   return undefined;
 }
 

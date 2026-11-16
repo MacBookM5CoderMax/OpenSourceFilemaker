@@ -28,6 +28,8 @@ npm run tabularius -- export  fixtures/fmp12/Charts.fmp12 charts.sqlite
 npm run tabularius -- dump    fixtures/fmp12/Standards.fmp12 --prefix 17.5 --text
 ```
 
+On macOS, Chromium discovery also searches `~/Library/Caches/ms-playwright`.
+
 The reader, store, calculation and script engines and web client use
 nothing beyond Node. The server uses two packages: the official MCP SDK
 (`@modelcontextprotocol/sdk`), which serves `/mcp` and `tabularius mcp`, and
