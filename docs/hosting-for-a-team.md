@@ -580,7 +580,7 @@ curl -u Ann:secret "https://server/fmi/odata/v4/Contacts/People?\$filter=City%20
 ```
 
 `$filter` (comparisons, `and`/`or`/`not`, `contains`, `startswith`, date
-parts and more), `$search` (words and "phrases" in any text field, with
+parts and more; a time field is an `Edm.TimeOfDay`, so a time of 100 hours or more or a negative time reads as `null` in the answer and in a `$filter` <!-- known-difference: Data API ;; An OData time field holds one day, so a duration (negative, or 100 hours or more) is null in the JSON and in a $filter ;; The duration shows as null in an OData client although the file holds it; how FileMaker Server writes such a time over OData is unverified ;; A FileMaker Server run that reads a time field of 100 hours or more through OData -->), `$search` (words and "phrases" in any text field, with
 `AND`, `OR` and `NOT`), `$select`, `$orderby`, `$top`, `$skip` and `$count` work,
 and long lists come 1,000 records a page with `@odata.nextLink`. `POST` to
 the entity set creates a record; `PATCH` and `DELETE` on `People(12)`

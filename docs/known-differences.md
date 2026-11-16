@@ -7,7 +7,7 @@ missing from it. `npm run docs:known-differences` rewrites it, and a test fails 
 marker (`<!-- known-difference: area ;; what ;; how it shows ;; what would settle it -->`). Internal working notes are not
 part of it.
 
-**291 entries in 35 areas.** Unverified: 147. Waiting on: 25 on a sample file, 177 on a FileMaker run or Design Report, 15 on a Claris answer, 14 on a decision by the owner (an entry can wait on more than one).
+**292 entries in 35 areas.** Unverified: 147. Waiting on: 25 on a sample file, 178 on a FileMaker run or Design Report, 15 on a Claris answer, 14 on a decision by the owner (an entry can wait on more than one).
 
 ## Conversion
 
@@ -36,6 +36,7 @@ part of it.
 | Putting a file in a container field (every upload route) does not run the field's data entry validation | An upload to a container field with a validation option set is accepted; whether FileMaker refuses it is unconfirmed | A FileMaker Server run of an upload to a container field with a validation option set | [docs/data-api-compatibility.md › Endpoints](data-api-compatibility.md) — “POST .../records/{id}/containers/{field}[/{repetition}] \| ✓ \| Multipart; only the part named upload is read.…” |
 | External data-source password and OAuth credentials are checked at sign-in instead of when the file is needed; vendor timing is unverified offline | Bad credentials fail the initial login with an earlier error and no session token | Compare against a running FileMaker Server using the external-data-source guide | [docs/data-api-compatibility.md › Fixed in this change](data-api-compatibility.md) — “remains unverified against a running FileMaker Server offline.” |
 | Whether a migration or sync run over the Data API sees one consistent snapshot while the source takes writes is unverified; the range requests are not wrapped in a transaction | A record written on the source during a run can be missing from, or half-present in, the copy | A FileMaker Server run that migrates while a script writes to the source | [docs/fms-migration-runbook.md › Stop conditions](fms-migration-runbook.md) — “writes are unverified. Keep the source quiet for the final pass.” |
+| An OData time field holds one day, so a duration (negative, or 100 hours or more) is null in the JSON and in a $filter | The duration shows as null in an OData client although the file holds it; how FileMaker Server writes such a time over OData is unverified | A FileMaker Server run that reads a time field of 100 hours or more through OData | [docs/hosting-for-a-team.md › Hosting for a team](hosting-for-a-team.md) — “parts and more; a time field is an Edm.TimeOfDay, so a time of 100 hours or more or a negative time reads as…” |
 | A response schema read off the documented example, not checked key by key, carries x-tabularius-inferred; it lists the keys the example shows, none required | A client generated from the description treats those properties as optional | A captured FileMaker response, or a Claris guide page that shows the shape | [docs/openapi.md › What it describes](openapi.md) — “carries x-tabularius-inferred. It lists the keys the example shows, none” |
 
 ## Date and time functions

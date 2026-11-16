@@ -614,7 +614,7 @@ export function filterSql(text: string, props: Prop[], lambda?: Lambda, computed
     fields.add(p.field);
     const kind = KIND[p.type] ?? 'string';
     const column = q(p.field);
-    return { sql: kind === 'number' && p.type !== 'decimal' ? `fm_odata_number(${column})` : kind === 'date' ? `fm_odata_date(${column})` : column, params: [], kind, ...(kind === 'number' && p.type !== 'decimal' ? { numColumn: true } : {}), ...(p.type === 'decimal' ? { decimal: true } : {}), ...(p.type === 'uuid' ? { uuid: true } : {}) };
+    return { sql: kind === 'number' && p.type !== 'decimal' ? `fm_odata_number(${column})` : kind === 'date' ? `fm_odata_date(${column})` : kind === 'time' ? `fm_odata_time(${column})` : column, params: [], kind, ...(kind === 'number' && p.type !== 'decimal' ? { numColumn: true } : {}), ...(p.type === 'decimal' ? { decimal: true } : {}), ...(p.type === 'uuid' ? { uuid: true } : {}) };
   };
 
   if (!tokens.length) throw bad('$filter is empty');
